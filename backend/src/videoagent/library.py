@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Optional
 
 from videoagent.config import Config, default_config
-from videoagent.models import VideoLibraryIndex, VideoMetadata, TranscriptSegment, SceneMatch
+from videoagent.models import SceneMatch, TranscriptSegment, VideoLibraryIndex, VideoMetadata
 
 
 def get_video_id(path: Path) -> str:
@@ -26,8 +26,8 @@ def get_video_metadata_ffprobe(path: Path) -> dict:
 
     Returns dict with duration, resolution, fps, etc.
     """
-    import subprocess
     import json as json_module
+    import subprocess
 
     cmd = [
         "ffprobe",
@@ -338,7 +338,8 @@ class VideoLibrary:
         Set the LLM function used for scene search.
 
         Args:
-            fn: Function with signature (query: str, videos: list[VideoMetadata]) -> list[SceneMatch]
+            fn: Function with signature
+                (query: str, videos: list[VideoMetadata]) -> list[SceneMatch]
         """
         self.index.set_llm_search_function(fn)
 

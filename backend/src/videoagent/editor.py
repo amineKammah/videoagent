@@ -5,18 +5,18 @@ Uses moviepy for video manipulation with fallback to ffmpeg.
 """
 import subprocess
 import tempfile
-from pathlib import Path
-from typing import Optional, Union
 import uuid
+from pathlib import Path
+from typing import Optional
 
 from videoagent.config import Config, default_config
 from videoagent.models import (
-    VideoSegment,
-    StaticScene,
-    StorySegment,
-    StoryPlan,
-    SegmentType,
     RenderResult,
+    SegmentType,
+    StaticScene,
+    StoryPlan,
+    StorySegment,
+    VideoSegment,
     VoiceOver,
 )
 
@@ -129,12 +129,7 @@ class VideoEditor:
         fps: int
     ) -> Path:
         """Create static scene using moviepy."""
-        from moviepy.editor import (
-            ColorClip,
-            TextClip,
-            CompositeVideoClip,
-            ImageClip
-        )
+        from moviepy.editor import ColorClip, CompositeVideoClip, ImageClip, TextClip
 
         bg_rgb = hex_to_rgb(scene.background_color)
 
@@ -315,16 +310,6 @@ class VideoEditor:
         """
         if output_path is None:
             output_path = self._get_temp_dir() / f"extended_{uuid.uuid4().hex[:8]}.mp4"
-
-        # First, get the video duration
-        probe_cmd = [
-            "ffprobe", "-v", "error",
-            "-show_entries", "format=duration",
-            "-of", "default=noprint_wrappers=1:nokey=1",
-            str(video_path)
-        ]
-        result = subprocess.run(probe_cmd, capture_output=True, text=True, check=True)
-        original_duration = float(result.stdout.strip())
 
         # Extract last frame
         last_frame = self._get_temp_dir() / "last_frame.png"

@@ -3,11 +3,11 @@ Data models for the Video Agent.
 
 These dataclasses define the core structures used throughout the system.
 """
+import uuid
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import Optional, Union, Callable
-import uuid
+from typing import Callable, Optional, Union
 
 
 class SegmentType(Enum):
@@ -308,7 +308,10 @@ class VideoLibraryIndex:
         """Get a video by ID."""
         return self.videos.get(video_id)
 
-    def search_by_transcript_keyword(self, keyword: str) -> list[tuple[VideoMetadata, list[TranscriptSegment]]]:
+    def search_by_transcript_keyword(
+        self,
+        keyword: str
+    ) -> list[tuple[VideoMetadata, list[TranscriptSegment]]]:
         """
         Search for videos containing a keyword in their transcript.
 
@@ -370,6 +373,7 @@ class VideoLibraryIndex:
         Set the LLM function used for scene search.
 
         Args:
-            fn: Function with signature (query: str, videos: list[VideoMetadata]) -> list[SceneMatch]
+            fn: Function with signature
+                (query: str, videos: list[VideoMetadata]) -> list[SceneMatch]
         """
         self._llm_search_fn = fn

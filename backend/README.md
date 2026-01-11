@@ -18,6 +18,13 @@ python3 backend/scripts/run_basic_tests.py --run-llm
 python3 backend/scripts/run_basic_tests.py --run-e2e
 ```
 
+## Lint
+
+```sh
+uv pip install -e "backend[dev]"
+python3 -m ruff check backend/src backend/tests backend/scripts
+```
+
 ## Notes
 
 - ffmpeg/ffprobe must be installed and on PATH.

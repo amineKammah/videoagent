@@ -246,14 +246,14 @@ class BasicIntegrationTests(unittest.TestCase):
 
 
 def main() -> int:
+    global LIBRARY_PATH, OUTPUT_DIR, RUN_LLM, RUN_E2E
+
     parser = argparse.ArgumentParser(description="Run basic integration tests.")
     parser.add_argument("--library", type=Path, help="Path to video library")
     parser.add_argument("--output-dir", type=Path, default=OUTPUT_DIR)
     parser.add_argument("--run-llm", action="store_true", help="Run LLM story generation")
     parser.add_argument("--run-e2e", action="store_true", help="Run full end-to-end render")
     args = parser.parse_args()
-
-    global LIBRARY_PATH, OUTPUT_DIR, RUN_LLM, RUN_E2E
     LIBRARY_PATH = args.library
     OUTPUT_DIR = args.output_dir
     RUN_LLM = args.run_llm

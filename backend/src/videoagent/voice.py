@@ -6,17 +6,23 @@ Handles timing mismatches between voice overs and video segments.
 """
 import subprocess
 import tempfile
+import uuid
 import wave
 from pathlib import Path
 from typing import Optional
-import uuid
 
 from videoagent.config import Config, default_config
-from videoagent.models import VoiceOver
 from videoagent.gemini import GeminiClient
+from videoagent.models import VoiceOver
 
 
-def wave_file(filename: Path, pcm: bytes, channels: int = 1, rate: int = 24000, sample_width: int = 2):
+def wave_file(
+    filename: Path,
+    pcm: bytes,
+    channels: int = 1,
+    rate: int = 24000,
+    sample_width: int = 2
+):
     """Save PCM audio data to a wave file."""
     with wave.open(str(filename), "wb") as wf:
         wf.setnchannels(channels)

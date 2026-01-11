@@ -5,6 +5,7 @@ Provides a centralized client for both video analysis and TTS.
 """
 from pathlib import Path
 from typing import Optional, TypeVar
+
 from pydantic import BaseModel
 
 from videoagent.config import Config, default_config
@@ -55,7 +56,11 @@ class GeminiClient:
                     credentials, project = google_auth_default(
                         scopes=["https://www.googleapis.com/auth/cloud-platform"]
                     )
-                    project = project or os.environ.get("GOOGLE_CLOUD_PROJECT") or os.environ.get("CLOUDSDK_CORE_PROJECT")
+                    project_env = (
+                        os.environ.get("GOOGLE_CLOUD_PROJECT")
+                        or os.environ.get("CLOUDSDK_CORE_PROJECT")
+                    )
+                    project = project or project_env
                     location = os.environ.get("GOOGLE_CLOUD_LOCATION") or "us-central1"
                     if not project:
                         raise ValueError(
@@ -76,7 +81,11 @@ class GeminiClient:
                     credentials, project = google_auth_default(
                         scopes=["https://www.googleapis.com/auth/cloud-platform"]
                     )
-                    project = project or os.environ.get("GOOGLE_CLOUD_PROJECT") or os.environ.get("CLOUDSDK_CORE_PROJECT")
+                    project_env = (
+                        os.environ.get("GOOGLE_CLOUD_PROJECT")
+                        or os.environ.get("CLOUDSDK_CORE_PROJECT")
+                    )
+                    project = project or project_env
                     location = os.environ.get("GOOGLE_CLOUD_LOCATION") or "us-central1"
                     if not project:
                         raise ValueError(

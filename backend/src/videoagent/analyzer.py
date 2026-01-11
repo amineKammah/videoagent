@@ -8,12 +8,12 @@ import subprocess
 import tempfile
 from pathlib import Path
 from typing import Optional
+
 from pydantic import BaseModel, Field
 
 from videoagent.config import Config, default_config
-from videoagent.models import IntroCandidate
 from videoagent.gemini import GeminiClient
-
+from videoagent.models import IntroCandidate
 
 # ==================== Pydantic Response Models ====================
 

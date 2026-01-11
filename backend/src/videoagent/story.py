@@ -7,33 +7,42 @@ Creates a compelling story following this structure:
 3. Solution content (video snippet, static image, etc.)
 4. Customer testimonial corroborating the solution
 """
-from pathlib import Path
 from typing import Optional
+
 from pydantic import BaseModel, Field
 
 from videoagent.config import Config, default_config
-from videoagent.models import (
-    VideoMetadata,
-    VideoSegment,
-    StaticScene,
-    StorySegment,
-    StoryPlan,
-    VoiceOver,
-    SegmentType,
-)
 from videoagent.gemini import GeminiClient
 from videoagent.library import VideoLibrary
-
+from videoagent.models import (
+    SegmentType,
+    StaticScene,
+    StoryPlan,
+    StorySegment,
+    VideoSegment,
+    VoiceOver,
+)
 
 # ==================== Pydantic Response Models ====================
 
 class StoryOutline(BaseModel):
     """LLM response for the initial story outline."""
-    customer_pain_summary: str = Field(description="Summary of the customer's pain point")
-    pain_explanation_script: str = Field(description="Voice over script explaining how the customer pain is real (2-3 sentences)")
+    customer_pain_summary: str = Field(
+        description="Summary of the customer's pain point"
+    )
+    pain_explanation_script: str = Field(
+        description=(
+            "Voice over script explaining how the customer pain is real "
+            "(2-3 sentences)"
+        )
+    )
     solution_summary: str = Field(description="What solution addresses this pain")
-    solution_video_query: str = Field(description="Search query to find the solution video/content")
-    testimonial_video_query: str = Field(description="Search query to find a customer testimonial video")
+    solution_video_query: str = Field(
+        description="Search query to find the solution video/content"
+    )
+    testimonial_video_query: str = Field(
+        description="Search query to find a customer testimonial video"
+    )
     intro_context: str = Field(description="Context for what kind of intro would work well")
 
 
