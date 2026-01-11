@@ -11,8 +11,8 @@ from pathlib import Path
 from typing import Optional
 from pydantic import BaseModel, Field
 
-from config import Config, default_config
-from models import (
+from videoagent.config import Config, default_config
+from videoagent.models import (
     VideoMetadata,
     VideoSegment,
     StaticScene,
@@ -21,8 +21,8 @@ from models import (
     VoiceOver,
     SegmentType,
 )
-from gemini import GeminiClient
-from library import VideoLibrary
+from videoagent.gemini import GeminiClient
+from videoagent.library import VideoLibrary
 
 
 # ==================== Pydantic Response Models ====================

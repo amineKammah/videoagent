@@ -6,12 +6,12 @@ Simple pipeline that takes a customer situation and produces a personalized vide
 from pathlib import Path
 from typing import Optional
 
-from config import Config, default_config
-from models import StoryPlan, RenderResult
-from library import VideoLibrary
-from editor import VideoEditor
-from voice import VoiceOverGenerator
-from story import PersonalizedStoryGenerator
+from videoagent.config import Config, default_config
+from videoagent.models import StoryPlan, RenderResult
+from videoagent.library import VideoLibrary
+from videoagent.editor import VideoEditor
+from videoagent.voice import VoiceOverGenerator
+from videoagent.story import PersonalizedStoryGenerator
 
 
 class VideoAgent:

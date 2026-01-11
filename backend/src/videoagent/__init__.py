@@ -8,8 +8,8 @@ Creates personalized videos from customer situations by:
 4. Assembling everything into a final video
 """
 
-from config import Config, default_config
-from models import (
+from videoagent.config import Config, default_config
+from videoagent.models import (
     VideoMetadata,
     VideoSegment,
     StaticScene,
@@ -23,13 +23,13 @@ from models import (
     SceneMatch,
     VideoLibraryIndex,
 )
-from gemini import GeminiClient
-from library import VideoLibrary, scan_video_library, search_videos_by_keyword
-from analyzer import VideoAnalyzer, analyze_intro, IntroAnalysis
-from editor import VideoEditor, cut_video, create_title_card, join_videos
-from voice import VoiceOverGenerator, generate_voice_over, estimate_speech_duration
-from story import PersonalizedStoryGenerator, generate_personalized_video
-from agent import VideoAgent, create_personalized_video
+from videoagent.gemini import GeminiClient
+from videoagent.library import VideoLibrary, scan_video_library, search_videos_by_keyword
+from videoagent.analyzer import VideoAnalyzer, analyze_intro, IntroAnalysis
+from videoagent.editor import VideoEditor, cut_video, create_title_card, join_videos
+from videoagent.voice import VoiceOverGenerator, generate_voice_over, estimate_speech_duration
+from videoagent.story import PersonalizedStoryGenerator, generate_personalized_video
+from videoagent.agent import VideoAgent, create_personalized_video
 
 __version__ = "0.1.0"
 

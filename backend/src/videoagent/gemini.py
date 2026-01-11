@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Optional, TypeVar
 from pydantic import BaseModel
 
-from config import Config, default_config
+from videoagent.config import Config, default_config
 
 T = TypeVar("T", bound=BaseModel)
 
@@ -28,19 +28,67 @@ class GeminiClient:
         if self._client is None:
             try:
                 from google import genai
+                try:
+                    from dotenv import load_dotenv
+                except ImportError:
+                    load_dotenv = None
+
+                if load_dotenv:
+                    # Try repo root first, then cwd for local runs
+                    repo_env = Path(__file__).resolve().parents[3] / ".env"
+                    if repo_env.exists():
+                        load_dotenv(dotenv_path=repo_env)
+                    else:
+                        load_dotenv(dotenv_path=Path(".env"))
 
                 api_key = self.config.gemini_api_key
                 if not api_key:
                     import os
                     api_key = os.environ.get("GEMINI_API_KEY")
 
-                if not api_key:
-                    raise ValueError(
-                        "Gemini API key not found. Set gemini_api_key in config "
-                        "or GEMINI_API_KEY environment variable."
-                    )
+                import os
+                adc_path = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS")
 
-                self._client = genai.Client(api_key=api_key)
+                if adc_path:
+                    # Prefer service account/ADC when explicitly provided
+                    from google.auth import default as google_auth_default
+                    credentials, project = google_auth_default(
+                        scopes=["https://www.googleapis.com/auth/cloud-platform"]
+                    )
+                    project = project or os.environ.get("GOOGLE_CLOUD_PROJECT") or os.environ.get("CLOUDSDK_CORE_PROJECT")
+                    location = os.environ.get("GOOGLE_CLOUD_LOCATION") or "us-central1"
+                    if not project:
+                        raise ValueError(
+                            "Google Cloud project not found. Set GOOGLE_CLOUD_PROJECT "
+                            "or CLOUDSDK_CORE_PROJECT when using ADC."
+                        )
+                    self._client = genai.Client(
+                        vertexai=True,
+                        project=project,
+                        location=location,
+                        credentials=credentials,
+                    )
+                elif api_key:
+                    self._client = genai.Client(api_key=api_key)
+                else:
+                    # Fall back to ADC (gcloud auth application-default login)
+                    from google.auth import default as google_auth_default
+                    credentials, project = google_auth_default(
+                        scopes=["https://www.googleapis.com/auth/cloud-platform"]
+                    )
+                    project = project or os.environ.get("GOOGLE_CLOUD_PROJECT") or os.environ.get("CLOUDSDK_CORE_PROJECT")
+                    location = os.environ.get("GOOGLE_CLOUD_LOCATION") or "us-central1"
+                    if not project:
+                        raise ValueError(
+                            "Google Cloud project not found. Set GOOGLE_CLOUD_PROJECT "
+                            "or CLOUDSDK_CORE_PROJECT when using ADC."
+                        )
+                    self._client = genai.Client(
+                        vertexai=True,
+                        project=project,
+                        location=location,
+                        credentials=credentials,
+                    )
             except ImportError:
                 raise RuntimeError(
                     "google-genai not installed. "
@@ -80,7 +128,7 @@ class GeminiClient:
             config=config
         )
 
-    def analyze_video[T: BaseModel](
+    def analyze_video(
         self,
         video_file: object,
         prompt: str,

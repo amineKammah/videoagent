@@ -9,8 +9,8 @@ from pathlib import Path
 from typing import Optional, Union
 import uuid
 
-from config import Config, default_config
-from models import (
+from videoagent.config import Config, default_config
+from videoagent.models import (
     VideoSegment,
     StaticScene,
     StorySegment,
@@ -263,38 +263,38 @@ class VideoEditor:
             shutil.copy(video_paths[0], output_path)
             return output_path
 
-        # Create concat file for ffmpeg
-        concat_file = self._get_temp_dir() / "concat_list.txt"
-        with open(concat_file, "w") as f:
-            for path in video_paths:
-                f.write(f"file '{path}'\n")
+        # Normalize all inputs to a consistent format and SAR
+        normalized = [self.normalize_video(path) for path in video_paths]
+        include_audio = all(self._has_audio_stream(p) for p in normalized)
+
+        input_args: list[str] = []
+        filter_parts: list[str] = []
+        for i, path in enumerate(normalized):
+            input_args.extend(["-i", str(path)])
+            filter_parts.append(f"[{i}:v:0]")
+            if include_audio:
+                filter_parts.append(f"[{i}:a:0]")
+
+        audio_flag = "1" if include_audio else "0"
+        filter_complex = (
+            "".join(filter_parts)
+            + f"concat=n={len(normalized)}:v=1:a={audio_flag}[v]"
+            + ("[a]" if include_audio else "")
+        )
 
         cmd = [
             "ffmpeg", "-y",
-            "-f", "concat",
-            "-safe", "0",
-            "-i", str(concat_file),
-            "-c", "copy",
-            str(output_path)
+            *input_args,
+            "-filter_complex", filter_complex,
+            "-map", "[v]",
         ]
-
-        try:
-            subprocess.run(cmd, capture_output=True, check=True)
-            return output_path
-        except subprocess.CalledProcessError:
-            # If copy fails (different codecs), re-encode
-            cmd = [
-                "ffmpeg", "-y",
-                "-f", "concat",
-                "-safe", "0",
-                "-i", str(concat_file),
-                "-c:v", "libx264",
-                "-c:a", "aac",
-                "-preset", "fast",
-                str(output_path)
-            ]
-            subprocess.run(cmd, capture_output=True, check=True)
-            return output_path
+        if include_audio:
+            cmd.extend(["-map", "[a]", "-c:a", "aac"])
+        else:
+            cmd.append("-an")
+        cmd.extend(["-c:v", "libx264", "-preset", "fast", str(output_path)])
+        subprocess.run(cmd, capture_output=True, check=True)
+        return output_path
 
     def extend_last_frame(
         self,
@@ -434,10 +434,11 @@ class VideoEditor:
         fps = fps or self.config.output_fps
         width, height = resolution
 
-        # Scale and pad to target resolution
+        # Scale and pad to target resolution, then normalize sample aspect ratio
         filter_complex = (
             f"scale={width}:{height}:force_original_aspect_ratio=decrease,"
-            f"pad={width}:{height}:(ow-iw)/2:(oh-ih)/2"
+            f"pad={width}:{height}:(ow-iw)/2:(oh-ih)/2,"
+            "setsar=1"
         )
 
         cmd = [
@@ -539,6 +540,18 @@ class VideoEditor:
         )
 
         return output_path
+
+    def _has_audio_stream(self, video_path: Path) -> bool:
+        """Check whether a video file has an audio stream."""
+        cmd = [
+            "ffprobe", "-v", "error",
+            "-select_streams", "a",
+            "-show_entries", "stream=index",
+            "-of", "csv=p=0",
+            str(video_path)
+        ]
+        result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+        return bool(result.stdout.strip())
 
     def render_story(self, story: StoryPlan) -> RenderResult:
         """

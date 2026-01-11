@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "videoagent"
+version = "0.1.0"
+description = "Backend library for LLM-powered personalized video generation."
+readme = "README.md"
+requires-python = ">=3.13"
+license = {text = "MIT"}
+authors = [{name = "VideoAgent"}]
+dependencies = [
+  "google-genai>=1.0.0",
+  "pydantic>=2.0.0",
+  "moviepy>=1.0.3",
+  "python-dotenv>=1.0.0",
+]
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]

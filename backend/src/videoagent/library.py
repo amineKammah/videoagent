@@ -9,8 +9,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
-from config import Config, default_config
-from models import VideoLibraryIndex, VideoMetadata, TranscriptSegment, SceneMatch
+from videoagent.config import Config, default_config
+from videoagent.models import VideoLibraryIndex, VideoMetadata, TranscriptSegment, SceneMatch
 
 
 def get_video_id(path: Path) -> str:

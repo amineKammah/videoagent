@@ -10,9 +10,9 @@ from pathlib import Path
 from typing import Optional
 from pydantic import BaseModel, Field
 
-from config import Config, default_config
-from models import IntroCandidate
-from gemini import GeminiClient
+from videoagent.config import Config, default_config
+from videoagent.models import IntroCandidate
+from videoagent.gemini import GeminiClient
 
 
 # ==================== Pydantic Response Models ====================
@@ -101,7 +101,7 @@ Consider:
 
         result = self.client.analyze_video(video_file, prompt, IntroAnalysis)
 
-        from library import get_video_id
+        from videoagent.library import get_video_id
         video_id = get_video_id(video_path)
 
         return IntroCandidate(

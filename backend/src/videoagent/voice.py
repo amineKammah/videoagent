@@ -11,9 +11,9 @@ from pathlib import Path
 from typing import Optional
 import uuid
 
-from config import Config, default_config
-from models import VoiceOver
-from gemini import GeminiClient
+from videoagent.config import Config, default_config
+from videoagent.models import VoiceOver
+from videoagent.gemini import GeminiClient
 
 
 def wave_file(filename: Path, pcm: bytes, channels: int = 1, rate: int = 24000, sample_width: int = 2):
