@@ -1,0 +1,44 @@
+{
+  "last_indexed": "2026-01-16T18:57:04.464085",
+  "videos": {
+    "1b43b410d37f": {
+      "id": "1b43b410d37f",
+      "path": "/Users/amineka/videoagent/assets/test_videos/reimburse.webm",
+      "filename": "reimburse.webm",
+      "duration": 5.942,
+      "resolution": [
+        1194,
+        1242
+      ],
+      "fps": 25.0,
+      "file_size": 117737,
+      "transcript_segments": []
+    },
+    "99ea3ae4a242": {
+      "id": "99ea3ae4a242",
+      "path": "/Users/amineka/videoagent/assets/test_videos/centralized_spend.webm",
+      "filename": "centralized_spend.webm",
+      "duration": 14.0,
+      "resolution": [
+        1466,
+        1158
+      ],
+      "fps": 25.0,
+      "file_size": 107854,
+      "transcript_segments": []
+    },
+    "f3f3792451e0": {
+      "id": "f3f3792451e0",
+      "path": "/Users/amineka/videoagent/assets/test_videos/employee_pays.webm",
+      "filename": "employee_pays.webm",
+      "duration": 4.791,
+      "resolution": [
+        1194,
+        1242
+      ],
+      "fps": 25.0,
+      "file_size": 66935,
+      "transcript_segments": []
+    }
+  }
+}

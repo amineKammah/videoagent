@@ -11,7 +11,10 @@ class Config:
     """Main configuration for the video agent."""
 
     # Video library settings
-    video_library_path: Path = field(default_factory=lambda: Path("./videos"))
+    video_library_path: Path = field(
+        default_factory=lambda: Path("/Users/amineka/Downloads/Navan_Content/normalized_videos")
+    )
+    transcript_library_path: Optional[Path] = None
     supported_formats: tuple = (".mp4", ".mov", ".avi", ".mkv", ".webm")
 
     # Output settings
@@ -19,11 +22,13 @@ class Config:
     output_format: str = "mp4"
     output_fps: int = 30
     output_resolution: tuple = (1920, 1080)
+    ffmpeg_threads: int = 0  # 0 lets ffmpeg auto-select threads
 
     # Gemini LLM settings
     gemini_api_key: Optional[str] = None
-    gemini_model: str = "gemini-2.5-flash"
+    gemini_model: str = "models/gemini-3-flash-preview"
     gemini_tts_model: str = "gemini-2.5-flash-preview-tts"
+    agent_model: str = "gemini/gemini-3-flash-preview"
 
     # TTS settings
     tts_voice: str = "Kore"  # Kore, Charon, Fenrir, Aoede, Puck, etc.
@@ -51,11 +56,6 @@ class Config:
 
     def __post_init__(self):
         """Ensure paths are Path objects and create directories."""
-        if isinstance(self.video_library_path, str):
-            self.video_library_path = Path(self.video_library_path)
-        if isinstance(self.output_dir, str):
-            self.output_dir = Path(self.output_dir)
-
         # Create output directory if it doesn't exist
         self.output_dir.mkdir(parents=True, exist_ok=True)
 

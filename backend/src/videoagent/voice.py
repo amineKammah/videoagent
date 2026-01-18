@@ -4,6 +4,8 @@ Voice Over System - TTS generation using Gemini.
 Uses Google's Gemini TTS model to generate voice overs.
 Handles timing mismatches between voice overs and video segments.
 """
+import asyncio
+import json
 import subprocess
 import tempfile
 import uuid
@@ -35,19 +37,31 @@ def get_audio_duration(audio_path: Path) -> float:
     """Get the duration of an audio file using ffprobe."""
     cmd = [
         "ffprobe", "-v", "error",
-        "-show_entries", "format=duration",
-        "-of", "default=noprint_wrappers=1:nokey=1",
+        "-show_entries", "format=duration:stream=duration",
+        "-of", "json",
         str(audio_path)
     ]
     result = subprocess.run(cmd, capture_output=True, text=True, check=True)
-    return float(result.stdout.strip())
+    try:
+        info = json.loads(result.stdout)
+        duration = info.get("format", {}).get("duration")
+        if duration and duration != "N/A":
+            return float(duration)
+        for stream in info.get("streams", []):
+            stream_duration = stream.get("duration")
+            if stream_duration and stream_duration != "N/A":
+                return float(stream_duration)
+    except (ValueError, json.JSONDecodeError, TypeError):
+        return 0.0
+    return 0.0
 
 
 def generate_speech_to_file(
     client: GeminiClient,
     text: str,
     output_path: Path,
-    voice: str = "Kore"
+    voice: str = "Kore",
+    ffmpeg_threads: Optional[int] = None
 ) -> Path:
     """
     Generate audio from text using Gemini TTS and save to file.
@@ -70,8 +84,10 @@ def generate_speech_to_file(
 
     # Convert to mp3 if requested
     if output_path.suffix.lower() == ".mp3":
+        threads = ffmpeg_threads if ffmpeg_threads is not None else default_config.ffmpeg_threads
         cmd = [
             "ffmpeg", "-y",
+            "-threads", str(threads),
             "-i", str(wav_path),
             "-codec:a", "libmp3lame",
             "-qscale:a", "2",
@@ -79,6 +95,36 @@ def generate_speech_to_file(
         ]
         subprocess.run(cmd, capture_output=True, check=True)
         wav_path.unlink()  # Remove temp wav
+        return output_path
+
+    return wav_path
+
+
+async def generate_speech_to_file_async(
+    client: GeminiClient,
+    text: str,
+    output_path: Path,
+    voice: str = "Kore",
+    ffmpeg_threads: Optional[int] = None
+) -> Path:
+    """Generate audio from text using Gemini TTS and save to file (async)."""
+    data = await client.generate_speech_async(text, voice)
+
+    wav_path = output_path.with_suffix(".wav")
+    await asyncio.to_thread(wave_file, wav_path, data)
+
+    if output_path.suffix.lower() == ".mp3":
+        threads = ffmpeg_threads if ffmpeg_threads is not None else default_config.ffmpeg_threads
+        cmd = [
+            "ffmpeg", "-y",
+            "-threads", str(threads),
+            "-i", str(wav_path),
+            "-codec:a", "libmp3lame",
+            "-qscale:a", "2",
+            str(output_path)
+        ]
+        await asyncio.to_thread(subprocess.run, cmd, capture_output=True, check=True)
+        wav_path.unlink()
         return output_path
 
     return wav_path
@@ -115,7 +161,7 @@ class VoiceOverGenerator:
             output_path: Output audio path
 
         Returns:
-            VoiceOver object with audio path and duration
+            VoiceOver object with duration
         """
         voice = voice or self.config.tts_voice
 
@@ -123,18 +169,81 @@ class VoiceOverGenerator:
             output_path = self._get_temp_dir() / f"vo_{uuid.uuid4().hex[:8]}.wav"
 
         # Generate the audio
-        audio_path = generate_speech_to_file(self.client, script, output_path, voice)
+        audio_path = generate_speech_to_file(
+            self.client,
+            script,
+            output_path,
+            voice,
+            ffmpeg_threads=self.config.ffmpeg_threads
+        )
 
         # Get duration
         duration = get_audio_duration(audio_path)
 
+        audio_id = None
+        if output_path:
+            name = output_path.name
+            if name.startswith("vo_") and name.endswith(".wav"):
+                audio_id = name[len("vo_") : -len(".wav")]
         return VoiceOver(
             script=script,
-            audio_path=audio_path,
+            audio_id=audio_id,
             duration=duration,
             voice=voice,
             speed=speed
         )
+
+    async def generate_voice_over_async(
+        self,
+        script: str,
+        voice: Optional[str] = None,
+        speed: float = 1.0,
+        output_path: Optional[Path] = None
+    ) -> VoiceOver:
+        """Generate a voice over from a script (async)."""
+        voice = voice or self.config.tts_voice
+
+        if output_path is None:
+            output_path = self._get_temp_dir() / f"vo_{uuid.uuid4().hex[:8]}.wav"
+
+        audio_path = await generate_speech_to_file_async(
+            self.client,
+            script,
+            output_path,
+            voice,
+            ffmpeg_threads=self.config.ffmpeg_threads
+        )
+
+        duration = await asyncio.to_thread(get_audio_duration, audio_path)
+
+        audio_id = None
+        if output_path:
+            name = output_path.name
+            if name.startswith("vo_") and name.endswith(".wav"):
+                audio_id = name[len("vo_") : -len(".wav")]
+        return VoiceOver(
+            script=script,
+            audio_id=audio_id,
+            duration=duration,
+            voice=voice,
+            speed=speed
+        )
+
+    async def generate_voice_overs_parallel(
+        self,
+        script_voice_pairs: list[tuple[str, str]],
+        max_concurrency: int = 4,
+    ) -> list[VoiceOver]:
+        """Generate multiple voice overs concurrently (async)."""
+        semaphore = asyncio.Semaphore(max_concurrency)
+
+        async def _run(script: str, voice: str) -> VoiceOver:
+            async with semaphore:
+                return await self.generate_voice_over_async(script, voice=voice)
+
+        return await asyncio.gather(*[
+            _run(script, voice) for script, voice in script_voice_pairs
+        ])
 
     def generate_for_segment_duration(
         self,

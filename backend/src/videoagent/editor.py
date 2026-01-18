@@ -1,11 +1,12 @@
 """
-Video Editor - Cut, concatenate, and create static scenes.
+Video Editor - Cut and concatenate video.
 
-Uses moviepy for video manipulation with fallback to ffmpeg.
+Uses ffmpeg for video manipulation.
 """
 import subprocess
 import tempfile
 import uuid
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Optional
 
@@ -13,18 +14,11 @@ from videoagent.config import Config, default_config
 from videoagent.models import (
     RenderResult,
     SegmentType,
-    StaticScene,
-    StoryPlan,
     StorySegment,
     VideoSegment,
     VoiceOver,
 )
-
-
-def hex_to_rgb(hex_color: str) -> tuple[int, int, int]:
-    """Convert hex color to RGB tuple."""
-    hex_color = hex_color.lstrip("#")
-    return tuple(int(hex_color[i:i+2], 16) for i in (0, 2, 4))
+from videoagent.library import VideoLibrary
 
 
 class VideoEditor:
@@ -41,11 +35,16 @@ class VideoEditor:
         if self._temp_dir is None:
             self._temp_dir = Path(tempfile.mkdtemp(prefix="video_agent_"))
         return self._temp_dir
+    
+    def _ffmpeg_thread_args(self) -> list[str]:
+        """Return ffmpeg thread arguments based on config."""
+        return ["-threads", str(self.config.ffmpeg_threads)]
 
     def cut_video_segment(
         self,
         segment: VideoSegment,
-        output_path: Optional[Path] = None
+        output_path: Optional[Path] = None,
+        source_path: Optional[Path] = None,
     ) -> Path:
         """
         Cut a segment from a video file.
@@ -60,10 +59,20 @@ class VideoEditor:
         if output_path is None:
             output_path = self._get_temp_dir() / f"segment_{uuid.uuid4().hex[:8]}.mp4"
 
+        if source_path is None and segment.source_video_id:
+            library = VideoLibrary(self.config)
+            library.scan_library()
+            metadata = library.get_video(segment.source_video_id)
+            if metadata:
+                source_path = metadata.path
+        if source_path is None:
+            raise ValueError("Video source not found for segment.")
+
         # Use ffmpeg for cutting (more reliable than moviepy for seeking)
         cmd = [
             "ffmpeg", "-y",
-            "-i", str(segment.source_path),
+            *self._ffmpeg_thread_args(),
+            "-i", str(source_path),
             "-ss", str(segment.start_time),
             "-t", str(segment.duration),
             "-c:v", "libx264",
@@ -74,8 +83,8 @@ class VideoEditor:
         # Handle audio volume
         if not segment.keep_original_audio:
             cmd.extend(["-an"])  # No audio
-        elif segment.audio_volume != 1.0:
-            cmd.extend(["-af", f"volume={segment.audio_volume}"])
+        elif getattr(segment, "audio_volume", 1.0) != 1.0:
+            cmd.extend(["-af", f"volume={getattr(segment, 'audio_volume', 1.0)}"])
 
         cmd.append(str(output_path))
 
@@ -84,155 +93,6 @@ class VideoEditor:
             return output_path
         except subprocess.CalledProcessError as e:
             raise RuntimeError(f"Failed to cut video: {e.stderr.decode()}")
-
-    def create_static_scene(
-        self,
-        scene: StaticScene,
-        output_path: Optional[Path] = None,
-        resolution: Optional[tuple[int, int]] = None
-    ) -> Path:
-        """
-        Create a static scene with text.
-
-        Args:
-            scene: StaticScene defining the content
-            output_path: Output path (auto-generated if None)
-            resolution: Video resolution (uses config default if None)
-
-        Returns:
-            Path to the generated video file
-        """
-        if output_path is None:
-            output_path = self._get_temp_dir() / f"scene_{scene.id}.mp4"
-
-        resolution = resolution or self.config.output_resolution
-        width, height = resolution
-        fps = self.config.output_fps
-
-        # Try moviepy first (better text rendering)
-        try:
-            return self._create_static_scene_moviepy(
-                scene, output_path, width, height, fps
-            )
-        except ImportError:
-            # Fall back to ffmpeg
-            return self._create_static_scene_ffmpeg(
-                scene, output_path, width, height, fps
-            )
-
-    def _create_static_scene_moviepy(
-        self,
-        scene: StaticScene,
-        output_path: Path,
-        width: int,
-        height: int,
-        fps: int
-    ) -> Path:
-        """Create static scene using moviepy."""
-        from moviepy.editor import ColorClip, CompositeVideoClip, ImageClip, TextClip
-
-        bg_rgb = hex_to_rgb(scene.background_color)
-
-        # Create background
-        if scene.background_image_path and scene.background_image_path.exists():
-            background = ImageClip(str(scene.background_image_path))
-            background = background.resize(newsize=(width, height))
-            background = background.set_duration(scene.duration)
-        else:
-            background = ColorClip(
-                size=(width, height),
-                color=bg_rgb,
-                duration=scene.duration
-            )
-
-        # Create main text
-        text_color = scene.text_color.lstrip("#")
-        main_text = TextClip(
-            scene.text,
-            fontsize=scene.font_size,
-            font=scene.font_family,
-            color=text_color,
-            method="caption",
-            size=(width - 100, None),  # Leave margins
-            align="center"
-        ).set_duration(scene.duration)
-
-        # Position text
-        if scene.text_position == "center":
-            main_text = main_text.set_position("center")
-        elif scene.text_position == "top":
-            main_text = main_text.set_position(("center", 50))
-        elif scene.text_position == "bottom":
-            main_text = main_text.set_position(("center", height - 150))
-
-        clips = [background, main_text]
-
-        # Add subtitle if present
-        if scene.subtitle:
-            subtitle = TextClip(
-                scene.subtitle,
-                fontsize=scene.subtitle_font_size,
-                font=scene.font_family,
-                color=text_color,
-                method="caption",
-                size=(width - 100, None),
-                align="center"
-            ).set_duration(scene.duration)
-
-            # Position subtitle below main text
-            subtitle = subtitle.set_position(("center", height // 2 + 80))
-            clips.append(subtitle)
-
-        # Composite and render
-        final = CompositeVideoClip(clips, size=(width, height))
-        final.write_videofile(
-            str(output_path),
-            fps=fps,
-            codec="libx264",
-            audio=False,
-            logger=None
-        )
-
-        return output_path
-
-    def _create_static_scene_ffmpeg(
-        self,
-        scene: StaticScene,
-        output_path: Path,
-        width: int,
-        height: int,
-        fps: int
-    ) -> Path:
-        """Create static scene using ffmpeg (basic, no fancy text)."""
-        bg_color = scene.background_color.lstrip("#")
-
-        # Create a solid color video with text overlay
-        # Note: ffmpeg text rendering is basic
-        filter_complex = f"color=c=#{bg_color}:s={width}x{height}:d={scene.duration}"
-
-        # Escape text for ffmpeg
-        escaped_text = scene.text.replace("'", "'\\''").replace(":", "\\:")
-
-        filter_complex += f",drawtext=text='{escaped_text}'"
-        filter_complex += f":fontsize={scene.font_size}"
-        filter_complex += f":fontcolor={scene.text_color.lstrip('#')}"
-        filter_complex += ":x=(w-text_w)/2:y=(h-text_h)/2"
-
-        cmd = [
-            "ffmpeg", "-y",
-            "-f", "lavfi",
-            "-i", filter_complex,
-            "-c:v", "libx264",
-            "-t", str(scene.duration),
-            "-pix_fmt", "yuv420p",
-            str(output_path)
-        ]
-
-        try:
-            subprocess.run(cmd, capture_output=True, check=True)
-            return output_path
-        except subprocess.CalledProcessError as e:
-            raise RuntimeError(f"Failed to create static scene: {e.stderr.decode()}")
 
     def concatenate_videos(
         self,
@@ -260,6 +120,9 @@ class VideoEditor:
 
         # Normalize all inputs to a consistent format and SAR
         normalized = [self.normalize_video(path) for path in video_paths]
+        normalized = [path for path in normalized if self._has_video_stream(path)]
+        if not normalized:
+            raise ValueError("No video streams available to concatenate.")
         include_audio = all(self._has_audio_stream(p) for p in normalized)
 
         input_args: list[str] = []
@@ -279,6 +142,7 @@ class VideoEditor:
 
         cmd = [
             "ffmpeg", "-y",
+            *self._ffmpeg_thread_args(),
             *input_args,
             "-filter_complex", filter_complex,
             "-map", "[v]",
@@ -315,6 +179,7 @@ class VideoEditor:
         last_frame = self._get_temp_dir() / "last_frame.png"
         cmd = [
             "ffmpeg", "-y",
+            *self._ffmpeg_thread_args(),
             "-sseof", "-0.1",  # Seek to near end
             "-i", str(video_path),
             "-frames:v", "1",
@@ -326,6 +191,7 @@ class VideoEditor:
         freeze_video = self._get_temp_dir() / "freeze.mp4"
         cmd = [
             "ffmpeg", "-y",
+            *self._ffmpeg_thread_args(),
             "-loop", "1",
             "-i", str(last_frame),
             "-c:v", "libx264",
@@ -362,17 +228,21 @@ class VideoEditor:
         Returns:
             Path to the output video
         """
+        if not self._has_video_stream(video_path):
+            return video_path
+
         if output_path is None:
             output_path = self._get_temp_dir() / f"audio_overlay_{uuid.uuid4().hex[:8]}.mp4"
 
         if replace_original:
             cmd = [
                 "ffmpeg", "-y",
+                *self._ffmpeg_thread_args(),
                 "-i", str(video_path),
                 "-i", str(audio_path),
                 "-c:v", "copy",
-                "-map", "0:v:0",
-                "-map", "1:a:0",
+                "-map", "0:v:0?",
+                "-map", "1:a:0?",
                 "-shortest",
                 str(output_path)
             ]
@@ -385,11 +255,12 @@ class VideoEditor:
             )
             cmd = [
                 "ffmpeg", "-y",
+                *self._ffmpeg_thread_args(),
                 "-i", str(video_path),
                 "-i", str(audio_path),
                 "-c:v", "copy",
                 "-filter_complex", filter_complex,
-                "-map", "0:v:0",
+                "-map", "0:v:0?",
                 "-map", "[aout]",
                 str(output_path)
             ]
@@ -412,6 +283,8 @@ class VideoEditor:
 
         This ensures all videos can be concatenated smoothly.
         """
+        if not self._has_video_stream(video_path):
+            return video_path
         if output_path is None:
             output_path = self._get_temp_dir() / f"normalized_{uuid.uuid4().hex[:8]}.mp4"
 
@@ -428,9 +301,12 @@ class VideoEditor:
 
         cmd = [
             "ffmpeg", "-y",
+            *self._ffmpeg_thread_args(),
             "-i", str(video_path),
             "-vf", filter_complex,
             "-r", str(fps),
+            "-map", "0:v:0?",
+            "-map", "0:a?",
             "-c:v", "libx264",
             "-c:a", "aac",
             "-preset", "fast",
@@ -446,12 +322,13 @@ class VideoEditor:
     def render_segment(
         self,
         segment: StorySegment,
-        normalize: bool = True
+        normalize: bool = True,
+        voice_over_path: Optional[Path] = None,
     ) -> Path:
         """
         Render a single story segment to a video file.
 
-        Handles video clips, static scenes, and voice over timing.
+        Handles video clips and voice over timing.
 
         Returns:
             Path to the rendered segment video
@@ -459,8 +336,6 @@ class VideoEditor:
         # First, create the base video
         if segment.segment_type == SegmentType.VIDEO_CLIP:
             video_path = self.cut_video_segment(segment.content)
-        elif segment.segment_type in (SegmentType.STATIC_SCENE, SegmentType.TRANSITION):
-            video_path = self.create_static_scene(segment.content)
         else:
             raise ValueError(f"Unknown segment type: {segment.segment_type}")
 
@@ -469,11 +344,12 @@ class VideoEditor:
             video_path = self.normalize_video(video_path)
 
         # Handle voice over if present
-        if segment.voice_over and segment.voice_over.audio_path:
+        if segment.voice_over and voice_over_path:
             video_path = self._apply_voice_over(
                 video_path,
                 segment.voice_over,
-                segment.vo_timing_strategy
+                voice_over_path,
+                getattr(segment, "vo_timing_strategy", None)
             )
 
         return video_path
@@ -482,25 +358,18 @@ class VideoEditor:
         self,
         video_path: Path,
         voice_over: VoiceOver,
+        audio_path: Path,
         timing_strategy: Optional[str] = None
     ) -> Path:
         """
         Apply voice over to a video, handling timing mismatches.
         """
-        # Get video duration
-        probe_cmd = [
-            "ffprobe", "-v", "error",
-            "-show_entries", "format=duration",
-            "-of", "default=noprint_wrappers=1:nokey=1",
-            str(video_path)
-        ]
-        result = subprocess.run(probe_cmd, capture_output=True, text=True, check=True)
-        video_duration = float(result.stdout.strip())
+        video_duration = self._get_media_duration(video_path)
 
         vo_duration = voice_over.duration or 0
         strategy = timing_strategy or self.config.vo_longer_strategy
 
-        if vo_duration > video_duration:
+        if video_duration and vo_duration > video_duration:
             # Voice over is longer than video
             if strategy == "extend_frame":
                 extend_by = vo_duration - video_duration + 0.5  # Add small buffer
@@ -509,7 +378,7 @@ class VideoEditor:
                 pass  # Audio will be cut at video end
             # speed_up_audio would require audio processing
 
-        elif vo_duration < video_duration:
+        elif video_duration and vo_duration < video_duration:
             # Voice over is shorter (usually okay, audio just ends earlier)
             short_strategy = self.config.vo_shorter_strategy
             if short_strategy == "pad_silence":
@@ -519,7 +388,7 @@ class VideoEditor:
         # Overlay the audio
         output_path = self.overlay_audio(
             video_path,
-            voice_over.audio_path,
+            audio_path,
             replace_original=True,  # Replace for voice overs
             audio_volume=voice_over.volume
         )
@@ -538,42 +407,112 @@ class VideoEditor:
         result = subprocess.run(cmd, capture_output=True, text=True, check=True)
         return bool(result.stdout.strip())
 
-    def render_story(self, story: StoryPlan) -> RenderResult:
-        """
-        Render a complete story plan to a video file.
+    def _has_video_stream(self, video_path: Path) -> bool:
+        """Check whether a video file has a video stream."""
+        cmd = [
+            "ffprobe", "-v", "error",
+            "-select_streams", "v",
+            "-show_entries", "stream=index",
+            "-of", "csv=p=0",
+            str(video_path)
+        ]
+        result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+        return bool(result.stdout.strip())
 
-        Args:
-            story: The StoryPlan to render
+    def _get_media_duration(self, media_path: Path) -> Optional[float]:
+        """Return media duration in seconds, or None when unavailable."""
+        cmd = [
+            "ffprobe", "-v", "error",
+            "-show_entries", "format=duration:stream=duration",
+            "-of", "json",
+            str(media_path)
+        ]
+        result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+        try:
+            import json
+            info = json.loads(result.stdout)
+        except json.JSONDecodeError:
+            return None
+        duration = info.get("format", {}).get("duration")
+        if duration and duration != "N/A":
+            return float(duration)
+        for stream in info.get("streams", []):
+            stream_duration = stream.get("duration")
+            if stream_duration and stream_duration != "N/A":
+                return float(stream_duration)
+        return None
 
-        Returns:
-            RenderResult with output path and metadata
-        """
+    def _ensure_audio_stream(self, video_path: Path) -> Path:
+        """Ensure a video has an audio stream (silence if missing)."""
+        if self._has_audio_stream(video_path):
+            return video_path
+
+        duration = self._get_media_duration(video_path)
+        if not duration:
+            return video_path
+
+        output_path = self._get_temp_dir() / f"audio_pad_{uuid.uuid4().hex[:8]}.mp4"
+        cmd = [
+            "ffmpeg", "-y",
+            *self._ffmpeg_thread_args(),
+            "-i", str(video_path),
+            "-f", "lavfi",
+            "-i", "anullsrc=channel_layout=stereo:sample_rate=44100",
+            "-t", str(duration),
+            "-c:v", "copy",
+            "-c:a", "aac",
+            "-shortest",
+            str(output_path)
+        ]
+        subprocess.run(cmd, capture_output=True, check=True)
+        return output_path
+
+    def render_segments(
+        self,
+        segments: list[StorySegment],
+        output_filename: str,
+        background_music_path: Optional[Path] = None,
+        background_music_volume: float = 0.3,
+        voice_over_paths: Optional[dict[str, Path]] = None,
+    ) -> RenderResult:
+        """Render a list of story segments to a video file."""
         timing_adjustments = []
         rendered_segments = []
 
         try:
-            # Render all segments
-            all_segments = story.get_all_segments()
-
-            for i, segment in enumerate(all_segments):
-                print(f"Rendering segment {i+1}/{len(all_segments)}...")
-                segment_path = self.render_segment(segment)
-                rendered_segments.append(segment_path)
+            # Render all segments in parallel
+            max_workers = min(4, len(segments))
+            with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                futures = {}
+                for i, segment in enumerate(segments):
+                    print(f"Rendering segment {i+1}/{len(segments)}...")
+                    voice_path = None
+                    if voice_over_paths:
+                        voice_path = voice_over_paths.get(segment.id)
+                    futures[executor.submit(self.render_segment, segment, True, voice_path)] = i
+                results: dict[int, Path] = {}
+                for future in as_completed(futures):
+                    index = futures[future]
+                    results[index] = future.result()
+                rendered_segments = [results[i] for i in range(len(segments))]
+            rendered_segments = [
+                self._ensure_audio_stream(path) for path in rendered_segments
+            ]
 
             # Concatenate all segments
             print("Concatenating segments...")
-            output_path = self.config.output_dir / story.output_filename
+            output_path = self.config.output_dir / output_filename
             final_video = self.concatenate_videos(rendered_segments, output_path)
 
             # Add background music if specified
-            if story.background_music_path and story.background_music_path.exists():
+            if background_music_path and background_music_path.exists():
                 print("Adding background music...")
                 final_video = self.overlay_audio(
                     final_video,
-                    story.background_music_path,
+                    background_music_path,
                     output_path,
                     replace_original=False,
-                    audio_volume=story.background_music_volume,
+                    audio_volume=background_music_volume,
                     original_volume=1.0
                 )
 
@@ -603,6 +542,7 @@ class VideoEditor:
                 timing_adjustments=timing_adjustments
             )
 
+
     def cleanup(self):
         """Clean up temporary files."""
         if self._temp_dir and self._temp_dir.exists():
@@ -623,28 +563,10 @@ def cut_video(
     editor = VideoEditor(config)
     segment = VideoSegment(
         source_video_id="manual",
-        source_path=video_path,
         start_time=start_time,
         end_time=end_time
     )
-    return editor.cut_video_segment(segment, output_path)
-
-
-def create_title_card(
-    text: str,
-    duration: float = 3.0,
-    output_path: Optional[Path] = None,
-    config: Optional[Config] = None,
-    **kwargs
-) -> Path:
-    """Create a title card / static scene."""
-    editor = VideoEditor(config)
-    scene = StaticScene(
-        text=text,
-        duration=duration,
-        **kwargs
-    )
-    return editor.create_static_scene(scene, output_path)
+    return editor.cut_video_segment(segment, output_path, source_path=video_path)
 
 
 def join_videos(

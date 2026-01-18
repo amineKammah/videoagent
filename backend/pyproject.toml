@@ -15,6 +15,12 @@ dependencies = [
   "pydantic>=2.0.0",
   "moviepy>=1.0.3",
   "python-dotenv>=1.0.0",
+  "fastapi>=0.115.0",
+  "uvicorn>=0.30.0",
+  "openai-agents[litellm]",
+  "streamlit>=1.37.0",
+  "requests>=2.32.0",
+  "tqdm>=4.66.0",
 ]
 
 [project.optional-dependencies]
@@ -29,7 +35,7 @@ package-dir = {"" = "src"}
 where = ["src"]
 
 [tool.ruff]
-line-length = 100
+line-length = 120
 target-version = "py313"
 
 [tool.ruff.lint]

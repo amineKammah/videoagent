@@ -8,10 +8,10 @@ Creates personalized videos from customer situations by:
 4. Assembling everything into a final video
 """
 
-from videoagent.agent import VideoAgent, create_personalized_video
+from videoagent.agent import VideoAgent
 from videoagent.analyzer import IntroAnalysis, VideoAnalyzer, analyze_intro
 from videoagent.config import Config, default_config
-from videoagent.editor import VideoEditor, create_title_card, cut_video, join_videos
+from videoagent.editor import VideoEditor, cut_video, join_videos
 from videoagent.gemini import GeminiClient
 from videoagent.library import VideoLibrary, scan_video_library, search_videos_by_keyword
 from videoagent.models import (
@@ -19,9 +19,8 @@ from videoagent.models import (
     RenderResult,
     SceneMatch,
     SegmentType,
-    StaticScene,
-    StoryPlan,
     StorySegment,
+    TranscriptMatch,
     TranscriptSegment,
     VideoLibraryIndex,
     VideoMetadata,
@@ -41,14 +40,13 @@ __all__ = [
     # Models
     "VideoMetadata",
     "VideoSegment",
-    "StaticScene",
     "StorySegment",
-    "StoryPlan",
     "VoiceOver",
     "IntroCandidate",
     "SegmentType",
     "RenderResult",
     "TranscriptSegment",
+    "TranscriptMatch",
     "SceneMatch",
     "VideoLibraryIndex",
 
@@ -68,7 +66,6 @@ __all__ = [
     # Editor
     "VideoEditor",
     "cut_video",
-    "create_title_card",
     "join_videos",
 
     # Voice
@@ -82,5 +79,4 @@ __all__ = [
 
     # Agent
     "VideoAgent",
-    "create_personalized_video",
 ]

@@ -31,7 +31,8 @@ def upload_video_segment(
     client: GeminiClient,
     video_path: Path,
     start_time: float,
-    end_time: float
+    end_time: float,
+    config: Optional[Config] = None
 ) -> object:
     """
     Upload a segment of a video to Gemini.
@@ -42,8 +43,10 @@ def upload_video_segment(
         tmp_path = Path(tmp.name)
 
     try:
+        config = config or default_config
         cmd = [
             "ffmpeg", "-y",
+            "-threads", str(config.ffmpeg_threads),
             "-i", str(video_path),
             "-ss", str(start_time),
             "-t", str(end_time - start_time),
@@ -85,7 +88,13 @@ class VideoAnalyzer:
         Returns:
             IntroCandidate with analysis
         """
-        video_file = upload_video_segment(self.client, video_path, 0, intro_duration)
+        video_file = upload_video_segment(
+            self.client,
+            video_path,
+            0,
+            intro_duration,
+            config=self.config
+        )
 
         context_text = f"\nContext: {context}" if context else ""
 

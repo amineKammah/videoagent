@@ -38,41 +38,36 @@ def get_video_metadata_ffprobe(path: Path) -> dict:
         str(path)
     ]
 
-    try:
-        result = subprocess.run(cmd, capture_output=True, text=True, check=True)
-        data = json_module.loads(result.stdout)
+    result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+    data = json_module.loads(result.stdout)
 
-        # Extract video stream info
-        video_stream = None
-        for stream in data.get("streams", []):
-            if stream.get("codec_type") == "video":
-                video_stream = stream
-                break
+    # Extract video stream info
+    video_stream = None
+    for stream in data.get("streams", []):
+        if stream.get("codec_type") == "video":
+            video_stream = stream
+            break
 
-        if not video_stream:
-            raise ValueError(f"No video stream found in {path}")
+    if not video_stream:
+        raise ValueError(f"No video stream found in {path}")
 
-        # Parse FPS (can be in format "30/1" or "29.97")
-        fps_str = video_stream.get("r_frame_rate", "30/1")
-        if "/" in fps_str:
-            num, den = fps_str.split("/")
-            fps = float(num) / float(den)
-        else:
-            fps = float(fps_str)
+    # Parse FPS (can be in format "30/1" or "29.97")
+    fps_str = video_stream.get("r_frame_rate", "30/1")
+    if "/" in fps_str:
+        num, den = fps_str.split("/")
+        fps = float(num) / float(den)
+    else:
+        fps = float(fps_str)
 
-        return {
-            "duration": float(data.get("format", {}).get("duration", 0)),
-            "resolution": (
-                int(video_stream.get("width", 0)),
-                int(video_stream.get("height", 0))
-            ),
-            "fps": fps,
-            "file_size": int(data.get("format", {}).get("size", 0))
-        }
-    except subprocess.CalledProcessError as e:
-        raise RuntimeError(f"ffprobe failed for {path}: {e}")
-    except (KeyError, ValueError) as e:
-        raise RuntimeError(f"Failed to parse ffprobe output for {path}: {e}")
+    return {
+        "duration": float(data.get("format", {}).get("duration", 0)),
+        "resolution": (
+            int(video_stream.get("width", 0)),
+            int(video_stream.get("height", 0))
+        ),
+        "fps": fps,
+        "file_size": int(data.get("format", {}).get("size", 0))
+    }
 
 
 def get_video_metadata_moviepy(path: Path) -> dict:
@@ -107,6 +102,32 @@ def extract_video_metadata(path: Path, use_ffprobe: bool = True) -> dict:
             return get_video_metadata_moviepy(path)
     else:
         return get_video_metadata_moviepy(path)
+
+
+def load_transcript_segments(transcript_path: Path) -> list[TranscriptSegment]:
+    """
+    Load transcript segments from a JSON file.
+
+    Expected format:
+        {
+          "full_text": "...",
+          "segments": [{"start": 0.0, "end": 1.2, "text": "..."}]
+        }
+    """
+    with open(transcript_path, "r") as f:
+        data = json.load(f)
+
+    segments = []
+    for seg in data.get("segments", []):
+        try:
+            segments.append(TranscriptSegment(
+                text=str(seg.get("text", "")).strip(),
+                start_time=float(seg.get("start", 0)),
+                end_time=float(seg.get("end", 0))
+            ))
+        except (TypeError, ValueError):
+            continue
+    return segments
 
 
 class VideoLibrary:
@@ -219,6 +240,14 @@ class VideoLibrary:
                 try:
                     meta = extract_video_metadata(path)
 
+                    transcript_segments = []
+                    if self.config.transcript_library_path:
+                        transcript_path = (
+                            self.config.transcript_library_path / f"{path.stem}.json"
+                        )
+                        if transcript_path.exists():
+                            transcript_segments = load_transcript_segments(transcript_path)
+
                     metadata = VideoMetadata(
                         id=video_id,
                         path=path,
@@ -226,7 +255,8 @@ class VideoLibrary:
                         duration=meta["duration"],
                         resolution=meta["resolution"],
                         fps=meta["fps"],
-                        file_size=meta["file_size"]
+                        file_size=meta["file_size"],
+                        transcript_segments=transcript_segments,
                     )
 
                     self.index.add_video(metadata)
@@ -371,10 +401,17 @@ def list_all_videos(config: Optional[Config] = None) -> list[VideoMetadata]:
 
 def scan_video_library(
     library_path: Optional[Path] = None,
+    transcript_library_path: Optional[Path] = None,
     force_reindex: bool = False
 ) -> list[VideoMetadata]:
     """Scan and index the video library."""
-    config = Config(video_library_path=library_path) if library_path else default_config
+    if library_path or transcript_library_path:
+        config = Config(
+            video_library_path=library_path or default_config.video_library_path,
+            transcript_library_path=transcript_library_path,
+        )
+    else:
+        config = default_config
     library = VideoLibrary(config)
     return library.scan_library(force_reindex)
 
