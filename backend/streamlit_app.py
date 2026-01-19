@@ -7,6 +7,7 @@ from concurrent.futures import Future, ThreadPoolExecutor
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
+from uuid import uuid4
 
 import requests
 import streamlit as st
@@ -617,7 +618,8 @@ def build_preview(segment: StorySegment, session_id: str, library_dir: Path) -> 
 def generate_voice_over(segment: StorySegment, session_id: str) -> Optional[VoiceOver]:
     if not segment.voice_over or not segment.voice_over.script.strip():
         return None
-    output_path = voice_dir(session_id) / f"vo_{segment.id}.wav"
+    audio_id = uuid4().hex[:8]
+    output_path = voice_dir(session_id) / f"vo_{audio_id}.wav"
     generator = VoiceOverGenerator(Config())
     try:
         voice = segment.voice_over.voice or Config().tts_voice
@@ -627,7 +629,7 @@ def generate_voice_over(segment: StorySegment, session_id: str) -> Optional[Voic
             speed=segment.voice_over.speed,
             output_path=output_path,
         )
-        vo.audio_id = segment.id
+        vo.audio_id = audio_id
         vo.volume = segment.voice_over.volume
         return vo
     finally:

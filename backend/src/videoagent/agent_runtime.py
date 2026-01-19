@@ -134,18 +134,25 @@ def _parse_timestamp(text: str) -> float:
         raise ValueError("Empty timestamp.")
     parts = text.split(":")
     if len(parts) != 2:
-        raise ValueError(f"Expected MM:SS format, got '{text}'.")
+        raise ValueError(f"Expected MM:SS.sss format, got '{text}'.")
     minutes, seconds = parts
     try:
         minutes_value = int(minutes)
     except ValueError as exc:
         raise ValueError(f"Invalid minutes value in '{text}'.") from exc
+    if "." not in seconds:
+        raise ValueError(f"Expected MM:SS.sss format, got '{text}'.")
+    seconds_main, millis_text = seconds.split(".", 1)
+    if not (seconds_main.isdigit() and len(seconds_main) == 2):
+        raise ValueError(f"Invalid seconds value in '{text}'.")
+    if not (millis_text.isdigit() and len(millis_text) == 3):
+        raise ValueError(f"Invalid milliseconds value in '{text}'.")
     try:
-        seconds_value = float(seconds)
+        seconds_value = int(seconds_main) + (int(millis_text) / 1000.0)
     except ValueError as exc:
         raise ValueError(f"Invalid seconds value in '{text}'.") from exc
     if minutes_value < 0 or seconds_value < 0 or seconds_value >= 60:
-        raise ValueError(f"Timestamp out of range (MM:SS) in '{text}'.")
+        raise ValueError(f"Timestamp out of range (MM:SS.sss) in '{text}'.")
     return minutes_value * 60 + seconds_value
 
 
@@ -303,7 +310,6 @@ def _build_tools(
     customer_store: CustomerStore,
     event_store: EventStore,
     schedule_render: Optional[Callable[[str], None]],
-    set_review_context: Optional[Callable[[str, object, Path], None]],
     session_id: str,
 ):
     def tool_error(name: str):
@@ -537,19 +543,22 @@ def _build_tools(
             async def _run(segment_id: str) -> VoiceOver:
                 segment = segment_map[segment_id]
                 voice = segment.voice_over.voice if segment.voice_over else generator.config.tts_voice
-                output_path = voice_dir / f"vo_{segment_id}.wav"
+                audio_id = uuid4().hex[:8]
+                output_path = voice_dir / f"vo_{audio_id}.wav"
                 async with semaphore:
-                    return await generator.generate_voice_over_async(
+                    voice_over = await generator.generate_voice_over_async(
                         segment.voice_over.script,
                         voice=voice,
                         output_path=output_path,
                     )
+                if voice_over.audio_id != audio_id:
+                    voice_over.audio_id = audio_id
+                return voice_over
 
             results = await asyncio.gather(*[_run(segment_id) for segment_id in segment_ids])
             for segment_id, voice_over in zip(segment_ids, results):
                 segment = segment_map[segment_id]
                 voice_over.script = segment.voice_over.script
-                voice_over.audio_id = segment_id
                 segment.voice_over = voice_over
             sanitized_segments = _normalize_segments_for_storage(list(segment_map.values()))
             payload = SegmentUpdatePayload(segments=_segments_to_input(sanitized_segments))
@@ -652,7 +661,14 @@ def _build_tools(
                 "We are keeping the original audio from the video file.\n"
                 "1. You MUST select clips where the person is speaking to the camera.\n"
                 "2. The lip movements MUST match the transcript provided below.\n"
-                "3. Do not select B-roll or wide shots where the speaker is not visible."
+                "3. Do not select B-roll or wide shots where the speaker is not visible.\n\n"
+                "AUDIO REQUIREMENT: CLEAN CUTS ONLY (STRICT)\n"
+                "You are acting as a high-precision Video Editor.\n"
+                "No Lead-ins: The start_timestamp MUST begin exactly on the first meaningful word. "
+                "Do not include filler words (\"Um\", \"So\", \"Well\"), silence, or breath intakes "
+                "before the sentence starts.\n"
+                "Hard Stop: The end_timestamp MUST cut immediately after the last syllable of the "
+                "final word. Do not include trailing silence, laughter, or reaction pauses."
             )
         else:
             # Case 2: Voice Over. We MUST AVOID talking heads.
@@ -700,19 +716,38 @@ AVAILABLE CANDIDATE VIDEOS (WITH TRANSCRIPTS):
 WHAT TO RETURN:
 - Return up to 5 candidate clips from the uploaded videos.
 - For each candidate include start_timestamp, end_timestamp, description, rationale.
+- Use MM:SS.sss format for start_timestamp and end_timestamp (milliseconds required).
 - **RATIONALE REQUIREMENT:** In your rationale, explicitly state how the clip fits the visual constraints (e.g., "Confirmed: Subject is listening, lips are not moving" or "Confirmed: Subject is speaking to camera").
 - Use only the video_id values listed in the catalog above; copy them exactly.
 
 EXAMPLE OUTPUT:
-{{"candidates":[{{"video_id":"abcd1234","start_timestamp":"02:15","end_timestamp":"02:24","description":"Executive smiling and nodding while looking at a colleague.","rationale":"Perfect B-roll match; subject is engaged but not speaking, fitting the voice-over requirement.","transcript_snippet":"..."}}]}}
+{{"candidates":[{{"video_id":"abcd1234","start_timestamp":"02:15.000","end_timestamp":"02:24.250","description":"Executive smiling and nodding while looking at a colleague.","rationale":"Perfect B-roll match; subject is engaged but not speaking, fitting the voice-over requirement.","transcript_snippet":"..."}}]}}
 """
         print(prompt)
         # ... (rest of the function remains identical)
         print(SceneMatchResponse.model_json_schema())
         print(config.gemini_model)
+        from google.genai import types
+        parts: list[types.Part] = []
+        for uploaded in uploaded_files:
+            file_uri = getattr(uploaded, "uri", None)
+            if not file_uri:
+                parts = []
+                break
+            parts.append(
+                types.Part(
+                    file_data=types.FileData(file_uri=file_uri),
+                    video_metadata=types.VideoMetadata(fps=3),
+                )
+            )
+        if parts:
+            parts.append(types.Part(text=prompt))
+            contents = types.Content(parts=parts)
+        else:
+            contents = list(uploaded_files) + [prompt]
         response = await client.client.aio.models.generate_content(
             model=config.gemini_model,
-            contents=list(uploaded_files) + [prompt],
+            contents=contents,
             config={
                 "response_mime_type": "application/json",
                 "response_json_schema": SceneMatchResponse.model_json_schema(),
@@ -739,11 +774,19 @@ EXAMPLE OUTPUT:
                 end_seconds = _parse_timestamp(candidate.end_timestamp)
             except ValueError as exc:
                 return (
-                    "Timestamp format error. Expected MM:SS only. "
+                    "Timestamp format error. Expected MM:SS.sss. "
                     f"Video {candidate.video_id} returned start={candidate.start_timestamp}, "
                     f"end={candidate.end_timestamp}. Error: {exc}"
                 )
             duration = video_durations.get(candidate.video_id)
+            if duration is not None:
+                tolerance_seconds = 0.5
+                if start_seconds < 0 and abs(start_seconds) <= tolerance_seconds:
+                    start_seconds = 0.0
+                if end_seconds > duration and (end_seconds - duration) <= tolerance_seconds:
+                    end_seconds = duration
+                if start_seconds > duration and (start_seconds - duration) <= tolerance_seconds:
+                    start_seconds = duration
             if duration is not None:
                 if start_seconds < 0 or end_seconds <= start_seconds:
                     return (
@@ -788,21 +831,105 @@ EXAMPLE OUTPUT:
         """Estimate speech duration for a script."""
         return estimate_speech_duration(text, words_per_minute)
 
-    @function_tool(failure_error_function=tool_error("attach_final_render_for_review"), strict_mode=False)
-    @log_tool("attach_final_render_for_review")
-    def attach_final_render_for_review(output_path: Optional[str] = None) -> str:
-        """Upload the latest final render so the next model turn can review it."""
+    @function_tool(failure_error_function=tool_error("review_story_segments_text"), strict_mode=False)
+    @log_tool("review_story_segments_text")
+    async def review_story_segments_text() -> str:
+        """Review story segment text (scripts/descriptions) for narrative issues."""
         step_start = time.perf_counter()
-        print("[review] start attach_final_render_for_review")
-        if set_review_context is None:
-            print(f"[review] finish attach_final_render_for_review in {time.perf_counter() - step_start:.2f}s")
-            return "Review attachment is not available in this environment."
+        print("[review] start review_story_segments_text")
+        segments = segment_store.load(session_id) or []
+        storyboard_scenes = storyboard_store.load(session_id) or []
+        if not segments:
+            print(
+                f"[review] finish review_story_segments_text in "
+                f"{time.perf_counter() - step_start:.2f}s"
+            )
+            return "No story segments found. Create story segments before reviewing."
+        segments_payload = [
+            segment.model_dump(
+                mode="json",
+                exclude_none=True,
+                exclude={
+                    "content": {"source_path"},
+                    "voice_over": {"audio_path"},
+                },
+            )
+            for segment in segments
+        ]
+        segments_context = json.dumps(segments_payload, indent=2)
+        storyboard_context = json.dumps(
+            [scene.model_dump(mode="json") for scene in storyboard_scenes],
+            indent=2,
+        )
+        client = GeminiClient(config)
+        review_prompt = f"""
+You are an expert script editor and quality assurance specialist.
+Your task is to verify that the story segments TEXT follows the storyboard intent and
+identify narrative or compliance issues. Focus on storyboard alignment first.
+
+STORYBOARD (read-only JSON):
+{storyboard_context}
+
+STORY SEGMENTS (read-only JSON):
+{segments_context}
+
+You are looking for ANY issues that lower the quality of the narrative, including but not limited to:
+- Storyboard alignment: missing beats, wrong order, or scripts that contradict the storyboard.
+- Narrative gaps or abrupt jumps between scenes; missing setup/payoff.
+- Voice Over scripts that contradict or clash with the segment descriptions.
+- Testimony rule: If a scene is a real customer testimony (first-person account, quoted speech,
+  or named customer speaking), that scene must NOT have a voice_over script. The immediately
+  preceding scene (the last scene before the testimony) must introduce the customer by name,
+  role, and company. If the testimony is the first scene or lacks a proper introduction, flag it.
+- Redundant or repetitive text across multiple scenes.
+- One of the scenes language does not match the others.
+
+OUTPUT FORMAT
+Return a bulleted list of issues in natural language.
+Start every line with the segment order and id, like:
+- [order 2 | id ab12cd34] The scene mentions a customer quote but also has voice over.
+If there are no issues, say "No issues found."
+"""
+        response = await client.client.aio.models.generate_content(
+            model=config.gemini_model,
+            contents=[review_prompt],
+            config={
+                "max_output_tokens": 800,
+            },
+        )
+        review_text = response.text.strip() if response.text else ""
+        if not review_text:
+            review_text = "No issues found."
+        print(
+            f"[review] finish review_story_segments_text in "
+            f"{time.perf_counter() - step_start:.2f}s"
+        )
+        return review_text
+
+    @function_tool(failure_error_function=tool_error("review_final_render"), strict_mode=False)
+    @log_tool("review_final_render")
+    async def review_final_render(output_path: Optional[str] = None) -> str:
+        """Render (if needed) and review the final video, returning QA notes."""
+        step_start = time.perf_counter()
+        print("[review] start review_final_render")
         t0 = time.perf_counter()
         segments = segment_store.load(session_id) or []
         print(f"[review] load segments in {time.perf_counter() - t0:.2f}s")
         if not segments:
-            print(f"[review] finish attach_final_render_for_review in {time.perf_counter() - step_start:.2f}s")
+            print(f"[review] finish review_final_render in {time.perf_counter() - step_start:.2f}s")
             return "No story segments found. Create segments before rendering."
+        segments_payload = [
+            segment.model_dump(
+                mode="json",
+                exclude_none=True,
+                exclude={
+                    "content": {"source_path"},
+                    "voice_over": {"audio_path"},
+                },
+            )
+            for segment in segments
+        ]
+        segments_context = json.dumps(segments_payload, indent=2)
 
         t0 = time.perf_counter()
         segments_path = segment_store._segments_path(session_id)
@@ -836,7 +963,7 @@ EXAMPLE OUTPUT:
             ]
             print(f"[review] check missing sources in {time.perf_counter() - t0:.2f}s")
             if missing_sources:
-                print(f"[review] finish attach_final_render_for_review in {time.perf_counter() - step_start:.2f}s")
+                print(f"[review] finish review_final_render in {time.perf_counter() - step_start:.2f}s")
                 return (
                     "Missing source_video_id for segments: "
                     + ", ".join(missing_sources)
@@ -861,7 +988,7 @@ EXAMPLE OUTPUT:
                 )
                 if not result.success:
                     print(f"[review] render failed in {time.perf_counter() - t0:.2f}s")
-                    print(f"[review] finish attach_final_render_for_review in {time.perf_counter() - step_start:.2f}s")
+                    print(f"[review] finish review_final_render in {time.perf_counter() - step_start:.2f}s")
                     return f"Render failed: {result.error_message or 'unknown error'}"
                 render_path = result.output_path or render_path
             finally:
@@ -872,15 +999,64 @@ EXAMPLE OUTPUT:
         client = GeminiClient(config)
         uploaded = client.get_or_upload_file(render_path)
         print(f"[review] upload render in {time.perf_counter() - t0:.2f}s")
-        t0 = time.perf_counter()
-        set_review_context(session_id, uploaded, render_path)
-        print(f"[review] set review context in {time.perf_counter() - t0:.2f}s")
-        print(f"[review] finish attach_final_render_for_review in {time.perf_counter() - step_start:.2f}s")
-        status = "Re-rendered" if needs_render else "Attached"
-        return (
-            f"{status} {render_path.name} for the next turn. "
-            "The rendered video will be available in your context for the next turn for review."
+        review_prompt = f"""
+You are an expert Video Editor and Quality Assurance specialist.
+Your task is to watch the attached video and identify technical, visual, and narrative issues.
+Use the story segments JSON to understand the intended sequence, narration, and clip sources.
+
+STORY SEGMENTS (read-only JSON):
+{segments_context}
+
+You are looking for ANY flaws that lower the quality of the video, including but not limited to:
+- Video is static for a long time, which reduces the video attractiveness.
+- Audio/Visual Mismatch: A narrator is speaking (Voice Over), but the visual shows a person talking to camera with unsynchronized lips (Bad Lip Reading).
+- Repetitive Footage: The same source video clip is used more than once in the same video.
+- Unwanted Text: Burnt-in subtitles, watermarks, or text overlays from the source footage that clash with the video.
+- Visual Flow: Jump cuts, black frames between clips, or abrupt transitions.
+- Narrative Match: The visual B-roll contradicts or doesn't fit what is being said in the Voice Over.
+- Language match: One of the scenes are not in the same language.
+
+
+Take your time to match the segments to the video frames to the voice and make sure everything is aligned perfectly.
+
+OUTPUT FORMAT
+Return a bulleted list of issues in natural language.
+Start every line with the timestamp where the issue occurs.
+If the video is perfect, just say "No issues found."
+
+Example:
+- [00:12] The narrator is talking about "silence" but the video shows a loud construction site, which feels conflicting.
+- [00:34] There are burnt-in Chinese subtitles at the bottom of the screen that shouldn't be there.
+- [00:45] The clip of the man typing on the laptop is a duplicate; it was already used previously at 00:05.
+- [01:05] The clip cuts to black for a split second before the next scene starts.
+"""
+        from google.genai import types
+
+        file_uri = getattr(uploaded, "uri", None)
+        if file_uri:
+            contents = types.Content(
+                parts=[
+                    types.Part(
+                        file_data=types.FileData(file_uri=file_uri),
+                        video_metadata=types.VideoMetadata(fps=10),
+                    ),
+                    types.Part(text=review_prompt),
+                ]
+            )
+        else:
+            contents = [uploaded, review_prompt]
+        response = await client.client.aio.models.generate_content(
+            model=config.gemini_model,
+            contents=contents,
+            config={
+                "max_output_tokens": 3_000,
+            },
         )
+        review_text = response.text.strip() if response.text else ""
+        if not review_text:
+            review_text = "No issues found."
+        print(f"[review] finish review_final_render in {time.perf_counter() - step_start:.2f}s")
+        return review_text
 
     return [
         update_storyboard,
@@ -889,7 +1065,8 @@ EXAMPLE OUTPUT:
         match_scene_to_video,
         generate_voice_overs,
         estimate_voice_duration,
-        attach_final_render_for_review,
+        review_story_segments_text,
+        review_final_render,
     ]
 
 
@@ -1169,7 +1346,6 @@ class VideoAgentService:
         self._render_lock = Lock()
         self._render_executor = ThreadPoolExecutor(max_workers=1)
         self._render_futures: dict[str, object] = {}
-        self._review_context: dict[str, dict[str, object]] = {}
         _load_env()
         self._configure_tracing()
         self._base_instructions = """
@@ -1191,6 +1367,7 @@ using the corresponding update tool before replying.
    - Story segments are the production plan: each segment is a `video_clip` and must include
      `storyboard_scene_id`. Using existing video clips makes the video pleasant.
    - Create the full StorySegments list and call `update_story_segments`.
+        - After updating the story_segments, ensure the tool returns a successful. If not, react to the tool message and try to fix it.
    - Do not set `source_path` or `audio_path` in segments. Use `source_video_id` and `audio_id` only.
    - After segments are saved, call `generate_voice_overs` with the list of segment ids
      that need voice over audio. This returns an updated segments payload; call
@@ -1201,21 +1378,16 @@ using the corresponding update tool before replying.
      over exists). You should rely on `match_scene_to_video` heavily as this tool can view the video scenes and find visually pleasing matches.
      Review the returned candidates and update the segments yourself with the chosen clip. You need to rewrite the entire segments to avoid using previous segments.
      For scenes with voice over, make sure to tell the tool to avoid scenes with people speaking or visible subtitles as this won't look good when there is no lip sync and the existing video subtitles don't match the voice over.
+     Testimony rule: If a scene is a real customer testimony (first-person account, quoted speech, or named customer speaking), that scene must NOT have a voice over. The immediately preceding scene (the last scene before the testimony) must introduce the customer by name, role, and company.
      For customer testimony scenes, make sure to prompt for a long enough duration (30s is a good start). Find a clean clip that has enough content to look genuine and build the connection with the customer. Also make sure to introduce the voice over in previous scene with relevant details about what company you are showing and who is talking
     The user can only see the final clips you use in the updated segments. They cannot see the candidates you selected.
      To make the process more efficient, you can match all the scenes by making multiple tool calls in parallel.
+     
    
 3) Review
    - When the plan is ready, the user renders the final video.
-   - To review the final render, call `attach_final_render_for_review`.
-   - This tool will re-render automatically if the output is stale, then upload the latest video into your context so you can use vision to review it.
-   - The uploaded video is only available to you for the very next turn; it is cleared after that.
-   - Review voice-over/scene coherence end-to-end; flag any mismatches or visuals that do not fit the narration.
-        - common elements you need to watch out for during the review that need to get fixed:
-            - A person speaking in the scene when there is a voice over. The person lip movements will be completely off compared to the voice over.
-            - A scene that has subtitles from the original video when there is a voice over.The voice over likely does not match those subtitle.
-            - The customer testimony video has a voice over making the video sound fake or made up.
-            - The customer testimony is abruptly cut at the end or started from an awkward timestamp.
+   - To review the final render, call `review_final_render`.
+   - This tool will re-render automatically if the output is stale, then analyze the latest video and return QA notes.
    - If anything looks wrong, tell the user what you want to change and get their approval before updating segments.
 
 Return a short, helpful plain-text response each turn. Always suggest the best next step to the customer.
@@ -1259,7 +1431,6 @@ when the custom UI can present them.
                 self.customer_store,
                 self.event_store,
                 self.schedule_auto_render,
-                self._set_review_context,
                 session_id,
             )
             agent = Agent(
@@ -1293,20 +1464,6 @@ when the custom UI can present them.
 
     def save_customer_details(self, session_id: str, details: str) -> None:
         self.customer_store.save(session_id, details)
-
-    def _set_review_context(
-        self,
-        session_id: str,
-        file_obj: object,
-        render_path: Path,
-    ) -> None:
-        self._review_context[session_id] = {
-            "file": file_obj,
-            "path": render_path,
-        }
-
-    def _pop_review_context(self, session_id: str) -> Optional[dict[str, object]]:
-        return self._review_context.pop(session_id, None)
 
     def _build_video_transcripts(self) -> list[dict]:
         library = VideoLibrary(self.config)
@@ -1421,34 +1578,14 @@ when the custom UI can present them.
             {"type": "run_start", "message": user_message},
         )
         try:
-            review_context = self._pop_review_context(session_id)
-            include_video = review_context is not None
-            input_payload = user_message
-            if include_video:
-                review_hint = (
-                    "You have access to the final rendered video attached. "
-                    "Review it end-to-end and flag any scene/voice mismatches, "
-                    "awkward cuts, or visuals that do not match the narrative."
-                )
-                input_payload = [review_context["file"], review_hint, user_message]
-            session_for_run = None if include_video else session
-            if session_for_run is None:
+            with self._run_lock:
                 result = Runner.run_sync(
                     agent,
-                    input=input_payload,
-                    session=None,
+                    input=user_message,
+                    session=session,
                     max_turns=100,
                     run_config=run_config,
                 )
-            else:
-                with self._run_lock:
-                    result = Runner.run_sync(
-                        agent,
-                        input=input_payload,
-                        session=session_for_run,
-                        max_turns=100,
-                        run_config=run_config,
-                    )
             output = result.final_output
             if not isinstance(output, str):
                 output = str(output)
