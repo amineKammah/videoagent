@@ -13,7 +13,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from videoagent.agent_runtime import VideoAgentService
 from videoagent.config import Config
-from videoagent.models import RenderResult, StorySegment
+from videoagent.models import RenderResult
 from videoagent.story import _StoryboardScene
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -42,20 +42,8 @@ class AgentStoryboardRequest(BaseModel):
 class AgentChatResponse(BaseModel):
     session_id: str
     message: str
-    segments: Optional[list[StorySegment]]
     scenes: Optional[list[_StoryboardScene]]
     customer_details: Optional[str]
-
-
-class AgentPlanResponse(BaseModel):
-    session_id: str
-    segments: Optional[list[StorySegment]]
-
-
-class AgentPlanUpdateRequest(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-    segments: list[StorySegment]
-
 
 class AgentStoryboardResponse(BaseModel):
     session_id: str
@@ -133,13 +121,11 @@ def agent_chat(request: AgentChatRequest) -> AgentChatResponse:
     except Exception as exc:
         raise HTTPException(status_code=400, detail=str(exc))
 
-    segments = agent_service.get_segments(request.session_id)
     scenes = agent_service.get_storyboard(request.session_id)
     customer_details = agent_service.get_customer_details(request.session_id)
     return AgentChatResponse(
         session_id=request.session_id,
         message=output,
-        segments=segments,
         scenes=scenes,
         customer_details=customer_details,
     )
@@ -167,23 +153,10 @@ def update_storyboard(session_id: str, request: AgentStoryboardUpdateRequest) ->
     return AgentStoryboardResponse(session_id=session_id, scenes=request.scenes)
 
 
-@app.get("/agent/sessions/{session_id}/plan", response_model=AgentPlanResponse)
-def get_agent_plan(session_id: str) -> AgentPlanResponse:
-    segments = agent_service.get_segments(session_id)
-    return AgentPlanResponse(session_id=session_id, segments=segments)
-
-
-@app.patch("/agent/sessions/{session_id}/plan", response_model=AgentPlanResponse)
-def update_agent_plan(session_id: str, request: AgentPlanUpdateRequest) -> AgentPlanResponse:
-    agent_service.save_segments(session_id, request.segments)
-    agent_service.schedule_auto_render(session_id)
-    return AgentPlanResponse(session_id=session_id, segments=request.segments)
-
-
 @app.post("/agent/sessions/{session_id}/render", response_model=AgentRenderResponse)
 def render_agent_plan(session_id: str) -> AgentRenderResponse:
     try:
-        result = agent_service.render_segments(session_id)
+        result = agent_service.render_storyboard(session_id)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
     return AgentRenderResponse(session_id=session_id, render_result=result)

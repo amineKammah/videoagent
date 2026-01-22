@@ -1,23 +1,19 @@
+import base64
 import json
 import os
-import shutil
 import time
 import subprocess
 from concurrent.futures import Future, ThreadPoolExecutor
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
-from uuid import uuid4
 
 import requests
 import streamlit as st
 
 from videoagent.config import Config
-from videoagent.editor import VideoEditor
 from videoagent.library import VideoLibrary
-from videoagent.models import SegmentType, StorySegment, VoiceOver
 from videoagent.story import _StoryboardScene
-from videoagent.voice import VoiceOverGenerator
 
 try:
     from dotenv import load_dotenv
@@ -169,7 +165,6 @@ def init_state() -> None:
         "session_id": None,
         "messages": [],
         "render_result": None,
-        "selected_segment_id": None,
         "brief": "",
         "activity": [],
         "storyboard_scenes": [],
@@ -177,6 +172,7 @@ def init_state() -> None:
         "llm_future": None,
         "llm_events_cursor": None,
         "llm_events": [],
+        "render_events_cursor": None,
     }
     for key, value in defaults.items():
         if key not in st.session_state:
@@ -221,6 +217,43 @@ def api_get_events(session_id: str, cursor: Optional[int] = None) -> dict:
             pass
         raise RuntimeError(f"{response.status_code} {detail}")
     return response.json()
+
+def process_render_events(events: list[dict]) -> None:
+    for event in events:
+        event_type = event.get("type")
+        if event_type == "auto_render_end":
+            status = event.get("status")
+            output = event.get("output")
+            if status == "ok" and output:
+                st.session_state.render_result = {
+                    "success": True,
+                    "output_path": output,
+                }
+            elif status == "error":
+                st.session_state.render_result = {
+                    "success": False,
+                    "error_message": event.get("error") or "Auto render failed",
+                }
+        elif event_type == "auto_render_skipped":
+            st.session_state.render_result = {
+                "success": False,
+                "error_message": event.get("error") or "Auto render skipped",
+            }
+
+
+def refresh_render_from_events() -> None:
+    session_id = st.session_state.get("session_id")
+    if not session_id or st.session_state.llm_inflight:
+        return
+    cursor = st.session_state.render_events_cursor
+    try:
+        response = api_get_events(session_id, cursor)
+    except Exception:
+        return
+    new_events = response.get("events") or []
+    st.session_state.render_events_cursor = response.get("next_cursor", cursor)
+    if new_events:
+        process_render_events(new_events)
 
 
 def format_event(event: dict) -> str:
@@ -272,62 +305,26 @@ def format_seconds(value: Optional[float]) -> str:
         return "-"
     return f"{value:.2f}s"
 
-
-def segment_label(segment: StorySegment) -> str:
-    return segment.segment_type.value.replace("_", " ").title()
-
-
-def segment_status(segment: StorySegment) -> str:
-    if segment.segment_type == SegmentType.VIDEO_CLIP:
-        return "matched"
-    return "storyboard"
-
-
-def segment_summary(segment: StorySegment) -> str:
-    if segment.segment_type == SegmentType.VIDEO_CLIP:
-        content = segment.content
-        return f"Clip {content.start_time:.2f}-{content.end_time:.2f}s"
-    return "Clip"
-
-
-def voice_summary(segment: StorySegment) -> str:
-    if not segment.voice_over:
-        return "No voice over"
-    script = segment.voice_over.script
-    if len(script) > 100:
-        return f"{script[:97]}..."
-    return script
+def scene_is_matched(scene: _StoryboardScene) -> bool:
+    return scene.matched_scene is not None
 
 
 def prompt_match_all() -> str:
     return (
-        "First create StorySegments for every storyboard scene and call update_segments with the full list. "
-        "Each segment should be a video_clip. Use scan_library/search tools to find the best clip and set "
-        "source_video_id, start_time, end_time, "
-        "and description. Include storyboard_scene_id on each segment so voice overs can be paired later. "
-        "If the clip should keep original audio (e.g., testimonial), set keep_original_audio=true and "
-        "include transcript text; otherwise set keep_original_audio=false. "
-        "When matching video_clip segments, first identify up to 10 candidate video ids from transcripts, "
-        "then call match_scene_to_video with the segment id, candidate ids, and any notes for context. "
-        "Review the returned candidates and update the segment yourself with the chosen clip. "
-        "After segments are saved, call generate_voice_overs with the list of segment ids that need voice "
-        "over audio (the script must already be set on each segment's voice_over)."
+        "Use the storyboard scenes as the single source of truth. "
+        "For each scene, identify up to 5 candidate video ids from transcripts and call match_scene_to_video "
+        "with the scene_id, candidate ids, and notes. "
+        "Review the returned candidates and update matched_scene on each storyboard scene with "
+        "segment_type, source_video_id, start_time, end_time, description, and keep_original_audio. "
+        "Then call update_storyboard with the full updated scene list."
     )
 
 
-def prompt_refine_segment(segment: StorySegment, note: str) -> str:
-    return (
-        f"Update only the segment with id {segment.id} (order {segment.order}). "
-        f"Apply this instruction: {note}. "
-        "Keep all other segments unchanged and return the full list."
-    )
-
-
-def build_llm_prompt(user_prompt: str, segments: Optional[list[StorySegment]]) -> str:
+def build_llm_prompt(user_prompt: str) -> str:
     return user_prompt
 
 
-def start_llm_action(prompt: str, label: str, segments: Optional[list[StorySegment]] = None) -> None:
+def start_llm_action(prompt: str, label: str) -> None:
     if not st.session_state.session_id:
         st.warning("Create a session first.")
         return
@@ -343,7 +340,7 @@ def start_llm_action(prompt: str, label: str, segments: Optional[list[StorySegme
     st.session_state.llm_events = []
     payload = {
         "session_id": st.session_state.session_id,
-        "message": build_llm_prompt(prompt, segments),
+        "message": build_llm_prompt(prompt),
     }
     st.session_state.llm_future = LLM_EXECUTOR.submit(api_post, "/agent/chat", payload)
     st.session_state.llm_inflight = True
@@ -393,6 +390,7 @@ def poll_llm_action() -> None:
             st.session_state.llm_events_cursor = response.get("next_cursor", cursor)
             if new_events:
                 st.session_state.llm_events.extend(new_events)
+                process_render_events(new_events)
         except Exception as exc:
             st.session_state.llm_events.append({"type": "message", "message": f"Event polling error: {exc}"})
         events_box.markdown(render_events(st.session_state.llm_events))
@@ -400,25 +398,6 @@ def poll_llm_action() -> None:
         if last_event and last_event.get("type") == "tool_start":
             status.update(label=f"Calling {last_event.get('name')}")
         time.sleep(0.4)
-
-
-def fetch_segments(session_id: str) -> tuple[Optional[list[StorySegment]], Optional[str], Optional[list[dict]]]:
-    plan = None
-    parse_error = None
-    raw = None
-    if session_id:
-        try:
-            data = api_get(f"/agent/sessions/{session_id}/plan")
-            raw = data.get("segments")
-        except Exception as exc:
-            parse_error = str(exc)
-            return None, parse_error, raw
-    if raw:
-        try:
-            plan = [StorySegment.model_validate(item) for item in raw]
-        except Exception as exc:
-            parse_error = str(exc)
-    return plan, parse_error, raw
 
 
 def fetch_storyboard(
@@ -441,14 +420,6 @@ def fetch_storyboard(
             parse_error = str(exc)
     return scenes, parse_error, raw
 
-
-def save_segments(session_id: str, segments: list[StorySegment]) -> None:
-    payload = {
-        "segments": [segment.model_dump(mode="json") for segment in segments]
-    }
-    api_patch(f"/agent/sessions/{session_id}/plan", payload)
-
-
 def save_storyboard(session_id: str, scenes: list[_StoryboardScene]) -> None:
     payload = {
         "scenes": [scene.model_dump(mode="json") for scene in scenes]
@@ -456,32 +427,8 @@ def save_storyboard(session_id: str, scenes: list[_StoryboardScene]) -> None:
     api_patch(f"/agent/sessions/{session_id}/storyboard", payload)
 
 
-def ensure_order(segments: list[StorySegment]) -> list[StorySegment]:
-    for index, segment in enumerate(segments):
-        segment.order = index
-    return segments
-
-
 def next_scene_id(scenes: list[_StoryboardScene]) -> str:
     return f"scene_{len(scenes) + 1}"
-
-
-def compute_progress(segments: Optional[list[StorySegment]]) -> dict:
-    total = len(segments) if segments else 0
-    matched = 0
-    voiced = 0
-    for segment in segments or []:
-        if segment.segment_type == SegmentType.VIDEO_CLIP:
-            matched += 1
-        if segment.voice_over:
-            audio_path = resolve_voice_over_path(segment, st.session_state.session_id)
-            if audio_path and audio_path.exists():
-                voiced += 1
-    return {
-        "total": total,
-        "matched": matched,
-        "voiced": voiced,
-    }
 
 
 def get_library_dir() -> Path:
@@ -501,14 +448,12 @@ def load_library(library_dir: str) -> VideoLibrary:
     return library
 
 
-def resolve_video_path(segment: StorySegment, library_dir: Path) -> Optional[Path]:
-    if segment.segment_type != SegmentType.VIDEO_CLIP:
-        return None
-    content = segment.content
-    if not content.source_video_id:
+def resolve_video_path(scene: _StoryboardScene, library_dir: Path) -> Optional[Path]:
+    matched_scene = scene.matched_scene
+    if not matched_scene or not matched_scene.source_video_id:
         return None
     library = load_library(str(library_dir))
-    metadata = library.get_video(content.source_video_id)
+    metadata = library.get_video(matched_scene.source_video_id)
     if metadata and metadata.path.exists():
         return metadata.path
     return None
@@ -537,107 +482,33 @@ def get_video_duration(path: str) -> Optional[float]:
         return None
 
 
-def preview_dir(session_id: str) -> Path:
-    base = Config().output_dir / "streamlit_previews" / session_id
-    base.mkdir(parents=True, exist_ok=True)
-    return base
-
-
-def voice_dir(session_id: str) -> Path:
-    base = Config().output_dir / "streamlit_voiceovers" / session_id
-    base.mkdir(parents=True, exist_ok=True)
-    return base
-
-
-def voice_over_path_for_id(session_id: str, audio_id: str) -> Optional[Path]:
-    candidates = [
-        voice_dir(session_id) / f"vo_{audio_id}.wav",
-        Config().output_dir / "agent_sessions" / session_id / "voice_overs" / f"vo_{audio_id}.wav",
-    ]
-    for path in candidates:
-        if path.exists():
-            return path
-    return None
-
-
-def resolve_voice_over_path(segment: StorySegment, session_id: str) -> Optional[Path]:
-    voice_over = segment.voice_over
-    if not voice_over or not voice_over.audio_id or not session_id:
-        return None
-    return voice_over_path_for_id(session_id, voice_over.audio_id)
-
-
-def preview_path_for_segment(segment: StorySegment, session_id: str) -> Optional[Path]:
-    if segment.segment_type != SegmentType.VIDEO_CLIP:
-        return None
-    content = segment.content
-    token = f"{segment.id}_{int(content.start_time * 1000)}_{int(content.end_time * 1000)}"
-    voice_token = ""
-    audio_path = resolve_voice_over_path(segment, session_id)
-    if audio_path and audio_path.exists():
-        try:
-            voice_token = f"_vo_{int(audio_path.stat().st_mtime)}"
-        except (OSError, ValueError):
-            voice_token = ""
-    return preview_dir(session_id) / f"preview_{token}{voice_token}.mp4"
-
-
-def build_preview(segment: StorySegment, session_id: str, library_dir: Path) -> Optional[Path]:
-    if segment.segment_type != SegmentType.VIDEO_CLIP:
-        return None
-    video_path = resolve_video_path(segment, library_dir)
-    audio_path = resolve_voice_over_path(segment, session_id)
-    content = segment.content
-    if not video_path:
-        return None
-    duration = get_video_duration(str(video_path))
-    if duration is not None and (content.start_time >= duration or content.end_time > duration):
-        return None
-    output_path = preview_path_for_segment(segment, session_id)
-    if output_path is None:
-        return None
-    if output_path.exists():
-        return output_path
-    editor = VideoEditor(Config())
+@st.cache_data(show_spinner="Loading video...")
+def get_video_base64(path: str) -> Optional[str]:
+    """Read video file and encode as base64 data URL for HTML5 video player."""
     try:
-        if audio_path and audio_path.exists():
-            segment = segment.model_copy(deep=True)
-            rendered = editor.render_segment(
-                segment,
-                normalize=False,
-                voice_over_path=audio_path,
-            )
-            shutil.copy(rendered, output_path)
-        else:
-            editor.cut_video_segment(content, output_path)
-    finally:
-        editor.cleanup()
-    return output_path if output_path.exists() else None
-
-
-def generate_voice_over(segment: StorySegment, session_id: str) -> Optional[VoiceOver]:
-    if not segment.voice_over or not segment.voice_over.script.strip():
+        video_path = Path(path)
+        if not video_path.exists():
+            return None
+        # Determine MIME type based on extension
+        ext = video_path.suffix.lower()
+        mime_types = {
+            ".mp4": "video/mp4",
+            ".webm": "video/webm",
+            ".ogg": "video/ogg",
+            ".mov": "video/quicktime",
+        }
+        mime_type = mime_types.get(ext, "video/mp4")
+        with open(path, "rb") as f:
+            video_bytes = f.read()
+        b64 = base64.b64encode(video_bytes).decode("utf-8")
+        return f"data:{mime_type};base64,{b64}"
+    except Exception:
         return None
-    audio_id = uuid4().hex[:8]
-    output_path = voice_dir(session_id) / f"vo_{audio_id}.wav"
-    generator = VoiceOverGenerator(Config())
-    try:
-        voice = segment.voice_over.voice or Config().tts_voice
-        vo = generator.generate_voice_over(
-            segment.voice_over.script,
-            voice=voice,
-            speed=segment.voice_over.speed,
-            output_path=output_path,
-        )
-        vo.audio_id = audio_id
-        vo.volume = segment.voice_over.volume
-        return vo
-    finally:
-        generator.cleanup()
 
 
 st.set_page_config(page_title=APP_TITLE, layout="wide")
 init_state()
+refresh_render_from_events()
 
 st.markdown(STYLE, unsafe_allow_html=True)
 
@@ -674,7 +545,6 @@ with st.sidebar:
         st.session_state.session_id = data["session_id"]
         st.session_state.messages = []
         st.session_state.render_result = None
-        st.session_state.selected_segment_id = None
         st.session_state.activity = []
         st.session_state.storyboard_scenes = []
 
@@ -698,7 +568,6 @@ with st.sidebar:
             st.session_state.session_id = session_input.strip()
             st.session_state.messages = []
             st.session_state.render_result = None
-            st.session_state.selected_segment_id = None
             st.session_state.activity = []
             st.session_state.storyboard_scenes = []
             st.rerun()
@@ -715,16 +584,11 @@ with st.sidebar:
     except Exception:
         st.caption(f"Model: {os.environ.get('AGENT_MODEL', 'gemini/gemini-3-pro-preview')}")
 
-segments, parse_error, raw_plan = fetch_segments(st.session_state.session_id)
 storyboard_scenes, storyboard_error, raw_storyboard = fetch_storyboard(
     st.session_state.session_id
 )
 if storyboard_scenes is not None:
     st.session_state.storyboard_scenes = storyboard_scenes
-if segments:
-    segments = sorted(segments, key=lambda s: s.order)
-    if st.session_state.selected_segment_id not in {seg.id for seg in segments}:
-        st.session_state.selected_segment_id = segments[0].id
 
 st.markdown("<div style='height:1rem;'></div>", unsafe_allow_html=True)
 
@@ -745,14 +609,10 @@ with main_cols[0]:
         disabled=st.session_state.llm_inflight,
     )
     if user_prompt:
-        start_llm_action(user_prompt, user_prompt, segments)
+        start_llm_action(user_prompt, user_prompt)
 
 with main_cols[1]:
-    tab_story, tab_match, tab_render = st.tabs(
-        ["Storyboard", "Video Matching", "Final Render"]
-    )
-
-    with tab_story:
+    with st.container():
         st.markdown("**Project Brief**")
         brief = st.text_area(
             "Describe the customer situation and desired outcome",
@@ -782,8 +642,135 @@ with main_cols[1]:
                         except Exception as exc:
                             st.error(f"Failed: {exc}")
         with brief_actions[1]:
-            if st.button("Refresh plan", key="refresh_plan_story"):
+            if st.button("Refresh storyboard", key="refresh_plan_story"):
                 st.rerun()
+
+        st.divider()
+        st.markdown("**Rendered Video**")
+        render_cols = st.columns([1, 2])
+        with render_cols[0]:
+            if st.button("Render final video", key="render_final"):
+                try:
+                    if not st.session_state.session_id:
+                        st.warning("Create a session first.")
+                    else:
+                        data = api_post(f"/agent/sessions/{st.session_state.session_id}/render")
+                        st.session_state.render_result = data.get("render_result")
+                        log_activity("Render requested")
+                except Exception as exc:
+                    st.session_state.render_result = None
+                    st.error(f"Render failed: {exc}")
+            if st.session_state.render_result:
+                result = st.session_state.render_result
+                if result.get("success"):
+                    st.success("Render complete")
+                else:
+                    st.error(result.get("error_message") or "Render failed")
+        with render_cols[1]:
+            result = st.session_state.render_result
+            if result and result.get("success") and result.get("output_path"):
+                output_path = result["output_path"]
+                
+                # Initialize problem report state in session state
+                if "problem_report_text" not in st.session_state:
+                    st.session_state.problem_report_text = ""
+                if "problem_report_active" not in st.session_state:
+                    st.session_state.problem_report_active = False
+                if "last_report_ts" not in st.session_state:
+                    st.session_state.last_report_ts = None
+                
+                # Custom HTML5 video player with Report Problem button
+                # Encode video as base64 data URL for browser access
+                video_data_url = get_video_base64(output_path)
+                if video_data_url is None:
+                    st.error(f"Could not load video: {output_path}")
+                else:
+                    video_html = f'''
+<div style="position: relative; width: 100%;">
+    <video id="customVideoPlayer" controls style="width: 100%; border-radius: 8px; background: #000;">
+        <source src="{video_data_url}" type="video/mp4">
+        Your browser does not support the video tag.
+    </video>
+    <div style="margin-top: 8px;">
+        <button id="reportProblemBtn" style="
+            background: #ffffff;
+            color: #1f2328;
+            border: 1px solid #e4e1dc;
+            padding: 8px 16px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-family: 'Sora', sans-serif;
+            font-size: 14px;
+            font-weight: 500;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            transition: transform 0.1s, box-shadow 0.2s, background 0.2s;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.06);
+        " onmouseover="this.style.background='#f7f6f3'; this.style.boxShadow='0 4px 8px rgba(0,0,0,0.1)';"
+           onmouseout="this.style.background='#ffffff'; this.style.boxShadow='0 2px 4px rgba(0,0,0,0.06)';">
+            🚩 Report a Problem
+        </button>
+    </div>
+</div>
+<script>
+    (function() {{
+        const video = document.getElementById('customVideoPlayer');
+        const reportBtn = document.getElementById('reportProblemBtn');
+        
+        if (reportBtn && video) {{
+            reportBtn.addEventListener('click', function() {{
+                video.pause();
+                const currentTime = video.currentTime;
+                // Update parent URL with timestamp to communicate with Streamlit
+                const url = new URL(window.parent.location.href);
+                window.parent.postMessage({{
+                    isStreamlitMessage: true,
+                    type: 'streamlit:setComponentValue',
+                    value: currentTime.toFixed(3)
+                }}, '*');
+            }});
+        }}
+    }})();
+</script>
+'''
+                    report_ts_value = st.components.v1.html(
+                        video_html,
+                        height=380
+                    )
+                    st.caption(output_path)
+                    if report_ts_value:
+                        try:
+                            ts_seconds = float(report_ts_value)
+                            if ts_seconds != st.session_state.last_report_ts:
+                                # Format as MM:SS
+                                minutes = int(ts_seconds // 60)
+                                seconds = int(ts_seconds % 60)
+                                formatted_ts = f"[{minutes}:{seconds:02d}] "
+                                if st.session_state.problem_report_text:
+                                    st.session_state.problem_report_text += (
+                                        "\n\n" + formatted_ts
+                                    )
+                                else:
+                                    st.session_state.problem_report_text = formatted_ts
+                                st.session_state.problem_report_active = True
+                                st.session_state.last_report_ts = ts_seconds
+                        except (ValueError, TypeError):
+                            pass
+
+                # Problem report text area - show after the first report action
+                if st.session_state.problem_report_active:
+                    st.markdown("**Problem Reports:**")
+                    problem_text = st.text_area(
+                        "Describe issues at each timestamp",
+                        value=st.session_state.problem_report_text,
+                        height=320,
+                        key="problem_report_textarea",
+                        label_visibility="collapsed"
+                    )
+                    st.session_state.problem_report_text = problem_text
+            else:
+                st.info("No rendered output yet.")
 
         st.divider()
         st.markdown("**Storyboard**")
@@ -852,15 +839,41 @@ with main_cols[1]:
                         key=f"scene_script_{scene.scene_id}",
                     )
                     if st.button("Apply changes", key=f"scene_apply_{scene.scene_id}"):
-                        scenes[index - 1] = _StoryboardScene(
-                            scene_id=scene.scene_id,
-                            title=title,
-                            purpose=purpose,
-                            script=script,
+                        scenes[index - 1] = scene.model_copy(
+                            update={
+                                "title": title,
+                                "purpose": purpose,
+                                "script": script,
+                            }
                         )
                         save_storyboard(st.session_state.session_id, scenes)
                         log_activity(f"Edited scene {index}")
                         st.rerun()
+
+                    st.markdown("**Matched Clip**")
+                    if scene_is_matched(scene):
+                        matched_scene = scene.matched_scene
+                        st.write(matched_scene.description or "No description")
+                        st.caption(f"Source id: {matched_scene.source_video_id}")
+                        st.caption(
+                            f"Range: {format_seconds(matched_scene.start_time)} to {format_seconds(matched_scene.end_time)}"
+                        )
+                        library_dir = get_library_dir()
+                        video_path = resolve_video_path(scene, library_dir)
+                        if video_path:
+                            st.caption(f"Path: {video_path}")
+                            duration = get_video_duration(str(video_path))
+                            if duration is not None and (
+                                matched_scene.start_time >= duration or matched_scene.end_time > duration
+                            ):
+                                st.error(
+                                    f"Clip range is outside the video duration ({duration:.2f}s). "
+                                    "Update the scene timestamps."
+                                )
+                        else:
+                            st.caption("Video path not available for this clip yet.")
+                    else:
+                        st.caption("No matched clip yet.")
 
             st.markdown("---")
             st.markdown("**Add Scene**")
@@ -898,19 +911,20 @@ with main_cols[1]:
 
         st.divider()
         st.markdown("**LLM Actions**")
-        note = st.text_input("Instruction for selected segment", key="revise_note")
-        if st.button("Revise selected segment", key="revise_segment_button"):
-            if not segments:
-                st.warning("No segments to revise yet.")
-            elif not st.session_state.selected_segment_id:
-                st.warning("Select a segment first.")
-            elif not note.strip():
-                st.warning("Add a revision instruction.")
-            else:
-                selected = next(
-                    seg for seg in segments if seg.id == st.session_state.selected_segment_id
-                )
-                start_llm_action(prompt_refine_segment(selected, note), "Revise selected segment", segments)
+        action_cols = st.columns([1, 2])
+        with action_cols[0]:
+            if st.button("Match scenes (LLM)", key="match_clips"):
+                if not scenes:
+                    st.warning("Draft a storyboard before matching scenes.")
+                else:
+                    start_llm_action(prompt_match_all(), "Match storyboard to clips")
+        with action_cols[1]:
+            note = st.text_input("Instruction to revise storyboard", key="revise_note")
+            if st.button("Revise storyboard (LLM)", key="revise_storyboard_button"):
+                if not note.strip():
+                    st.warning("Add a revision instruction.")
+                else:
+                    start_llm_action(note, "Revise storyboard")
 
         st.markdown("**Activity Log**")
         if st.session_state.activity:
@@ -918,141 +932,6 @@ with main_cols[1]:
                 st.write(f"{entry['time']} - {entry['message']}")
         else:
             st.caption("No activity yet.")
-
-    with tab_match:
-        st.markdown("**Video Matching**")
-        match_cols = st.columns([1, 1])
-        with match_cols[0]:
-            if st.button("Match clips (LLM)", key="match_clips"):
-                start_llm_action(prompt_match_all(), "Match storyboard to clips", segments)
-        with match_cols[1]:
-            if st.button("Refresh plan", key="refresh_plan_match"):
-                st.rerun()
-
-        if not segments:
-            if st.session_state.storyboard_scenes:
-                st.info("Storyboard scenes drafted. Create segments before matching clips.")
-            else:
-                st.info("No storyboard yet. Draft the storyboard first.")
-        else:
-            segment_ids = [seg.id for seg in segments]
-            labels = {
-                seg.id: f"{seg.order + 1}. {segment_label(seg)}"
-                for seg in segments
-            }
-            selected_index = 0
-            if st.session_state.selected_segment_id in segment_ids:
-                selected_index = segment_ids.index(st.session_state.selected_segment_id)
-            selected_id = st.selectbox(
-                "Selected segment",
-                segment_ids,
-                index=selected_index,
-                format_func=lambda sid: labels[sid],
-                key="match_segment_select",
-            )
-            st.session_state.selected_segment_id = selected_id
-            selected = next(seg for seg in segments if seg.id == selected_id)
-            st.caption(f"Segment {selected.order + 1} - {segment_label(selected)}")
-
-            if selected.segment_type != SegmentType.VIDEO_CLIP:
-                st.warning("Unsupported segment type.")
-            else:
-                library_dir = get_library_dir()
-                video_path = resolve_video_path(selected, library_dir)
-                content = selected.content
-                st.markdown("**Matched Clip**")
-                st.write(content.description or "No description")
-                st.caption(f"Source id: {content.source_video_id}")
-                st.caption(
-                    f"Range: {format_seconds(content.start_time)} to {format_seconds(content.end_time)}"
-                )
-                if video_path:
-                    st.caption(f"Path: {video_path}")
-                    duration = get_video_duration(str(video_path))
-                    if duration is not None and (content.start_time >= duration or content.end_time > duration):
-                        st.error(
-                            f"Clip range is outside the video duration ({duration:.2f}s). "
-                            "Update the segment timestamps."
-                        )
-                preview_path = preview_path_for_segment(selected, st.session_state.session_id)
-                if preview_path and preview_path.exists():
-                    st.video(str(preview_path))
-                else:
-                    with st.spinner("Generating preview clip..."):
-                        preview_path = build_preview(
-                            selected,
-                            st.session_state.session_id,
-                            library_dir,
-                        )
-                    if preview_path:
-                        log_activity("Generated preview clip")
-                        st.video(str(preview_path))
-                    elif video_path and video_path.exists():
-                        st.caption("Preview unavailable; showing full clip from the start time.")
-                        st.video(str(video_path), start_time=int(content.start_time))
-
-            st.markdown("---")
-            st.markdown("**Voice Over**")
-            if selected.voice_over:
-                st.write(selected.voice_over.script)
-                audio_path = resolve_voice_over_path(selected, st.session_state.session_id)
-                if audio_path and audio_path.exists():
-                    st.audio(str(audio_path))
-                else:
-                    st.caption("No audio file yet.")
-            else:
-                st.caption("No voice over script yet.")
-
-            if st.button("Generate voice over audio", key="generate_voice_match"):
-                if not selected.voice_over or not selected.voice_over.script.strip():
-                    st.warning("Add a script first.")
-                else:
-                    voice = generate_voice_over(selected, st.session_state.session_id)
-                    if voice:
-                        updated = selected.model_copy(deep=True)
-                        updated.voice_over = voice
-                        for idx, seg in enumerate(segments):
-                            if seg.id == updated.id:
-                                segments[idx] = updated
-                                break
-                        save_segments(
-                            st.session_state.session_id,
-                            ensure_order(segments),
-                        )
-                        log_activity("Generated voice over")
-                        st.rerun()
-
-    with tab_render:
-        render_col, output_col = st.columns([1, 2])
-        with render_col:
-            st.markdown("**Render**")
-            if st.button("Render final video", key="render_final"):
-                try:
-                    if not st.session_state.session_id:
-                        st.warning("Create a session first.")
-                    else:
-                        data = api_post(f"/agent/sessions/{st.session_state.session_id}/render")
-                        st.session_state.render_result = data.get("render_result")
-                        log_activity("Render requested")
-                except Exception as exc:
-                    st.session_state.render_result = None
-                    st.error(f"Render failed: {exc}")
-
-            if st.session_state.render_result:
-                result = st.session_state.render_result
-                if result.get("success"):
-                    st.success("Render complete")
-                else:
-                    st.error(result.get("error_message") or "Render failed")
-
-        with output_col:
-            st.markdown("**Output**")
-            result = st.session_state.render_result
-            if result and result.get("success") and result.get("output_path"):
-                st.video(result["output_path"])
-                st.caption(result["output_path"])
-            else:
-                st.info("No rendered output yet.")
 
 with main_cols[0]:
     if st.session_state.llm_inflight:

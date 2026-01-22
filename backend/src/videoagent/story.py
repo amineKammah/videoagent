@@ -11,10 +11,11 @@ from __future__ import annotations
 
 import asyncio
 import time
+import uuid
 from concurrent.futures import ThreadPoolExecutor
 from typing import Optional
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, model_validator
 
 from videoagent.config import Config, default_config
 from videoagent.gemini import GeminiClient
@@ -28,11 +29,34 @@ from videoagent.models import (
 from videoagent.voice import VoiceOverGenerator
 
 
+class _MatchedScene(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    segment_type: SegmentType = Field(
+        default=SegmentType.VIDEO_CLIP,
+        description="Segment type (defaults to video_clip).",
+    )
+    source_video_id: str = Field(
+        description="12-hex video id for the selected clip.",
+    )
+    start_time: float = Field(
+        description="Clip start time in seconds.",
+    )
+    end_time: float = Field(
+        description="Clip end time in seconds.",
+    )
+    description: str = Field(
+        description="Description for the selected clip.",
+    )
+    keep_original_audio: bool = Field(
+        description="Audio flag for the selected clip.",
+    )
+
+
 class _StoryboardScene(BaseModel):
     model_config = ConfigDict(extra="forbid")
     scene_id: str = Field(
-        min_length=1,
-        description="Unique id like 'scene_1' used to map voice overs and clips.",
+        default_factory=lambda: uuid.uuid4().hex[:8],
+        description="Unique id for mapping voice overs and clips.",
     )
     title: str = Field(min_length=1, description="Short scene title.")
     purpose: str = Field(min_length=1, description="Narrative goal for the scene.")
@@ -47,14 +71,17 @@ class _StoryboardScene(BaseModel):
             "scene audio and do not generate a voice over."
         ),
     )
-
-
-class _StoryboardPlan(BaseModel):
-    scenes: list[_StoryboardScene] = Field(min_length=1)
-    top_video_ids: list[str] = Field(
-        min_length=1,
-        max_length=10,
-        description="Top video ids to use for scene selection (max 10).",
+    voice_over: Optional[VoiceOver] = Field(
+        default=None,
+        description="Optional generated voice over metadata before matching.",
+    )
+    matched_scene: Optional[_MatchedScene] = Field(
+        default=None,
+        description="Matched clip and audio metadata for this scene.",
+    )
+    order: Optional[int] = Field(
+        default=None,
+        description="Optional ordering index for the scene.",
     )
 
 
@@ -115,21 +142,6 @@ class PersonalizedStoryGenerator:
 
         return "\n".join(lines)
 
-    def _normalize_top_video_ids(self, video_ids: list[str]) -> list[str]:
-        seen: set[str] = set()
-        ordered: list[str] = []
-        for video_id in video_ids:
-            if video_id in seen:
-                continue
-            if self.library.get_video(video_id):
-                ordered.append(video_id)
-                seen.add(video_id)
-            if len(ordered) >= 10:
-                break
-        if not ordered:
-            raise ValueError("No valid top_video_ids returned by storyboard.")
-        return ordered
-
     def _upload_videos(self, video_ids: list[str]) -> list[object]:
         uploads: list[object] = []
         for video_id in video_ids:
@@ -187,7 +199,7 @@ class PersonalizedStoryGenerator:
         self,
         customer_situation: str,
         videos_transcripts: str,
-    ) -> _StoryboardPlan:
+    ) -> list[_StoryboardScene]:
         """Ask the LLM for a storyboard plan in structured output."""
         prompt = f"""You are a senior video editor creating a short, personalized sales video.
 Take a deep breath and think for a long time before answering. 
@@ -201,21 +213,20 @@ AVAILABLE VIDEOS AND DIALOG (TRANSCRIPTS WITH TIMESTAMPS):
 Create an ordered storyboard based only on the available footage and dialog.
 Write the voice over scripts now, grounded in the transcripts above.
 Do NOT pick specific clips or timestamps yet.
-Also return top_video_ids: the 10 most relevant video ids (or fewer if fewer exist),
-which will be used for detailed scene selection.
-Return a JSON object that matches the provided schema.
+Return a JSON array of storyboard scenes that matches the provided schema.
 """
 
+        schema = TypeAdapter(list[_StoryboardScene]).json_schema()
         response = self.client.generate_content(
             model=self.config.gemini_model,
             contents=prompt,
             config={
                 "response_mime_type": "application/json",
-                "response_json_schema": _StoryboardPlan.model_json_schema(),
+                "response_json_schema": schema,
             },
         )
 
-        return _StoryboardPlan.model_validate_json(response.text)
+        return TypeAdapter(list[_StoryboardScene]).validate_json(response.text)
 
     async def _generate_voice_overs(self, scripts: list[str]) -> list[VoiceOver]:
         if not scripts:
@@ -231,14 +242,14 @@ Return a JSON object that matches the provided schema.
     def _select_clips(
         self,
         customer_situation: str,
-        storyboard: _StoryboardPlan,
+        scenes: list[_StoryboardScene],
         voice_overs: dict[str, VoiceOver],
         video_catalog: str,
         uploaded_files: list[object],
     ) -> _ClipPlan:
         """Ask the LLM to select timestamped clips for each scene."""
-        storyboard_text = self._format_storyboard(storyboard.scenes)
-        voice_over_text = self._format_voice_overs(storyboard.scenes, voice_overs)
+        storyboard_text = self._format_storyboard(scenes)
+        voice_over_text = self._format_voice_overs(scenes, voice_overs)
 
         prompt = f"""You are a senior video editor selecting exact clips from a library.
 Take a deep breath and think for a long time before answering. Do not reveal your reasoning.
@@ -296,8 +307,7 @@ Make each clip duration as close as possible to the voice over duration
         """Just the planning phase: LLM generates scenes and scripts based on transcripts."""
         self.library.scan_library()
         videos_summary = self._get_videos_transcripts()
-        plan = self._plan_storyboard(customer_situation, videos_summary)
-        return plan.scenes
+        return self._plan_storyboard(customer_situation, videos_summary)
 
     def _resolve_video(self, video_id: Optional[str]):
         video = self.library.get_video(video_id) if video_id else None
@@ -319,14 +329,14 @@ Make each clip duration as close as possible to the voice over duration
 
         step_start = time.perf_counter()
         print("Story: planning storyboard + voice overs...")
-        storyboard = self._plan_storyboard(customer_situation, videos_summary)
+        scenes = self._plan_storyboard(customer_situation, videos_summary)
         print(f"Story: storyboard planned in {time.perf_counter() - step_start:.2f}s")
 
-        selected_video_ids = self._normalize_top_video_ids(storyboard.top_video_ids)
+        selected_video_ids = [video.id for video in self.library.list_videos()]
         print(f"Story: using {len(selected_video_ids)} videos for clip selection")
 
         scripts: list[str] = []
-        for scene in storyboard.scenes:
+        for scene in scenes:
             script = scene.script or f"{scene.title}. {scene.purpose}"
             scripts.append(script)
 
@@ -336,7 +346,7 @@ Make each clip duration as close as possible to the voice over duration
         print(f"Story: voice overs generated in {time.perf_counter() - step_start:.2f}s")
         voice_overs_by_scene = {
             scene.scene_id: voice_over
-            for scene, voice_over in zip(storyboard.scenes, voice_overs_list)
+            for scene, voice_over in zip(scenes, voice_overs_list)
         }
 
         step_start = time.perf_counter()
@@ -353,7 +363,7 @@ Make each clip duration as close as possible to the voice over duration
         print("Story: selecting clips...")
         clip_plan = self._select_clips(
             customer_situation,
-            storyboard,
+            scenes,
             voice_overs_by_scene,
             video_catalog,
             uploaded_files,
@@ -365,7 +375,7 @@ Make each clip duration as close as possible to the voice over duration
         step_start = time.perf_counter()
         print("Story: assembling segments...")
         segments: list[StorySegment] = []
-        for index, scene in enumerate(storyboard.scenes):
+        for index, scene in enumerate(scenes):
             voice_over = voice_overs_by_scene.get(scene.scene_id)
             clip = clip_map.get(scene.scene_id)
 

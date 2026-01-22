@@ -22,7 +22,7 @@ class Config:
     output_format: str = "mp4"
     output_fps: int = 30
     output_resolution: tuple = (1920, 1080)
-    ffmpeg_threads: int = 1  # 0 lets ffmpeg auto-select threads
+    ffmpeg_threads: int = 8  # 0 lets ffmpeg auto-select threads
 
     # Gemini LLM settings
     gemini_api_key: Optional[str] = None

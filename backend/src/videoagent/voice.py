@@ -189,8 +189,6 @@ class VoiceOverGenerator:
             script=script,
             audio_id=audio_id,
             duration=duration,
-            voice=voice,
-            speed=speed
         )
 
     async def generate_voice_over_async(
@@ -225,8 +223,6 @@ class VoiceOverGenerator:
             script=script,
             audio_id=audio_id,
             duration=duration,
-            voice=voice,
-            speed=speed
         )
 
     async def generate_voice_overs_parallel(

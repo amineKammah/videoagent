@@ -113,22 +113,7 @@ class VoiceOver(VideoAgentModel):
     audio_id: Optional[str] = None
     duration: Optional[float] = None
 
-    voice: str = "achernar"
-    speed: float = 1.0
-    volume: float = 1.0
-
     id: str = Field(default_factory=lambda: str(uuid.uuid4())[:8])
-
-    @model_validator(mode="before")
-    @classmethod
-    def _strip_audio_path(cls, values):
-        if isinstance(values, dict):
-            audio_path = values.pop("audio_path", None)
-            if audio_path and not values.get("audio_id"):
-                name = Path(audio_path).name
-                if name.startswith("vo_") and name.endswith(".wav"):
-                    values["audio_id"] = name[len("vo_") : -len(".wav")]
-        return values
 
 
 class StorySegment(VideoAgentModel):

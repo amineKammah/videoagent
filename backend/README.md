@@ -48,9 +48,9 @@ export AGENT_MODEL="gemini/gemini-3-pro-preview"
 
 Endpoints:
 - `POST /agent/sessions` to create a session
-- `POST /agent/chat` to send a message and receive the updated story segments
-- `GET /agent/sessions/{id}/plan` to fetch the current plan
-- `POST /agent/sessions/{id}/render` to render the current plan
+- `POST /agent/chat` to send a message and receive the updated storyboard
+- `GET /agent/sessions/{id}/storyboard` to fetch the current storyboard
+- `POST /agent/sessions/{id}/render` to render the current storyboard
 
 ## Lint
 
