@@ -4,7 +4,9 @@ import {
     HealthResponse,
     SessionResponse,
     StoryboardScene,
+    VideoMetadata,
 } from './types';
+
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
@@ -116,4 +118,11 @@ export const api = {
         );
         return handleResponse(response);
     },
+
+    // Video Metadata
+    getVideoMetadata: async (videoId: string): Promise<VideoMetadata> => {
+        const response = await fetchWithTimeout(`${API_BASE}/agent/library/videos/${videoId}`);
+        return handleResponse<VideoMetadata>(response);
+    },
 };
+

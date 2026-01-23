@@ -15,6 +15,8 @@ from videoagent.agent_runtime import VideoAgentService
 from videoagent.config import Config
 from videoagent.models import RenderResult
 from videoagent.story import _StoryboardScene
+from videoagent.library import VideoLibrary
+
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 DEFAULT_OUTPUT_DIR = REPO_ROOT / "output"
@@ -65,6 +67,16 @@ class AgentDebugResponse(BaseModel):
     model: str
     output_dir: str
     library_dir: str
+
+
+class VideoMetadataResponse(BaseModel):
+    id: str
+    path: str
+    filename: str
+    duration: float
+    resolution: tuple[int, int]
+    fps: float
+
 
 
 class AgentEvent(BaseModel):
@@ -195,3 +207,21 @@ def agent_debug() -> AgentDebugResponse:
 def agent_events(session_id: str, cursor: Optional[int] = Query(default=None)) -> AgentEventsResponse:
     events, next_cursor = agent_service.get_events(session_id, cursor)
     return AgentEventsResponse(session_id=session_id, events=events, next_cursor=next_cursor)
+
+
+@app.get("/agent/library/videos/{video_id}", response_model=VideoMetadataResponse)
+def get_video_metadata(video_id: str) -> VideoMetadataResponse:
+    library = VideoLibrary(agent_config)
+    video = library.get_video(video_id)
+    if not video:
+        raise HTTPException(status_code=404, detail=f"Video not found: {video_id}")
+    
+    return VideoMetadataResponse(
+        id=video.id,
+        path=str(video.path),
+        filename=video.filename,
+        duration=video.duration,
+        resolution=video.resolution,
+        fps=video.fps,
+    )
+

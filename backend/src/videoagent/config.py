@@ -27,7 +27,7 @@ class Config:
     # Gemini LLM settings
     gemini_api_key: Optional[str] = None
     gemini_model: str = "models/gemini-3-flash-preview"
-    gemini_tts_model: str = "gemini-2.5-flash-preview-tts"
+    gemini_tts_model: str = "gemini-2.5-flash-tts"
     agent_model: str = "gemini/gemini-3-flash-preview"
 
     # TTS settings

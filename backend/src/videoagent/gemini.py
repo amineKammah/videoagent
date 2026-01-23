@@ -46,14 +46,17 @@ class GeminiClient:
         else:
             load_dotenv(dotenv_path=Path(".env"))
 
-    def _create_client(self):
-        """Create a Gemini API client (no Vertex auth)."""
+    def _create_client(self, vertexai: bool = False):
+        """Create a Gemini API clien."""
         try:
             from google import genai
             self._load_dotenv()
-            api_key = os.getenv("GEMINI_API_KEY")
+            if vertexai:
+                api_key = os.getenv("VERTEX_API_KEY")
+            else:
+                api_key = os.getenv("GEMINI_API_KEY")
             return genai.Client(
-                vertexai=False,
+                vertexai=vertexai,
                 api_key=api_key,
             )
 
@@ -175,7 +178,7 @@ class GeminiClient:
 
     def _get_tts_client(self):
         if self._tts_client is None:
-            self._tts_client = self._create_client()
+            self._tts_client = self._create_client(vertexai=True)
         return self._tts_client
 
     @property

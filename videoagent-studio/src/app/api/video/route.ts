@@ -30,6 +30,8 @@ export async function GET(req: NextRequest) {
             '.webm': 'video/webm',
             '.mov': 'video/quicktime',
             '.ogg': 'video/ogg',
+            '.wav': 'audio/wav',
+            '.mp3': 'audio/mpeg',
         };
         const contentType = contentTypes[ext] || 'video/mp4';
 

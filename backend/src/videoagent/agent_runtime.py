@@ -710,7 +710,11 @@ EXAMPLE OUTPUT:
 
         from google.genai import types
 
-        def _print_prompt_log(job: dict, llm_response_time: Optional[float]) -> None:
+        def _print_prompt_log(job: dict, llm_response_time: Optional[float], usage_metadata: Optional[types.UsageMetadata]) -> None:
+            if usage_metadata:
+                usage_metadata = usage_metadata.model_dump()
+            else:
+                usage_metadata = {}
             print(
                 json.dumps(
                     {
@@ -718,6 +722,7 @@ EXAMPLE OUTPUT:
                         "video_length": job["metadata"].duration,
                         "upload_time": upload_durations.get(job["video_id"]),
                         "llm_response_time": llm_response_time,
+                        "usage_metadata": usage_metadata,
                     }
                 )
             )
@@ -754,14 +759,15 @@ EXAMPLE OUTPUT:
                     config={
                         "response_mime_type": "application/json",
                         "response_json_schema": SceneMatchResponse.model_json_schema(),
+                        "thinking_config": types.ThinkingConfig(thinking_level="medium")
                     },
                 )
             except Exception as exc:
-                _print_prompt_log(job, llm_response_time=time.perf_counter() - llm_start)
+                _print_prompt_log(job, time.perf_counter() - llm_start, None)
                 raise
             llm_response_time = time.perf_counter() - llm_start
             if not response.text:
-                _print_prompt_log(job, llm_response_time=llm_response_time)
+                _print_prompt_log(job, llm_response_time, response.usage_metadata)
                 return {
                     "scene_id": job["scene_id"],
                     "video_id": job["video_id"],
@@ -770,7 +776,7 @@ EXAMPLE OUTPUT:
             try:
                 selection = SceneMatchResponse.model_validate_json(response.text)
             except ValidationError as exc:
-                _print_prompt_log(job, llm_response_time=llm_response_time)
+                _print_prompt_log(job, llm_response_time, response.usage_metadata)
                 return {
                     "scene_id": job["scene_id"],
                     "video_id": job["video_id"],
@@ -782,7 +788,7 @@ EXAMPLE OUTPUT:
                 if candidate.video_id != job["video_id"]
             ]
             if invalid_selected:
-                _print_prompt_log(job, llm_response_time=llm_response_time)
+                _print_prompt_log(job, llm_response_time, response.usage_metadata)
                 return {
                     "scene_id": job["scene_id"],
                     "video_id": job["video_id"],
@@ -798,13 +804,13 @@ EXAMPLE OUTPUT:
                     job["metadata"].duration,
                 )
             except ValueError as exc:
-                _print_prompt_log(job, llm_response_time=llm_response_time)
+                _print_prompt_log(job, llm_response_time, response.usage_metadata)
                 return {
                     "scene_id": job["scene_id"],
                     "video_id": job["video_id"],
                     "error": str(exc),
                 }
-            _print_prompt_log(job, llm_response_time=llm_response_time)
+            _print_prompt_log(job, llm_response_time, response.usage_metadata)
             return {
                 "scene_id": job["scene_id"],
                 "video_id": job["video_id"],
@@ -812,7 +818,7 @@ EXAMPLE OUTPUT:
                 "notes": selection.notes,
             }
 
-        semaphore = asyncio.Semaphore(20)
+        semaphore = asyncio.Semaphore(30)
 
         async def _run_with_limit(job: dict) -> dict:
             async with semaphore:
@@ -1220,17 +1226,16 @@ You are a **Collaborative Video Editing Agent**. Your goal is to help a user ite
 Inform the user that you will kick off work to create the video that matches the storyboard. There is no need to explain the voice over generation or the scene matching.
 DO NOT use the transcript to match scenes. Always rely on your scene matching tool.
 
+The scene matching is a fairly dynamic process. User will give you feedback on the scenes and you will need to adjust the scenes accordingly.
+You might have to split, merge or completely rewrite a scene to make it a better fit for the user request.
+If you change the voice over script, make sure you regenerate the audio to get the new duration. If the new duration does not match the duration of the video, you will need to find a new video to match the new duration.
 
-### 3. Automated Review & Judgment-Based Fixes
-* **Review Tool:** Call `review_final_render` when the customer tells you to.
-* **Critical Judgment:** Use your own judgment to evaluate the QA notes:
-* **Must-Fix:** If you identify a technical error, a broken transition, or a violation of the visual guidelines (e.g., voice over over a speaking person), **fix it immediately** and update the storyboard.
-* **Subjective/Minor:** If the issue is stylistic or "nice-to-have," present the findings to the user and ask for their input before changing anything.
 ---
 ## Response Format
 * **Style:** Short, helpful plain-text.
 * Don't expose internal tool names and internal terminology to the user.
 * **Call to Action:** Always suggest a specific, high-value next step to guide the user.
+* Handling errors: If you hit a technical issue, try to rerun the tool a second time. If it's still not working, inform the user that you have hit a technical issue and ask them to try again later.
 """
 
     def _configure_tracing(self) -> None:
@@ -1299,7 +1304,22 @@ DO NOT use the transcript to match scenes. Always rely on your scene matching to
         return uuid4().hex
 
     def get_storyboard(self, session_id: str) -> Optional[list[_StoryboardScene]]:
-        return self.storyboard_store.load(session_id)
+        scenes = self.storyboard_store.load(session_id)
+        if not scenes:
+            return None
+        
+        # Populate audio_path for voice overs
+        for scene in scenes:
+            if scene.voice_over and scene.voice_over.audio_id:
+                path = _voice_over_path_for_id(
+                    session_id, 
+                    self.storyboard_store.base_dir, 
+                    scene.voice_over.audio_id
+                )
+                if path.exists():
+                    scene.voice_over.audio_path = str(path)
+        
+        return scenes
 
     def save_storyboard(self, session_id: str, scenes: list[_StoryboardScene]) -> None:
         self.storyboard_store.save(session_id, scenes)

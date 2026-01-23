@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useSessionStore } from '@/store/session';
 import { api } from '@/lib/api';
 
@@ -8,12 +8,22 @@ export function ProjectBrief() {
     const session = useSessionStore(state => state.session);
     const customerDetails = useSessionStore(state => state.customerDetails);
     const setCustomerDetails = useSessionStore(state => state.setCustomerDetails);
+    const scenes = useSessionStore(state => state.scenes);
     const setScenes = useSessionStore(state => state.setScenes);
     const isProcessing = useSessionStore(state => state.isProcessing);
 
     const [isDrafting, setIsDrafting] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [isCollapsed, setIsCollapsed] = useState(false);
+    const prevScenesLengthRef = useRef(0);
+
+    // Auto-collapse when scenes are first generated
+    useEffect(() => {
+        if (scenes.length > 0 && prevScenesLengthRef.current === 0) {
+            setIsCollapsed(true);
+        }
+        prevScenesLengthRef.current = scenes.length;
+    }, [scenes.length]);
 
     const handleDraftStoryboard = async () => {
         if (!session || !customerDetails.trim()) return;

@@ -111,6 +111,7 @@ class VoiceOver(VideoAgentModel):
     """
     script: str
     audio_id: Optional[str] = None
+    audio_path: Optional[str] = None
     duration: Optional[float] = None
 
     id: str = Field(default_factory=lambda: str(uuid.uuid4())[:8])
