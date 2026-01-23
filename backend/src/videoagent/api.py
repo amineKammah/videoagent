@@ -31,6 +31,15 @@ class AgentSessionResponse(BaseModel):
     session_id: str
 
 
+class SessionListItem(BaseModel):
+    session_id: str
+    created_at: str
+
+
+class SessionListResponse(BaseModel):
+    sessions: list[SessionListItem]
+
+
 class AgentChatRequest(BaseModel):
     session_id: str
     message: str = Field(min_length=1)
@@ -44,8 +53,10 @@ class AgentStoryboardRequest(BaseModel):
 class AgentChatResponse(BaseModel):
     session_id: str
     message: str
+    suggested_actions: list[str] = Field(default_factory=list)
     scenes: Optional[list[_StoryboardScene]]
     customer_details: Optional[str]
+
 
 class AgentStoryboardResponse(BaseModel):
     session_id: str
@@ -94,6 +105,18 @@ class AgentEventsResponse(BaseModel):
     next_cursor: int
 
 
+class ChatMessage(BaseModel):
+    role: str
+    content: str
+    timestamp: str
+    suggested_actions: list[str] = Field(default_factory=list)
+
+
+class ChatHistoryResponse(BaseModel):
+    session_id: str
+    messages: list[ChatMessage]
+
+
 app = FastAPI(title="VideoAgent API", version="0.1.0")
 app.add_middleware(
     CORSMiddleware,
@@ -120,6 +143,14 @@ def health() -> HealthResponse:
     return HealthResponse(status="ok")
 
 
+@app.get("/agent/sessions", response_model=SessionListResponse)
+def list_sessions() -> SessionListResponse:
+    sessions = agent_service.list_sessions()
+    return SessionListResponse(
+        sessions=[SessionListItem(session_id=s["session_id"], created_at=s["created_at"]) for s in sessions]
+    )
+
+
 @app.post("/agent/sessions", response_model=AgentSessionResponse)
 def create_agent_session() -> AgentSessionResponse:
     session_id = agent_service.create_session()
@@ -129,15 +160,25 @@ def create_agent_session() -> AgentSessionResponse:
 @app.post("/agent/chat", response_model=AgentChatResponse)
 def agent_chat(request: AgentChatRequest) -> AgentChatResponse:
     try:
-        output = agent_service.run_turn(request.session_id, request.message)
+        # run_turn returns a string (the agent's message)
+        result = agent_service.run_turn(request.session_id, request.message)
     except Exception as exc:
         raise HTTPException(status_code=400, detail=str(exc))
+
+    # Handle both string and dict returns for backwards compatibility
+    if isinstance(result, str):
+        message = result
+        suggested_actions = []
+    else:
+        message = result.get("response", "")
+        suggested_actions = result.get("suggested_actions", [])
 
     scenes = agent_service.get_storyboard(request.session_id)
     customer_details = agent_service.get_customer_details(request.session_id)
     return AgentChatResponse(
         session_id=request.session_id,
-        message=output,
+        message=message,
+        suggested_actions=suggested_actions,
         scenes=scenes,
         customer_details=customer_details,
     )
@@ -172,6 +213,23 @@ def render_agent_plan(session_id: str) -> AgentRenderResponse:
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
     return AgentRenderResponse(session_id=session_id, render_result=result)
+
+
+@app.get("/agent/sessions/{session_id}/chat", response_model=ChatHistoryResponse)
+def get_chat_history(session_id: str) -> ChatHistoryResponse:
+    messages = agent_service.get_chat_history(session_id)
+    return ChatHistoryResponse(
+        session_id=session_id,
+        messages=[
+            ChatMessage(
+                role=m.get("role", "assistant"),
+                content=m.get("content", ""),
+                timestamp=m.get("timestamp", ""),
+                suggested_actions=m.get("suggested_actions", []),
+            )
+            for m in messages
+        ],
+    )
 
 
 @app.get("/agent/debug", response_model=AgentDebugResponse)

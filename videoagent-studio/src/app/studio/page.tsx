@@ -25,14 +25,14 @@ export default function StudioPage() {
                 </div>
 
                 {/* Content Grid */}
-                <div className="flex-1 grid grid-cols-3 gap-6 min-h-0">
+                <div className="flex-1 grid grid-cols-4 gap-6 min-h-0">
                     {/* Chat Panel */}
                     <div className="col-span-1 min-h-0">
                         <Chat />
                     </div>
 
                     {/* Right Panel - Brief + Storyboard + Video */}
-                    <div className="col-span-2 min-h-0 flex flex-col gap-4 overflow-y-auto">
+                    <div className="col-span-3 min-h-0 flex flex-col gap-4 overflow-y-auto">
                         {/* Project Brief - Collapsible */}
                         <ProjectBrief />
 

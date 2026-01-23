@@ -6,9 +6,10 @@ import ReactMarkdown from 'react-markdown';
 
 interface MessageListProps {
     messages: Message[];
+    onActionClick?: (action: string) => void;
 }
 
-export function MessageList({ messages }: MessageListProps) {
+export function MessageList({ messages, onActionClick }: MessageListProps) {
     const bottomRef = useRef<HTMLDivElement>(null);
 
     // Auto-scroll to bottom when new messages arrive
@@ -31,22 +32,27 @@ export function MessageList({ messages }: MessageListProps) {
     return (
         <div className="flex-1 overflow-y-auto p-4 space-y-4">
             {messages.map((message) => (
-                <MessageItem key={message.id} message={message} />
+                <MessageItem
+                    key={message.id}
+                    message={message}
+                    onActionClick={onActionClick}
+                />
             ))}
             <div ref={bottomRef} />
         </div>
     );
 }
 
-function MessageItem({ message }: { message: Message }) {
+function MessageItem({ message, onActionClick }: { message: Message; onActionClick?: (action: string) => void }) {
     const isUser = message.role === 'user';
+    const hasActions = message.suggestedActions && message.suggestedActions.length > 0;
 
     return (
-        <div className={`flex ${isUser ? 'justify-end' : 'justify-start'}`}>
+        <div className={`flex flex-col ${isUser ? 'items-end' : 'items-start'}`}>
             <div
                 className={`max-w-[80%] rounded-2xl px-4 py-3 ${isUser
-                        ? 'bg-teal-600 text-white rounded-br-md'
-                        : 'bg-slate-100 text-slate-800 rounded-bl-md border border-slate-200'
+                    ? 'bg-teal-600 text-white rounded-br-md'
+                    : 'bg-slate-100 text-slate-800 rounded-bl-md border border-slate-200'
                     }`}
             >
                 {isUser ? (
@@ -92,6 +98,21 @@ function MessageItem({ message }: { message: Message }) {
                     {message.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                 </div>
             </div>
+
+            {/* Suggested Actions Chips */}
+            {!isUser && hasActions && (
+                <div className="flex flex-wrap gap-2 mt-2 ml-1 max-w-[90%]">
+                    {message.suggestedActions!.map((action, idx) => (
+                        <button
+                            key={idx}
+                            onClick={() => onActionClick?.(action)}
+                            className="bg-white border border-teal-200 text-teal-700 text-xs px-3 py-1.5 rounded-full hover:bg-teal-50 hover:border-teal-300 transition-colors shadow-sm"
+                        >
+                            {action}
+                        </button>
+                    ))}
+                </div>
+            )}
         </div>
     );
 }

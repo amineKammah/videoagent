@@ -1,7 +1,9 @@
 import {
     ChatResponse,
+    ChatHistoryResponse,
     EventsResponse,
     HealthResponse,
+    SessionListResponse,
     SessionResponse,
     StoryboardScene,
     VideoMetadata,
@@ -50,6 +52,11 @@ export const api = {
     },
 
     // Session management
+    listSessions: async (): Promise<SessionListResponse> => {
+        const response = await fetchWithTimeout(`${API_BASE}/agent/sessions`);
+        return handleResponse<SessionListResponse>(response);
+    },
+
     createSession: async (): Promise<SessionResponse> => {
         const response = await fetchWithTimeout(`${API_BASE}/agent/sessions`, {
             method: 'POST',
@@ -85,6 +92,12 @@ export const api = {
     getStoryboard: async (sessionId: string): Promise<{ scenes: StoryboardScene[] }> => {
         const response = await fetchWithTimeout(`${API_BASE}/agent/sessions/${sessionId}/storyboard`);
         return handleResponse<{ scenes: StoryboardScene[] }>(response);
+    },
+
+    // Chat history
+    getChatHistory: async (sessionId: string): Promise<ChatHistoryResponse> => {
+        const response = await fetchWithTimeout(`${API_BASE}/agent/sessions/${sessionId}/chat`);
+        return handleResponse<ChatHistoryResponse>(response);
     },
 
     updateStoryboard: async (sessionId: string, scenes: StoryboardScene[]): Promise<void> => {

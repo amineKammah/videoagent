@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from 'react';
 import { useSessionStore } from '@/store/session';
+import { api } from '@/lib/api';
+import { SessionListItem } from '@/lib/types';
 
 export function Sidebar() {
     const session = useSessionStore(state => state.session);
@@ -13,6 +15,7 @@ export function Sidebar() {
     const [sessionInput, setSessionInput] = useState('');
     const [isCreating, setIsCreating] = useState(false);
     const [isCollapsed, setIsCollapsed] = useState(false);
+    const [sessions, setSessions] = useState<SessionListItem[]>([]);
 
     // Check API health on mount
     useEffect(() => {
@@ -20,6 +23,22 @@ export function Sidebar() {
         const interval = setInterval(checkHealth, 10000);
         return () => clearInterval(interval);
     }, [checkHealth]);
+
+    // Fetch sessions when API becomes healthy
+    useEffect(() => {
+        if (apiHealthy) {
+            fetchSessions();
+        }
+    }, [apiHealthy]);
+
+    const fetchSessions = async () => {
+        try {
+            const response = await api.listSessions();
+            setSessions(response.sessions);
+        } catch (error) {
+            console.error('Failed to fetch sessions:', error);
+        }
+    };
 
     // Auto-create session if API is healthy and no session exists
     useEffect(() => {
@@ -44,6 +63,20 @@ export function Sidebar() {
             loadSession(sessionInput.trim());
             setSessionInput('');
         }
+    };
+
+    const handleSelectSession = (sessionId: string) => {
+        loadSession(sessionId);
+    };
+
+    const formatDate = (dateStr: string) => {
+        const date = new Date(dateStr);
+        return date.toLocaleDateString(undefined, {
+            month: 'short',
+            day: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit'
+        });
     };
 
     if (isCollapsed) {
@@ -91,7 +124,7 @@ export function Sidebar() {
                 </button>
             </div>
 
-            {/* Session */}
+            {/* Session Controls */}
             <div className="p-4 border-b border-slate-200">
                 <h2 className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-3">
                     Session
@@ -111,9 +144,9 @@ export function Sidebar() {
                 {/* Current Session */}
                 {session && (
                     <div className="bg-slate-50 rounded-lg p-3 mb-3">
-                        <p className="text-xs text-slate-500">Session ID</p>
+                        <p className="text-xs text-slate-500">Current Session</p>
                         <p className="text-sm font-mono text-slate-700 truncate">
-                            {session.id}
+                            {session.id.slice(0, 12)}...
                         </p>
                     </div>
                 )}
@@ -126,46 +159,45 @@ export function Sidebar() {
                      hover:bg-teal-700 disabled:opacity-50 disabled:cursor-not-allowed
                      transition-colors duration-200"
                 >
-                    {isCreating ? 'Creating...' : 'New Session'}
+                    {isCreating ? 'Creating...' : '+ New Session'}
                 </button>
-
-                {/* Load Session */}
-                <div className="mt-3">
-                    <input
-                        type="text"
-                        value={sessionInput}
-                        onChange={(e) => setSessionInput(e.target.value)}
-                        placeholder="Enter session ID"
-                        className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg
-                       focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500"
-                    />
-                    <button
-                        onClick={handleLoadSession}
-                        disabled={!sessionInput.trim()}
-                        className="w-full mt-2 py-2 px-3 bg-slate-100 text-slate-700 text-sm font-medium rounded-lg
-                       hover:bg-slate-200 disabled:opacity-50 disabled:cursor-not-allowed
-                       transition-colors duration-200"
-                    >
-                        Load Session
-                    </button>
-                </div>
             </div>
 
-            {/* Environment */}
-            <div className="p-4">
-                <h2 className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-3">
-                    Environment
-                </h2>
-                <div className="space-y-2 text-sm">
-                    <div className="flex items-center gap-2">
-                        <span className="text-green-500">✓</span>
-                        <span className="text-slate-600">API Connected</span>
-                    </div>
+            {/* Session History */}
+            <div className="flex-1 overflow-hidden flex flex-col">
+                <div className="px-4 pt-4 pb-2">
+                    <h2 className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
+                        History
+                    </h2>
+                </div>
+                <div className="flex-1 overflow-y-auto px-2">
+                    {sessions.length === 0 ? (
+                        <p className="text-xs text-slate-400 px-2 py-4 text-center">
+                            No previous sessions
+                        </p>
+                    ) : (
+                        <div className="space-y-1">
+                            {sessions.map((s) => (
+                                <button
+                                    key={s.session_id}
+                                    onClick={() => handleSelectSession(s.session_id)}
+                                    className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-colors ${session?.id === s.session_id
+                                            ? 'bg-teal-50 text-teal-700 border border-teal-200'
+                                            : 'hover:bg-slate-100 text-slate-600'
+                                        }`}
+                                >
+                                    <p className="font-mono text-xs truncate">
+                                        {s.session_id.slice(0, 12)}...
+                                    </p>
+                                    <p className="text-xs text-slate-400 mt-0.5">
+                                        {formatDate(s.created_at)}
+                                    </p>
+                                </button>
+                            ))}
+                        </div>
+                    )}
                 </div>
             </div>
-
-            {/* Spacer */}
-            <div className="flex-1" />
 
             {/* Footer */}
             <div className="p-4 border-t border-slate-200">

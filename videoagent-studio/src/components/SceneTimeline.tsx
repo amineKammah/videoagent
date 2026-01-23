@@ -8,7 +8,7 @@ interface SceneTimelineProps {
     metadata: Record<string, VideoMetadata>;
     currentSceneIndex: number;
     onSceneSelect: (index: number) => void;
-    onTrimChange: (start: number, end: number) => void;
+    onTrimChange: (start: number, end: number, handle: 'start' | 'end') => void;
     onTrimEnd?: (start: number, end: number) => void;
     isPlaying: boolean;
 }
@@ -134,7 +134,7 @@ export function SceneTimeline({
             lastTrimRef.current = { start: newStart, end: newEnd };
 
             // Notify parent
-            onTrimChange(newStart, newEnd);
+            onTrimChange(newStart, newEnd, isDragging);
         },
         [isDragging, totalDuration, segments, currentSceneIndex, activeScene, activeMetadata, minDuration, maxDuration, voDuration, onTrimChange]
     );

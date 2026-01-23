@@ -16,7 +16,7 @@ interface SessionStore {
     // Actions
     checkHealth: () => Promise<void>;
     createSession: () => Promise<void>;
-    loadSession: (sessionId: string) => void;
+    loadSession: (sessionId: string) => Promise<void>;
     sendMessage: (content: string) => Promise<void>;
     addMessage: (message: Message) => void;
     addEvent: (event: AgentEvent) => void;
@@ -67,7 +67,8 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
         }
     },
 
-    loadSession: (sessionId: string) => {
+    loadSession: async (sessionId: string) => {
+        // First, set the session and clear existing data
         set({
             session: { id: sessionId, createdAt: new Date() },
             messages: [],
@@ -77,6 +78,33 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
             isProcessing: false,
             eventsCursor: undefined,
         });
+
+        // Fetch the storyboard for this session
+        try {
+            const storyboard = await api.getStoryboard(sessionId);
+            if (storyboard.scenes && storyboard.scenes.length > 0) {
+                set({ scenes: storyboard.scenes });
+            }
+        } catch (error) {
+            console.error('Failed to load storyboard:', error);
+        }
+
+        // Fetch the chat history for this session
+        try {
+            const chatHistory = await api.getChatHistory(sessionId);
+            if (chatHistory.messages && chatHistory.messages.length > 0) {
+                const messages: Message[] = chatHistory.messages.map((m, idx) => ({
+                    id: `restored-${idx}`,
+                    role: m.role as 'user' | 'assistant',
+                    content: m.content,
+                    timestamp: new Date(m.timestamp),
+                    suggestedActions: m.suggested_actions,
+                }));
+                set({ messages });
+            }
+        } catch (error) {
+            console.error('Failed to load chat history:', error);
+        }
     },
 
     sendMessage: async (content: string) => {

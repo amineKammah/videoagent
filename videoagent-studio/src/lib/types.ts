@@ -25,6 +25,7 @@ export interface Message {
     role: 'user' | 'assistant';
     content: string;
     timestamp: Date;
+    suggestedActions?: string[];
 }
 
 export interface Session {
@@ -73,6 +74,7 @@ export interface ChatResponse {
     message: string;
     scenes: StoryboardScene[] | null;
     customer_details: string | null;
+    suggested_actions?: string[];
 }
 
 export interface EventsResponse {
@@ -87,4 +89,25 @@ export interface SessionResponse {
 
 export interface HealthResponse {
     status: string;
+}
+
+export interface SessionListItem {
+    session_id: string;
+    created_at: string;
+}
+
+export interface SessionListResponse {
+    sessions: SessionListItem[];
+}
+
+export interface ChatHistoryMessage {
+    role: string;
+    content: string;
+    timestamp: string;
+    suggested_actions?: string[];
+}
+
+export interface ChatHistoryResponse {
+    session_id: string;
+    messages: ChatHistoryMessage[];
 }

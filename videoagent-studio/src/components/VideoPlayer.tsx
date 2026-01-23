@@ -493,7 +493,7 @@ export function VideoPlayer() {
         }
     };
 
-    const handleTrimChange = (start: number, end: number) => {
+    const handleTrimChange = (start: number, end: number, handle: 'start' | 'end' = 'start') => {
         // Optimistic update
         // Deep copy to ensure React detects changes correctly
         const updatedScenes = scenes.map(s => ({ ...s }));
@@ -504,10 +504,10 @@ export function VideoPlayer() {
             scene.matched_scene.end_time = end;
             setScenes(updatedScenes);
 
-            // Update video preview if paused
+            // Update video preview if paused - seek to the handle being dragged
             if (!isPlaying && videoRef.current) {
-                videoRef.current.currentTime = start;
-                // isTransitioningRef.current = true; // No, user is dragging so we want immediate feedback
+                // Seek to the appropriate position based on which handle is being dragged
+                videoRef.current.currentTime = handle === 'start' ? start : end;
             }
         }
     };

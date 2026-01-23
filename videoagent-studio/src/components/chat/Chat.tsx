@@ -24,10 +24,12 @@ export function Chat() {
     // Start polling when processing
     useEventPolling();
 
-    const handleSend = useCallback(async () => {
-        if (!session || !inputValue.trim() || isProcessing) return;
+    const handleSend = useCallback(async (manualText?: string) => {
+        // If manualText is provided, use it. Otherwise use inputValue.
+        const content = (typeof manualText === 'string' ? manualText : inputValue).trim();
 
-        const content = inputValue.trim();
+        if (!session || !content || isProcessing) return;
+
         setInputValue('');
         setError(null);
         clearEvents();
@@ -60,6 +62,7 @@ export function Chat() {
                         role: 'assistant',
                         content: response.message,
                         timestamp: new Date(),
+                        suggestedActions: response.suggested_actions,
                     };
                     addMessage(assistantMessage);
 
@@ -113,7 +116,7 @@ export function Chat() {
             </div>
 
             {/* Messages - Now driven by store state */}
-            <MessageList messages={messages} />
+            <MessageList messages={messages} onActionClick={(text) => handleSend(text)} />
 
             {/* Event Stream - shows during processing */}
             <EventStream />
@@ -142,7 +145,7 @@ export function Chat() {
                         style={{ minHeight: '44px', maxHeight: '120px' }}
                     />
                     <button
-                        onClick={handleSend}
+                        onClick={() => handleSend()}
                         disabled={isProcessing || !session || !inputValue.trim()}
                         className="flex h-11 w-11 items-center justify-center rounded-xl bg-teal-600 text-white 
                        hover:bg-teal-700 disabled:opacity-50 disabled:cursor-not-allowed

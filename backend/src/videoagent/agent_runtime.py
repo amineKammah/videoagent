@@ -80,11 +80,79 @@ class SceneMatchCandidate(BaseModel):
 
 
 class SceneMatchResponse(BaseModel):
-    candidates: list[SceneMatchCandidate]
+    """Response from the scene matching LLM call."""
+    candidates: list[SceneMatchCandidate] = Field(default_factory=list)
     notes: Optional[str] = None
 
 
+class AgentResponse(BaseModel):
+    response: str = Field(description="The natural language response to the user.")
+    suggested_actions: list[str] = Field(
+        description=(
+            "A list of 1-3 short, actionable, and context-aware follow-up prompts for the user "
+            "to continue the workflow. Examples: 'Match scenes 2 and 3', 'Generate all voice-overs', "
+            "'Render the video', 'Change scene 1 title to ...'. "
+            "If no obvious next step exists, list can be empty."
+        ),
+        max_length=3,
+    )
+
+
+class VideoAgentService:
+    def __init__(self, config: Config, base_dir: Path):
+        self.config = config
+        self.base_dir = base_dir
+        self.event_store = EventStore(base_dir)
+        self.storyboard_store = StoryboardStore(base_dir)
+        self.customer_store = CustomerStore(base_dir)
+
+        # Initialize core components
+        _load_env()
+        # ... (rest of init)
+
+    # ... (other methods)
+
+    def run_turn(self, session_id: str, user_message: str) -> dict:
+        """Run a single turn of the agent, returning structured response."""
+        # ... (setup)
+        
+        # We need to inject instructions for structured output? 
+        # Actually, providing response_schema is usually enough for Gemini 
+        # but explicit instructions help quality.
+        
+        model = self._create_model(session_id)
+        agent = Agent(
+            model=model,
+            system_prompt=self._build_system_prompt(),
+            # ... tools ...
+        )
+        
+        # We are using `agent.run(user_message)`.
+        # The `Agent` class from `agents` library might not support structured output config directly in `run`?
+        # Typically structured output (constrained generation) is a Model capability.
+        # But `Agent` loop generally returns the final *string* answer.
+        
+        # Wait, the `agents` library (likely `google-genai-agents` or similar custom one) might abstract this.
+        # The User provided `agent_runtime.py` shows:
+        # `response = runner.run(agent=agent, input=user_message, ...)`
+        # `return response.output` which is a string.
+        
+        # If I want structured output from the *Agent's final answer*, I should instruct it in the System Prompt 
+        # AND enforce it if possible, OR just ask it to output JSON in valid JSON format.
+        # Since we use `lite_llm` or `google.genai`, we might use `response_schema` if the underlying `Agent` supports passing config.
+        
+        # **Alternative Plan**:
+        # Ask the agent to ALWAYS reply in valid JSON format matching the schema.
+        # "You must answer in JSON format: { 'response': '...', 'suggested_actions': [...] }"
+        # And try to parse it. 
+        # Given we are using Gemini 1.5/2.0 Flash, it follows schemas well.
+        
+        # Update system prompt to demand JSON output.
+        pass
+
+
 def _parse_timestamp(text: str) -> float:
+    """Parse MM:SS.sss timestamp format to seconds."""
     text = text.strip()
     if not text:
         raise ValueError("Empty timestamp.")
@@ -209,6 +277,47 @@ class CustomerStore:
         if path.exists():
             path.unlink()
 
+
+@dataclass
+class ChatStore:
+    """Persist chat messages for a session."""
+    base_dir: Path
+    _lock: Lock = field(default_factory=Lock)
+
+    def _chat_path(self, session_id: str) -> Path:
+        return self.base_dir / f"{session_id}.chat.jsonl"
+
+    def append(self, session_id: str, message: dict) -> None:
+        """Append a message to the chat history."""
+        path = self._chat_path(session_id)
+        self.base_dir.mkdir(parents=True, exist_ok=True)
+        payload = dict(message)
+        payload.setdefault("timestamp", datetime.utcnow().isoformat() + "Z")
+        with self._lock, path.open("a", encoding="utf-8") as handle:
+            json.dump(payload, handle)
+            handle.write("\n")
+
+    def load(self, session_id: str) -> list[dict]:
+        """Load all messages for a session."""
+        path = self._chat_path(session_id)
+        if not path.exists():
+            return []
+        messages = []
+        with self._lock, path.open("r", encoding="utf-8") as handle:
+            for line in handle:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    messages.append(json.loads(line))
+                except json.JSONDecodeError:
+                    continue
+        return messages
+
+    def clear(self, session_id: str) -> None:
+        path = self._chat_path(session_id)
+        if path.exists():
+            path.unlink()
 
 def _load_env() -> None:
     try:
@@ -1011,7 +1120,6 @@ Example:
         match_scene_to_video,
         generate_voice_overs,
         estimate_voice_duration,
-        review_final_render,
     ]
 
 
@@ -1176,6 +1284,7 @@ class VideoAgentService:
         self.storyboard_store = StoryboardStore(self.base_dir)
         self.customer_store = CustomerStore(self.base_dir)
         self.event_store = EventStore(self.base_dir)
+        self.chat_store = ChatStore(self.base_dir)
         self.session_db_path = self.base_dir / "agent_memory.db"
         self._agents: dict[str, Agent] = {}
         self._agent_lock = Lock()
@@ -1232,8 +1341,23 @@ If you change the voice over script, make sure you regenerate the audio to get t
 
 ---
 ## Response Format
-* **Style:** Short, helpful plain-text.
-* Don't expose internal tool names and internal terminology to the user.
+
+**IMPORTANT:** You MUST always respond with valid JSON matching this exact schema:
+```json
+{
+  "response": "Your helpful message to the user (markdown supported)",
+  "suggested_actions": ["Action 1", "Action 2"]
+}
+```
+
+**Rules:**
+* `response`: Short, helpful message. Markdown is supported. Don't expose internal tool names.
+* `suggested_actions`: 1-2 short, actionable follow-up prompts the user can click. Examples:
+  - "Match scenes 2 and 3"
+  - "Create the video"
+  - "Change scene 1 title to ..."
+  - "Add a customer testimonial scene"
+* If no obvious next step exists, use an empty array `[]`.
 * **Call to Action:** Always suggest a specific, high-value next step to guide the user.
 * Handling errors: If you hit a technical issue, try to rerun the tool a second time. If it's still not working, inform the user that you have hit a technical issue and ask them to try again later.
 """
@@ -1303,6 +1427,27 @@ If you change the voice over script, make sure you regenerate the audio to get t
     def create_session(self) -> str:
         return uuid4().hex
 
+    def list_sessions(self) -> list[dict]:
+        """List all available sessions with their creation timestamps."""
+        sessions = []
+        if not self.base_dir.exists():
+            return sessions
+        
+        # Find all storyboard files to identify sessions
+        for path in self.base_dir.glob("*.storyboard.json"):
+            session_id = path.stem.replace(".storyboard", "")
+            # Use file modification time as created_at
+            mtime = path.stat().st_mtime
+            created_at = datetime.fromtimestamp(mtime).isoformat() + "Z"
+            sessions.append({
+                "session_id": session_id,
+                "created_at": created_at,
+            })
+        
+        # Sort by created_at descending (most recent first)
+        sessions.sort(key=lambda s: s["created_at"], reverse=True)
+        return sessions
+
     def get_storyboard(self, session_id: str) -> Optional[list[_StoryboardScene]]:
         scenes = self.storyboard_store.load(session_id)
         if not scenes:
@@ -1329,6 +1474,20 @@ If you change the voice over script, make sure you regenerate the audio to get t
 
     def save_customer_details(self, session_id: str, details: str) -> None:
         self.customer_store.save(session_id, details)
+
+    def get_chat_history(self, session_id: str) -> list[dict]:
+        """Get all chat messages for a session."""
+        return self.chat_store.load(session_id)
+
+    def append_chat_message(self, session_id: str, role: str, content: str, suggested_actions: list[str] = None) -> None:
+        """Append a chat message to the session history."""
+        message = {
+            "role": role,
+            "content": content,
+        }
+        if suggested_actions:
+            message["suggested_actions"] = suggested_actions
+        self.chat_store.append(session_id, message)
 
     def _build_video_transcripts(self) -> list[dict]:
         library = VideoLibrary(self.config)
@@ -1363,7 +1522,7 @@ If you change the voice over script, make sure you regenerate the audio to get t
             })
         return uploaded
 
-    def run_turn(self, session_id: str, user_message: str) -> str:
+    def run_turn(self, session_id: str, user_message: str) -> dict:
         agent = self._get_agent(session_id)
 
         session = SQLiteSession(session_id, str(self.session_db_path))
@@ -1416,6 +1575,10 @@ If you change the voice over script, make sure you regenerate the audio to get t
             session_id,
             {"type": "run_start", "message": user_message},
         )
+        
+        # Save user message to chat history
+        self.append_chat_message(session_id, "user", user_message)
+        
         try:
             with self._run_lock:
                 result = Runner.run_sync(
@@ -1428,7 +1591,36 @@ If you change the voice over script, make sure you regenerate the audio to get t
             output = result.final_output
             if not isinstance(output, str):
                 output = str(output)
-            return output
+            
+            # Try to parse structured JSON response
+            response_text = output
+            suggested_actions = []
+            try:
+                # Handle markdown code blocks
+                text = output.strip()
+                if text.startswith("```"):
+                    # Remove markdown code fence
+                    lines = text.split("\n")
+                    if lines[0].startswith("```"):
+                        lines = lines[1:]
+                    if lines and lines[-1].strip() == "```":
+                        lines = lines[:-1]
+                    text = "\n".join(lines)
+                
+                parsed = json.loads(text)
+                if isinstance(parsed, dict) and "response" in parsed:
+                    response_text = parsed.get("response", "")
+                    suggested_actions = parsed.get("suggested_actions", [])
+            except (json.JSONDecodeError, ValueError):
+                pass
+            
+            # Save assistant response to chat history
+            self.append_chat_message(session_id, "assistant", response_text, suggested_actions)
+            
+            return {
+                "response": response_text,
+                "suggested_actions": suggested_actions,
+            }
         finally:
             self.event_store.append(session_id, {"type": "run_end"})
 
