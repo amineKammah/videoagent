@@ -17,13 +17,15 @@ export function ProjectBrief() {
     const [isCollapsed, setIsCollapsed] = useState(false);
     const prevScenesLengthRef = useRef(0);
 
-    // Auto-collapse when scenes are first generated
+    // Auto-collapse when video is ready (scenes have matches)
     useEffect(() => {
-        if (scenes.length > 0 && prevScenesLengthRef.current === 0) {
+        const hasMatchedScenes = scenes.some(s => s.matched_scene);
+        // Only auto-collapse on the transition to ready
+        if (hasMatchedScenes && !prevScenesLengthRef.current) {
             setIsCollapsed(true);
+            prevScenesLengthRef.current = 1; // Mark as "has collapsed once"
         }
-        prevScenesLengthRef.current = scenes.length;
-    }, [scenes.length]);
+    }, [scenes]);
 
     const handleDraftStoryboard = async () => {
         if (!session || !customerDetails.trim()) return;
@@ -46,7 +48,7 @@ export function ProjectBrief() {
             {/* Header - Always visible, clickable to collapse */}
             <button
                 onClick={() => setIsCollapsed(!isCollapsed)}
-                className="w-full px-4 py-3 flex items-center justify-between hover:bg-slate-50 transition-colors text-left"
+                className="w-full px-4 py-2 flex items-center justify-between hover:bg-slate-50 transition-colors text-left"
             >
                 <div>
                     <h3 className="font-semibold text-slate-800">Project Brief</h3>

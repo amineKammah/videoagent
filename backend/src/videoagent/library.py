@@ -138,7 +138,7 @@ class VideoLibrary:
     def __init__(self, config: Optional[Config] = None):
         self.config = config or default_config
         self.index = VideoLibraryIndex()
-        self._index_path = self.config.video_library_path / ".video_index.json"
+        self._index_path = self.config.video_library_path / ".video_index_2.json"
 
     def _load_index(self) -> None:
         """Load the index from disk if it exists."""

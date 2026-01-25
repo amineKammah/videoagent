@@ -611,166 +611,168 @@ export function VideoPlayer() {
     if (!hasMatchedScenes) return null;
 
     return (
-        <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4">
-            <div className="flex items-center justify-between mb-4">
-                <div>
-                    <h3 className="font-semibold text-slate-800">Preview Composition</h3>
-                    <p className="text-xs text-slate-500">Live preview (Client-Side)</p>
-                </div>
-            </div>
+        <div className="w-full h-full flex flex-col">
 
-            {/* Main Player */}
-            <div className="bg-black rounded-lg overflow-hidden aspect-video relative mb-4">
-                <video
-                    ref={videoRef}
-                    className="w-full h-full object-contain"
-                    playsInline
-                />
 
-                {/* Custom Controls Overlay */}
-                <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent p-4 flex flex-col gap-2 z-20 group">
-                    {/* Scrubber */}
-                    <input
-                        type="range"
-                        min={0}
-                        max={totalDuration}
-                        step={0.1}
-                        value={currentTime}
-                        onChange={handleSeek}
-                        className="w-full h-1 bg-white/30 rounded-lg appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:bg-teal-400 [&::-webkit-slider-thumb]:rounded-full hover:[&::-webkit-slider-thumb]:bg-teal-300"
+            {/* Video Area (Black) */}
+            <div className="flex-1 relative min-h-0 bg-black flex flex-col overflow-hidden">
+
+                {/* Main Player */}
+                <div className="flex-1 w-full relative min-h-0 flex items-center justify-center">
+                    <video
+                        ref={videoRef}
+                        className="max-h-full max-w-full object-contain"
+                        playsInline
                     />
 
-                    <div className="flex items-center justify-between text-white">
-                        <div className="flex items-center gap-4">
-                            <button onClick={togglePlay} className="hover:text-teal-400">
-                                {isPlaying ? (
-                                    <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z" /></svg>
-                                ) : (
-                                    <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z" /></svg>
-                                )}
-                            </button>
+                    {/* Custom Controls Overlay */}
+                    <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent p-4 flex flex-col gap-2 z-20 group">
+                        {/* Scrubber */}
+                        <input
+                            type="range"
+                            min={0}
+                            max={totalDuration}
+                            step={0.1}
+                            value={currentTime}
+                            onChange={handleSeek}
+                            className="w-full h-1 bg-white/30 rounded-lg appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:bg-teal-400 [&::-webkit-slider-thumb]:rounded-full hover:[&::-webkit-slider-thumb]:bg-teal-300"
+                        />
 
-                            <div className="flex items-center gap-2 group/vol">
-                                <button onClick={() => {
-                                    const newMuted = !isMuted;
-                                    setIsMuted(newMuted);
-                                    if (videoRef.current) videoRef.current.muted = newMuted;
-                                }}>
-                                    {isMuted || volume === 0 ? (
-                                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2" /></svg>
+                        <div className="flex items-center justify-between text-white">
+                            <div className="flex items-center gap-4">
+                                <button onClick={togglePlay} className="hover:text-teal-400">
+                                    {isPlaying ? (
+                                        <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z" /></svg>
                                     ) : (
-                                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" /></svg>
+                                        <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z" /></svg>
                                     )}
                                 </button>
-                                <input
-                                    type="range"
-                                    min={0}
-                                    max={1}
-                                    step={0.1}
-                                    value={volume}
-                                    onChange={handleVolumeChange}
-                                    className="w-16 h-1 bg-white/30 rounded-lg appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-2 [&::-webkit-slider-thumb]:h-2 [&::-webkit-slider-thumb]:bg-white [&::-webkit-slider-thumb]:rounded-full"
-                                />
+
+                                <div className="flex items-center gap-2 group/vol">
+                                    <button onClick={() => {
+                                        const newMuted = !isMuted;
+                                        setIsMuted(newMuted);
+                                        if (videoRef.current) videoRef.current.muted = newMuted;
+                                    }}>
+                                        {isMuted || volume === 0 ? (
+                                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2" /></svg>
+                                        ) : (
+                                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" /></svg>
+                                        )}
+                                    </button>
+                                    <input
+                                        type="range"
+                                        min={0}
+                                        max={1}
+                                        step={0.1}
+                                        value={volume}
+                                        onChange={handleVolumeChange}
+                                        className="w-16 h-1 bg-white/30 rounded-lg appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-2 [&::-webkit-slider-thumb]:h-2 [&::-webkit-slider-thumb]:bg-white [&::-webkit-slider-thumb]:rounded-full"
+                                    />
+                                </div>
+
+                                <span className="text-xs font-mono opacity-80">
+                                    {formatTime(currentTime)} / {formatTime(totalDuration)}
+                                </span>
                             </div>
 
-                            <span className="text-xs font-mono opacity-80">
-                                {formatTime(currentTime)} / {formatTime(totalDuration)}
-                            </span>
+                            <button onClick={toggleFullscreen} className="hover:text-teal-400">
+                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" /></svg>
+                            </button>
                         </div>
+                    </div>
 
-                        <button onClick={toggleFullscreen} className="hover:text-teal-400">
-                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" /></svg>
+                    {/* Feedback Button (Floating Bottom Right) */}
+                    {/* Feedback Button (Floating Bottom Right) */}
+                    {/* Feedback Button (Floating Bottom Left) */}
+                    <div className="absolute bottom-20 left-4 z-30">
+                        <button
+                            onClick={handleReportIssue}
+                            className="group bg-teal-600 hover:bg-teal-700 text-white text-sm font-medium px-4 py-2 rounded-full shadow-lg flex items-center gap-2 transition-all hover:scale-105 hover:shadow-teal-500/20 border border-transparent hover:border-teal-400"
+                        >
+                            <svg className="w-4 h-4 text-teal-100 group-hover:text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path>
+                            </svg>
+                            Request Change
                         </button>
                     </div>
-                </div>
+                    {/* Hidden Audio for VO */}
+                    <audio ref={audioRef} className="hidden" />
 
-                {/* Feedback Button (Floating Bottom Right) */}
-                {/* Feedback Button (Floating Bottom Right) */}
-                {/* Feedback Button (Floating Bottom Left) */}
-                <div className="absolute bottom-20 left-4 z-30">
-                    <button
-                        onClick={handleReportIssue}
-                        className="group bg-teal-600 hover:bg-teal-700 text-white text-sm font-medium px-4 py-2 rounded-full shadow-lg flex items-center gap-2 transition-all hover:scale-105 hover:shadow-teal-500/20 border border-transparent hover:border-teal-400"
-                    >
-                        <svg className="w-4 h-4 text-teal-100 group-hover:text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path>
-                        </svg>
-                        Request Change
-                    </button>
-                </div>
-                {/* Hidden Audio for VO */}
-                <audio ref={audioRef} className="hidden" />
+                    {/* Overlays */}
+                    {metadataLoading && (
+                        <div className="absolute inset-0 flex items-center justify-center bg-black/50 text-white">
+                            Loading assets...
+                        </div>
+                    )}
 
-                {/* Overlays */}
-                {metadataLoading && (
-                    <div className="absolute inset-0 flex items-center justify-center bg-black/50 text-white">
-                        Loading assets...
+                    {/* Current Scene Indicator */}
+                    <div className="absolute top-4 left-4 bg-black/50 px-2 py-1 rounded text-white text-xs backdrop-blur-sm">
+                        Scene {currentSceneIndex + 1}: {activeScene?.matched_scene?.description?.slice(0, 30)}...
                     </div>
-                )}
-
-                {/* Current Scene Indicator */}
-                <div className="absolute top-4 left-4 bg-black/50 px-2 py-1 rounded text-white text-xs backdrop-blur-sm">
-                    Scene {currentSceneIndex + 1}: {activeScene?.matched_scene?.description?.slice(0, 30)}...
                 </div>
             </div>
 
-            {/* Scene Timeline */}
-            <SceneTimeline
-                scenes={scenes}
-                metadata={metadata}
-                currentSceneIndex={currentSceneIndex}
-                onSceneSelect={(idx) => {
-                    // Select and Pause
-                    playSegment(idx, false, "manual-select");
-                }}
-                onTrimChange={handleTrimChange}
-                onTrimEnd={handleTrimEnd}
-                isPlaying={isPlaying}
-            />
+            {/* Timeline & Feedback Footer */}
+            <div className="bg-white border-t border-slate-200 px-4 py-2">
+                {/* Scene Timeline */}
+                <SceneTimeline
+                    scenes={scenes}
+                    metadata={metadata}
+                    currentSceneIndex={currentSceneIndex}
+                    onSceneSelect={(idx) => {
+                        // Select and Pause
+                        playSegment(idx, false, "manual-select");
+                    }}
+                    onTrimChange={handleTrimChange}
+                    onTrimEnd={handleTrimEnd}
+                    isPlaying={isPlaying}
+                />
 
-            {/* Pending Feedback List */}
-            {pendingFeedback.length > 0 && (
-                <div className="mt-4 pt-4 border-t border-slate-100 animate-slide-in">
-                    <div className="flex items-center justify-between mb-3">
-                        <h4 className="font-semibold text-slate-800 text-sm flex items-center gap-2">
-                            <span className="w-2 h-2 rounded-full bg-amber-500"></span>
-                            Pending Changes ({pendingFeedback.length})
-                        </h4>
-                        <button
-                            onClick={submitAllFeedback}
-                            className="bg-teal-600 hover:bg-teal-700 text-white text-xs font-semibold px-3 py-1.5 rounded-lg flex items-center gap-2 transition-colors shadow-sm"
-                        >
-                            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"></path></svg>
-                            Submit All to Agent
-                        </button>
-                    </div>
+                {/* Pending Feedback List */}
+                {pendingFeedback.length > 0 && (
+                    <div className="mt-4 pt-4 border-t border-slate-100 animate-slide-in">
+                        <div className="flex items-center justify-between mb-3">
+                            <h4 className="font-semibold text-slate-800 text-sm flex items-center gap-2">
+                                <span className="w-2 h-2 rounded-full bg-amber-500"></span>
+                                Pending Changes ({pendingFeedback.length})
+                            </h4>
+                            <button
+                                onClick={submitAllFeedback}
+                                className="bg-teal-600 hover:bg-teal-700 text-white text-xs font-semibold px-3 py-1.5 rounded-lg flex items-center gap-2 transition-colors shadow-sm"
+                            >
+                                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"></path></svg>
+                                Submit All to Agent
+                            </button>
+                        </div>
 
-                    <div className="space-y-2 max-h-48 overflow-y-auto pr-1 custom-scrollbar">
-                        {pendingFeedback.map((item) => (
-                            <div key={item.id} className="bg-slate-50 border border-slate-200 rounded-md p-2.5 flex items-start gap-3 group">
-                                <div className="flex-shrink-0 mt-0.5">
-                                    <div className="w-5 h-5 bg-teal-100 text-teal-700 rounded flex items-center justify-center text-[10px] font-bold">
-                                        {item.sceneNumber}
+                        <div className="space-y-2 max-h-48 overflow-y-auto pr-1 custom-scrollbar">
+                            {pendingFeedback.map((item) => (
+                                <div key={item.id} className="bg-slate-50 border border-slate-200 rounded-md p-2.5 flex items-start gap-3 group">
+                                    <div className="flex-shrink-0 mt-0.5">
+                                        <div className="w-5 h-5 bg-teal-100 text-teal-700 rounded flex items-center justify-center text-[10px] font-bold">
+                                            {item.sceneNumber}
+                                        </div>
                                     </div>
-                                </div>
-                                <div className="flex-1 min-w-0">
-                                    <div className="flex items-center gap-2 mb-0.5">
-                                        <span className="text-[10px] font-mono text-slate-500 bg-slate-200 px-1 rounded">{formatTime(item.relativeTime)}</span>
+                                    <div className="flex-1 min-w-0">
+                                        <div className="flex items-center gap-2 mb-0.5">
+                                            <span className="text-[10px] font-mono text-slate-500 bg-slate-200 px-1 rounded">{formatTime(item.relativeTime)}</span>
+                                        </div>
+                                        <p className="text-sm text-slate-700 leading-snug break-words">{item.feedback}</p>
                                     </div>
-                                    <p className="text-sm text-slate-700 leading-snug break-words">{item.feedback}</p>
+                                    <button
+                                        onClick={() => removePendingItem(item.id)}
+                                        className="text-slate-400 hover:text-red-500 p-1 opacity-0 group-hover:opacity-100 transition-opacity"
+                                        title="Remove note"
+                                    >
+                                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                                    </button>
                                 </div>
-                                <button
-                                    onClick={() => removePendingItem(item.id)}
-                                    className="text-slate-400 hover:text-red-500 p-1 opacity-0 group-hover:opacity-100 transition-opacity"
-                                    title="Remove note"
-                                >
-                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
-                                </button>
-                            </div>
-                        ))}
+                            ))}
+                        </div>
                     </div>
-                </div>
-            )}
+                )}
+            </div>
 
             {/* Feedback Dialog Overlay */}
             {showFeedbackDialog && (

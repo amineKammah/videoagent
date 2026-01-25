@@ -6,6 +6,7 @@ from __future__ import annotations
 import asyncio
 import json
 import functools
+import logging
 import os
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -13,7 +14,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 from threading import Lock
-from typing import Optional
+from typing import Callable, Optional
 from uuid import uuid4
 
 from agents import (
@@ -345,10 +346,11 @@ def _build_tools(
     customer_store: CustomerStore,
     event_store: EventStore,
     session_id: str,
+    auto_render_callback: Optional[Callable[[], None]] = None,
 ):
     def tool_error(name: str):
         def error_fn(ctx, error):
-            return f"{name} failed: {error}"
+            return f"{name} failed: {error}, {ctx}"
         return error_fn
 
     def log_tool(name: str):
@@ -394,6 +396,7 @@ def _build_tools(
     ) -> str:
         """Replace the current storyboard scenes with the provided full list."""
         storyboard_store.save(session_id, payload.scenes)
+        event_store.append(session_id, {"type": "storyboard_update"})
         return "UI updated successfully"
 
     @function_tool(
@@ -419,6 +422,7 @@ def _build_tools(
         if not updated:
             return f"Storyboard scene id not found: {payload.scene.scene_id}"
         storyboard_store.save(session_id, updated_scenes)
+        event_store.append(session_id, {"type": "storyboard_update"})
         return "Storyboard scene updated successfully"
 
     @function_tool(failure_error_function=tool_error("update_customer_details"), strict_mode=True)
@@ -430,21 +434,33 @@ def _build_tools(
 
     @function_tool(failure_error_function=tool_error("render_storyboard"), strict_mode=False)
     @log_tool("render_storyboard")
-    def render_storyboard(output_filename: Optional[str] = None) -> RenderResult:
+    def render_storyboard(output_filename: Optional[str] = None) -> str:
         """Render storyboard scenes to a video file."""
+        event_store.append(session_id, {"type": "video_render_start"})
         scenes = storyboard_store.load(session_id) or []
-        return _render_storyboard_scenes(
+        result = _render_storyboard_scenes(
             scenes,
             config,
             session_id,
             storyboard_store.base_dir,
             output_filename or "output.mp4",
         )
+        if result.success:
+            event_store.append(
+                session_id,
+                {"type": "video_render_complete", "status": "ok", "output": str(result.output_path)}
+            )
+            return f"Video rendered successfully to {result.output_path}"
+        else:
+            return f"Render failed: {result.error_message}"
 
     @function_tool(failure_error_function=tool_error("generate_voice_overs"), strict_mode=False)
     @log_tool("generate_voice_overs")
     async def generate_voice_overs(segment_ids: list[str]) -> str:
         """Generate voice overs for selected storyboard scenes by id and persist them."""
+        # Provide early feedback to UI
+        event_store.append(session_id, {"type": "video_render_start"})
+        
         step_start = time.perf_counter()
         scenes = storyboard_store.load(session_id) or []
         if not scenes:
@@ -868,7 +884,7 @@ EXAMPLE OUTPUT:
                     config={
                         "response_mime_type": "application/json",
                         "response_json_schema": SceneMatchResponse.model_json_schema(),
-                        "thinking_config": types.ThinkingConfig(thinking_level="medium")
+                        "thinking_config": types.ThinkingConfig(thinking_budget=4096)
                     },
                 )
             except Exception as exc:
@@ -977,6 +993,9 @@ EXAMPLE OUTPUT:
         response_payload = {"results": response_results}
         if errors:
             response_payload["errors"] = errors
+
+        # Signal completion of the video generation/matching phase
+        event_store.append(session_id, {"type": "video_render_complete"})
 
         return (
             f"{json.dumps(response_payload)}\n"
@@ -1308,34 +1327,38 @@ You are a **Collaborative Video Editing Agent**. Your goal is to help a user ite
 
 ## Stage 1: Storyboard Generation
 
-**Goal:** Create a high-level narrative plan including titles, purposes, scripts, and `use_voice_over` status. Leave the video matching empty for now as it will be updated in the next step
-* **Action:** Call `update_storyboard` to save changes, or `update_storyboard_scene` to replace a single scene.
-* **Constraint:** Do not move to the next stage until you consult with the user that the story board and the voice overs look good.
+**Goal:** Create a high-level narrative plan including titles, purposes, scripts, and `use_voice_over` status.
+* **Action:** Call `update_storyboard` to save changes.
+* **Constraint:** Once the initial storyboard is created, **IMMEDIATELY** proceed to Stage 2. Do NOT ask for user feedback.
 * **Testimony Rule:** Customer testimonies must **NOT** have a voice over. The testimony should always be introduced the in previous scene. Otherwise it might feel abrupt.
 * **Introductions:** The scene immediately preceding a testimony must introduce the speaker by name, role, and company if available.
 
 ---
 
-## Stage 2: Video Matching & QA
+## Stage 2: Video Matching & Production
 
-**Goal:** Convert the storyboard into a production plan and ensure high quality through automated review.
+**Goal:** Convert the storyboard into a production plan and render the video.
 
 ### 1. Mapping & Voice Over
-* **Audio:** Call `generate_voice_overs` for required storyboard scene IDs. This determines clip durations and automatically updates the storyboard. 
+* **Audio:** Call `generate_voice_overs` for required storyboard scene IDs.
 
 ### 2. Scene Matching & Footage Selection
 * **Shortlisting:** Scan transcripts and shortlist up to 5 candidate video IDs for each scene.
-* **Matching:** Call `match_scene_to_video` with a list of scene requests (payload key: `requests`) so it can evaluate each candidate video in parallel and merge results by scene. Include notes to describe what you are looking for to guide the tool to find the right scenes.
+* **Matching:** Call `match_scene_to_video` with a list of scene requests.
 * **Visual Guidelines:**
 * **Clarity:** If a voice over is present, avoid scenes with people speaking or visible subtitles.
 * **Language:** If the original voice is kept, make sure the selected candidate is in the same language as the final video.
-* **Testimony Clips:** Prompt for ~30s for testimonies to ensure they look genuine. You can do this by passing duration_seconds=30 in the tool call. 
-* **Finalization:** Review candidates, choose the best clip, and update the storyboard scenes with the selected clip data.
+* **Testimony Clips:** Prompt for ~30s for testimonies to ensure they look genuine.
 
-Inform the user that you will kick off work to create the video that matches the storyboard. There is no need to explain the voice over generation or the scene matching.
+### 3. Rendering
+### 3. Rendering
+* **Execution:** The system will automatically render the video when scenes are matched.
+* **Communication:** Inform the user when you are matching scenes.
+
+Inform the user that the video is being generated. There is no need to explain the voice over generation or the scene matching.
 DO NOT use the transcript to match scenes. Always rely on your scene matching tool.
 
-The scene matching is a fairly dynamic process. User will give you feedback on the scenes and you will need to adjust the scenes accordingly.
+The scene matching is a fairly dynamic process.
 You might have to split, merge or completely rewrite a scene to make it a better fit for the user request.
 If you change the voice over script, make sure you regenerate the audio to get the new duration. If the new duration does not match the duration of the video, you will need to find a new video to match the new duration.
 
@@ -1352,11 +1375,7 @@ If you change the voice over script, make sure you regenerate the audio to get t
 
 **Rules:**
 * `response`: Short, helpful message. Markdown is supported. Don't expose internal tool names.
-* `suggested_actions`: 1-2 short, actionable follow-up prompts the user can click. Examples:
-  - "Match scenes 2 and 3"
-  - "Create the video"
-  - "Change scene 1 title to ..."
-  - "Add a customer testimonial scene"
+* `suggested_actions`: 1-2 short, actionable follow-up prompts the user can click.
 * If no obvious next step exists, use an empty array `[]`.
 * **Call to Action:** Always suggest a specific, high-value next step to guide the user.
 * Handling errors: If you hit a technical issue, try to rerun the tool a second time. If it's still not working, inform the user that you have hit a technical issue and ask them to try again later.
@@ -1413,6 +1432,7 @@ If you change the voice over script, make sure you regenerate the audio to get t
                 self.customer_store,
                 self.event_store,
                 session_id,
+                auto_render_callback=lambda: self.schedule_auto_render(session_id),
             )
             agent = Agent(
                 name="VideoAgent",
@@ -1643,60 +1663,7 @@ If you change the voice over script, make sure you regenerate the audio to get t
             raise ValueError(result.error_message or "Storyboard render failed.")
         return result
 
-    def schedule_auto_render(self, session_id: str) -> None:
-        with self._render_lock:
-            existing = self._render_futures.get(session_id)
-            if existing and getattr(existing, "done", lambda: True)() is False:
-                return
 
-            output_filename = f"{session_id}_auto.mp4"
-
-            def _run() -> RenderResult:
-                self.event_store.append(session_id, {"type": "auto_render_start"})
-                try:
-                    scenes = self.storyboard_store.load(session_id) or []
-                    missing_sources = [
-                        scene.scene_id
-                        for scene in scenes
-                        if not scene.matched_scene
-                        or not scene.matched_scene.source_video_id
-                        or scene.matched_scene.start_time is None
-                        or scene.matched_scene.end_time is None
-                    ]
-                    if missing_sources:
-                        self.event_store.append(
-                            session_id,
-                            {
-                                "type": "auto_render_skipped",
-                                "status": "error",
-                                "error": "Missing clip data (source/timing) for storyboard scene(s): "
-                                + ", ".join(missing_sources),
-                            },
-                        )
-                        return RenderResult(
-                            success=False,
-                            error_message="Missing source for one or more scenes.",
-                        )
-                    result = _render_storyboard_scenes(
-                        scenes,
-                        self.config,
-                        session_id,
-                        self.storyboard_store.base_dir,
-                        output_filename,
-                    )
-                    self.event_store.append(
-                        session_id,
-                        {"type": "auto_render_end", "status": "ok", "output": str(result.output_path) if result.output_path else None},
-                    )
-                    return result
-                except Exception as exc:
-                    self.event_store.append(
-                        session_id,
-                        {"type": "auto_render_end", "status": "error", "error": str(exc)},
-                    )
-                    raise
-
-            self._render_futures[session_id] = self._render_executor.submit(_run)
 
     def generate_storyboard(self, session_id: str, brief: str) -> list[_StoryboardScene]:
         """Calls the generator directly for a text-only draft, bypassing TTS and Video matching."""

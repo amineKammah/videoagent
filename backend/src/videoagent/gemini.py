@@ -374,6 +374,9 @@ class GeminiClient:
             ),
         )
 
+        if not response.candidates:
+            raise ValueError("Gemini TTS returned no candidates. Check safety settings or prompt.")
+        
         return response.candidates[0].content.parts[0].inline_data.data
 
     async def generate_speeches_parallel(
@@ -423,5 +426,8 @@ class GeminiClient:
                 ),
             ),
         )
+
+        if not response.candidates:
+            raise ValueError("Gemini TTS returned no candidates. Check safety settings or prompt.")
 
         return response.candidates[0].content.parts[0].inline_data.data

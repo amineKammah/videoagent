@@ -12,6 +12,9 @@ export function useEventPolling() {
     const eventsCursor = useSessionStore(state => state.eventsCursor);
     const addEvent = useSessionStore(state => state.addEvent);
     const setEventsCursor = useSessionStore(state => state.setEventsCursor);
+    const setScenes = useSessionStore(state => state.setScenes);
+    const setVideoGenerating = useSessionStore(state => state.setVideoGenerating);
+    const setVideoPath = useSessionStore(state => state.setVideoPath);
 
     const intervalRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -24,13 +27,36 @@ export function useEventPolling() {
             if (response.events.length > 0) {
                 for (const event of response.events) {
                     addEvent(event);
+
+                    // Handle special event types for real-time updates
+                    if (event.type === 'storyboard_update') {
+                        // Fetch latest storyboard when updated
+                        try {
+                            const storyboard = await api.getStoryboard(session.id);
+                            if (storyboard.scenes?.length > 0) {
+                                setScenes(storyboard.scenes);
+                            }
+                        } catch (err) {
+                            console.error('Failed to fetch storyboard on update:', err);
+                        }
+                    } else if (event.type === 'video_render_start' || event.type === 'auto_render_start') {
+                        setVideoGenerating(true);
+                        setVideoPath(null);
+                    } else if (event.type === 'run_end') {
+                        setVideoGenerating(false);
+                    } else if (event.type === 'video_render_complete' || event.type === 'auto_render_end') {
+                        setVideoGenerating(false);
+                        if (event.output) {
+                            setVideoPath(event.output);
+                        }
+                    }
                 }
                 setEventsCursor(response.next_cursor);
             }
         } catch (error) {
             console.error('Error polling events:', error);
         }
-    }, [session?.id, eventsCursor, addEvent, setEventsCursor]);
+    }, [session?.id, eventsCursor, addEvent, setEventsCursor, setScenes, setVideoGenerating, setVideoPath]);
 
     useEffect(() => {
         if (isProcessing && session?.id) {

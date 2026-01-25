@@ -12,6 +12,8 @@ interface SessionStore {
     isProcessing: boolean;
     eventsCursor: number | undefined;
     apiHealthy: boolean;
+    videoGenerating: boolean;
+    videoPath: string | null;
 
     // Actions
     checkHealth: () => Promise<void>;
@@ -25,6 +27,8 @@ interface SessionStore {
     setScenes: (scenes: StoryboardScene[]) => void;
     setCustomerDetails: (details: string) => void;
     setProcessing: (isProcessing: boolean) => void;
+    setVideoGenerating: (generating: boolean) => void;
+    setVideoPath: (path: string | null) => void;
     clearEvents: () => void;
     reset: () => void;
 }
@@ -39,6 +43,8 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
     isProcessing: false,
     eventsCursor: undefined,
     apiHealthy: false,
+    videoGenerating: false,
+    videoPath: null,
 
     checkHealth: async () => {
         try {
@@ -192,6 +198,14 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
         set({ isProcessing });
     },
 
+    setVideoGenerating: (generating: boolean) => {
+        set({ videoGenerating: generating });
+    },
+
+    setVideoPath: (path: string | null) => {
+        set({ videoPath: path });
+    },
+
     clearEvents: () => {
         set({ events: [], eventsCursor: undefined });
     },
@@ -205,6 +219,8 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
             customerDetails: '',
             isProcessing: false,
             eventsCursor: undefined,
+            videoGenerating: false,
+            videoPath: null,
         });
     },
 }));

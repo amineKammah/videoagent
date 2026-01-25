@@ -1,11 +1,32 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useSessionStore } from '@/store/session';
 import { StoryboardScene } from '@/lib/types';
 
 export function Storyboard() {
     const scenes = useSessionStore(state => state.scenes);
+    const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
+
+    // Handle keyboard navigation
+    useEffect(() => {
+        if (selectedIndex === null) return;
+
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if (e.key === 'Escape') {
+                setSelectedIndex(null);
+            } else if (e.key === 'ArrowLeft') {
+                e.preventDefault();
+                setSelectedIndex(prev => prev !== null && prev > 0 ? prev - 1 : prev);
+            } else if (e.key === 'ArrowRight') {
+                e.preventDefault();
+                setSelectedIndex(prev => prev !== null && prev < scenes.length - 1 ? prev + 1 : prev);
+            }
+        };
+
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, [selectedIndex, scenes.length]);
 
     if (scenes.length === 0) {
         return (
@@ -22,93 +43,221 @@ export function Storyboard() {
     }
 
     return (
-        <div className="flex-1 overflow-y-auto p-4">
-            <div className="space-y-2">
-                {scenes.map((scene, index) => (
-                    <SceneCard key={scene.scene_id} scene={scene} index={index} />
-                ))}
+        <>
+            {/* Horizontal scrolling container */}
+            <div className="relative group">
+                <div
+                    id="storyboard-container"
+                    className="flex-1 overflow-x-auto p-4 scroll-smooth snap-x snap-mandatory hide-scrollbar"
+                >
+                    <div className="flex gap-3 min-w-max">
+                        {scenes.map((scene, index) => (
+                            <SceneCard
+                                key={scene.scene_id}
+                                scene={scene}
+                                index={index}
+                                onClick={() => setSelectedIndex(index)}
+                            />
+                        ))}
+                    </div>
+                </div>
+
+                {/* Scroll Indicators / Buttons */}
+                <div className="absolute inset-y-0 left-0 w-12 bg-gradient-to-r from-white to-transparent pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity" />
+                <div className="absolute inset-y-0 right-0 w-12 bg-gradient-to-l from-white to-transparent pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity" />
+
+                <button
+                    onClick={() => document.getElementById('storyboard-container')?.scrollBy({ left: -200, behavior: 'smooth' })}
+                    className="absolute left-2 top-1/2 -translate-y-1/2 p-2 bg-white/90 shadow-md rounded-full text-slate-600 hover:text-teal-600 hover:bg-white transition-all opacity-0 group-hover:opacity-100 focus:opacity-100"
+                    aria-label="Scroll left"
+                >
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5">
+                        <path fillRule="evenodd" d="M12.79 5.23a.75.75 0 01-.02 1.06L8.832 10l3.938 3.71a.75.75 0 11-1.04 1.08l-4.5-4.25a.75.75 0 010-1.08l4.5-4.25a.75.75 0 011.06.02z" clipRule="evenodd" />
+                    </svg>
+                </button>
+                <button
+                    onClick={() => document.getElementById('storyboard-container')?.scrollBy({ left: 200, behavior: 'smooth' })}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 p-2 bg-white/90 shadow-md rounded-full text-slate-600 hover:text-teal-600 hover:bg-white transition-all opacity-0 group-hover:opacity-100 focus:opacity-100"
+                    aria-label="Scroll right"
+                >
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5">
+                        <path fillRule="evenodd" d="M7.21 14.77a.75.75 0 01.02-1.06L11.168 10 7.23 6.29a.75.75 0 111.04-1.08l4.5 4.25a.75.75 0 010 1.08l-4.5 4.25a.75.75 0 01-1.06-.02z" clipRule="evenodd" />
+                    </svg>
+                </button>
             </div>
-        </div>
+
+            {/* Modal for expanded view */}
+            {selectedIndex !== null && (
+                <SceneModal
+                    scenes={scenes}
+                    currentIndex={selectedIndex}
+                    onClose={() => setSelectedIndex(null)}
+                    onNavigate={setSelectedIndex}
+                />
+            )}
+        </>
     );
 }
 
-function SceneCard({ scene, index }: { scene: StoryboardScene; index: number }) {
-    const [isExpanded, setIsExpanded] = useState(false);
+interface SceneCardProps {
+    scene: StoryboardScene;
+    index: number;
+    onClick: () => void;
+}
+
+function SceneCard({ scene, index, onClick }: SceneCardProps) {
+    return (
+        <button
+            onClick={onClick}
+            className="w-44 flex-shrink-0 snap-center bg-white rounded-xl border border-slate-200 p-4 
+                       hover:border-teal-400 hover:shadow-lg hover:-translate-y-1 hover:bg-slate-50
+                       transition-all duration-300 ease-out text-left group
+                       focus:outline-none focus:ring-2 focus:ring-teal-500/50"
+        >
+            <div className="flex items-center justify-between mb-2">
+                <span className="text-xs text-slate-400 font-mono">
+                    Scene {index + 1}
+                </span>
+                {scene.matched_scene && (
+                    <span className="w-2 h-2 rounded-full bg-green-500" title="Matched" />
+                )}
+            </div>
+            <h4 className="font-medium text-slate-800 text-sm line-clamp-2 leading-tight">
+                {scene.title}
+            </h4>
+            <p className="text-xs text-slate-500 mt-1 line-clamp-2">
+                {scene.purpose}
+            </p>
+        </button>
+    );
+}
+
+interface SceneModalProps {
+    scenes: StoryboardScene[];
+    currentIndex: number;
+    onClose: () => void;
+    onNavigate: (index: number) => void;
+}
+
+function SceneModal({ scenes, currentIndex, onClose, onNavigate }: SceneModalProps) {
+    const scene = scenes[currentIndex];
+    const canGoPrev = currentIndex > 0;
+    const canGoNext = currentIndex < scenes.length - 1;
+
+    // Handle click outside to close
+    const handleBackdropClick = useCallback((e: React.MouseEvent) => {
+        if (e.target === e.currentTarget) {
+            onClose();
+        }
+    }, [onClose]);
 
     return (
-        <div className="bg-slate-50 rounded-lg border border-slate-200 overflow-hidden">
-            {/* Header - Always visible, clickable to expand */}
-            <button
-                onClick={() => setIsExpanded(!isExpanded)}
-                className="w-full px-4 py-3 flex items-center justify-between hover:bg-slate-100 transition-colors text-left"
-            >
-                <div className="flex items-center gap-3">
-                    <span className="text-xs text-slate-400 font-mono w-16">
-                        Scene {index + 1}
-                    </span>
-                    <h4 className="font-medium text-slate-800">{scene.title}</h4>
-                </div>
-                <div className="flex items-center gap-2">
-                    {scene.matched_scene && (
-                        <span className="text-xs bg-green-100 text-green-700 px-2 py-1 rounded">
-                            Matched
+        <div
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm"
+            onClick={handleBackdropClick}
+        >
+            <div className="relative bg-white rounded-2xl shadow-2xl max-w-2xl w-full mx-4 max-h-[80vh] overflow-hidden flex flex-col">
+                {/* Header */}
+                <div className="px-6 py-4 border-b border-slate-200 bg-slate-50 flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                        <span className="text-sm text-slate-500 font-mono">
+                            Scene {currentIndex + 1} of {scenes.length}
                         </span>
-                    )}
-                    <svg
-                        xmlns="http://www.w3.org/2000/svg"
-                        viewBox="0 0 20 20"
-                        fill="currentColor"
-                        className={`w-4 h-4 text-slate-400 transition-transform ${isExpanded ? 'rotate-180' : ''}`}
-                    >
-                        <path
-                            fillRule="evenodd"
-                            d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z"
-                            clipRule="evenodd"
-                        />
-                    </svg>
-                </div>
-            </button>
-
-            {/* Expanded content */}
-            {isExpanded && (
-                <div className="px-4 pb-4 border-t border-slate-200">
-                    <div className="pt-3 space-y-3">
-                        <div>
-                            <p className="text-xs font-medium text-slate-500 uppercase tracking-wide mb-1">
-                                Purpose
-                            </p>
-                            <p className="text-sm text-slate-700">{scene.purpose}</p>
-                        </div>
-
-                        {scene.script && (
-                            <div>
-                                <p className="text-xs font-medium text-slate-500 uppercase tracking-wide mb-1">
-                                    Voice Over Script
-                                </p>
-                                <p className="text-sm text-slate-600 italic">"{scene.script}"</p>
-                            </div>
-                        )}
-
                         {scene.matched_scene && (
-                            <div className="bg-green-50 rounded-lg p-3 border border-green-100">
-                                <p className="text-xs font-medium text-green-700 uppercase tracking-wide mb-2">
-                                    Matched Clip
-                                </p>
-                                <div className="space-y-1 text-sm text-green-800">
-                                    <p><span className="text-green-600">Source:</span> {scene.matched_scene.source_video_id}</p>
-                                    <p>
-                                        <span className="text-green-600">Range:</span>{' '}
-                                        {scene.matched_scene.start_time.toFixed(1)}s - {scene.matched_scene.end_time.toFixed(1)}s
-                                    </p>
-                                    {scene.matched_scene.description && (
-                                        <p><span className="text-green-600">Description:</span> {scene.matched_scene.description}</p>
-                                    )}
-                                </div>
-                            </div>
+                            <span className="text-xs bg-green-100 text-green-700 px-2 py-1 rounded">
+                                Matched
+                            </span>
                         )}
                     </div>
+                    <button
+                        onClick={onClose}
+                        className="p-2 hover:bg-slate-200 rounded-lg transition-colors"
+                    >
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5 text-slate-500">
+                            <path d="M6.28 5.22a.75.75 0 00-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 101.06 1.06L10 11.06l3.72 3.72a.75.75 0 101.06-1.06L11.06 10l3.72-3.72a.75.75 0 00-1.06-1.06L10 8.94 6.28 5.22z" />
+                        </svg>
+                    </button>
                 </div>
-            )}
+
+                {/* Content */}
+                <div className="flex-1 overflow-y-auto p-6 space-y-4">
+                    <h3 className="text-xl font-semibold text-slate-800">{scene.title}</h3>
+
+                    <div>
+                        <p className="text-xs font-medium text-slate-500 uppercase tracking-wide mb-1">
+                            Purpose
+                        </p>
+                        <p className="text-sm text-slate-700">{scene.purpose}</p>
+                    </div>
+
+                    {scene.script && (
+                        <div>
+                            <p className="text-xs font-medium text-slate-500 uppercase tracking-wide mb-1">
+                                Voice Over Script
+                            </p>
+                            <p className="text-sm text-slate-600 italic bg-slate-50 p-3 rounded-lg border border-slate-100">
+                                &quot;{scene.script}&quot;
+                            </p>
+                        </div>
+                    )}
+
+                    {scene.matched_scene && (
+                        <div className="bg-green-50 rounded-lg p-4 border border-green-100">
+                            <p className="text-xs font-medium text-green-700 uppercase tracking-wide mb-2">
+                                Matched Clip
+                            </p>
+                            <div className="space-y-1 text-sm text-green-800">
+                                <p><span className="text-green-600">Source:</span> {scene.matched_scene.source_video_id}</p>
+                                <p>
+                                    <span className="text-green-600">Range:</span>{' '}
+                                    {scene.matched_scene.start_time.toFixed(1)}s - {scene.matched_scene.end_time.toFixed(1)}s
+                                </p>
+                                {scene.matched_scene.description && (
+                                    <p><span className="text-green-600">Description:</span> {scene.matched_scene.description}</p>
+                                )}
+                            </div>
+                        </div>
+                    )}
+                </div>
+
+                {/* Navigation Footer */}
+                <div className="px-6 py-4 border-t border-slate-200 bg-slate-50 flex items-center justify-between">
+                    <button
+                        onClick={() => onNavigate(currentIndex - 1)}
+                        disabled={!canGoPrev}
+                        className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-slate-700 
+                                   hover:bg-slate-200 rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                    >
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
+                            <path fillRule="evenodd" d="M12.79 5.23a.75.75 0 01-.02 1.06L8.832 10l3.938 3.71a.75.75 0 11-1.04 1.08l-4.5-4.25a.75.75 0 010-1.08l4.5-4.25a.75.75 0 011.06.02z" clipRule="evenodd" />
+                        </svg>
+                        Previous
+                    </button>
+
+                    <div className="flex gap-1">
+                        {scenes.map((_, idx) => (
+                            <button
+                                key={idx}
+                                onClick={() => onNavigate(idx)}
+                                className={`w-2 h-2 rounded-full transition-colors ${idx === currentIndex ? 'bg-teal-500' : 'bg-slate-300 hover:bg-slate-400'
+                                    }`}
+                            />
+                        ))}
+                    </div>
+
+                    <button
+                        onClick={() => onNavigate(currentIndex + 1)}
+                        disabled={!canGoNext}
+                        className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-slate-700 
+                                   hover:bg-slate-200 rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                    >
+                        Next
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
+                            <path fillRule="evenodd" d="M7.21 14.77a.75.75 0 01.02-1.06L11.168 10 7.23 6.29a.75.75 0 111.04-1.08l4.5 4.25a.75.75 0 010 1.08l-4.5 4.25a.75.75 0 01-1.06-.02z" clipRule="evenodd" />
+                        </svg>
+                    </button>
+                </div>
+            </div>
         </div>
     );
 }

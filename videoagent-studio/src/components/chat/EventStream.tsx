@@ -34,8 +34,10 @@ export function EventStream() {
         return null;
     }
 
-    // Show last 8 events to avoid overwhelming the UI
-    const visibleEvents = events.slice(-8);
+    // Show last 8 events to avoid overwhelming the UI, filtering out internal events
+    const visibleEvents = events
+        .filter(e => e.type !== 'video_render_start' && e.type !== 'storyboard_update')
+        .slice(-8);
 
     return (
         <div className="mx-4 mb-4 animate-slide-in">

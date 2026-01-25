@@ -23,7 +23,10 @@ body {
   font-family: var(--font-sora), system-ui, sans-serif;
 }
 
-h1, h2, h3, h4 {
+h1,
+h2,
+h3,
+h4 {
   font-family: var(--font-fraunces), serif;
 }
 
@@ -46,12 +49,23 @@ h1, h2, h3, h4 {
   background: #9ca3af;
 }
 
+/* Utilities */
+.hide-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+.hide-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
 /* Animations */
 @keyframes slideIn {
   from {
     opacity: 0;
     transform: translateY(10px);
   }
+
   to {
     opacity: 1;
     transform: translateY(0);

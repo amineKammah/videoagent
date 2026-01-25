@@ -282,4 +282,3 @@ def get_video_metadata(video_id: str) -> VideoMetadataResponse:
         resolution=video.resolution,
         fps=video.fps,
     )
-

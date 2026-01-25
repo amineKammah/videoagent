@@ -43,7 +43,7 @@ function getEventDisplay(event: AgentEvent): EventDisplay {
             return {
                 icon: '🧠',
                 label: 'Thinking...',
-                color: 'text-purple-600',
+                color: 'text-blue-600',
                 isAnimated: true,
             };
 
@@ -56,6 +56,32 @@ function getEventDisplay(event: AgentEvent): EventDisplay {
             };
 
         case 'tool_start':
+            if (event.name === 'match_scene_to_video') {
+                const count = event.input?.requests?.length;
+                const scenesText = count ? ` for ${count} scenes` : '';
+                return {
+                    icon: '🎞️',
+                    label: `Evaluating videos${scenesText} to find the right scenes...`,
+                    color: 'text-blue-600',
+                    isAnimated: true,
+                };
+            }
+            if (event.name === 'generate_voice_overs') {
+                return {
+                    icon: '🎙️',
+                    label: 'Generating voice-overs...',
+                    color: 'text-blue-600',
+                    isAnimated: true,
+                };
+            }
+            if (event.name === 'update_storyboard') {
+                return {
+                    icon: '📝',
+                    label: 'Updating storyboard...',
+                    color: 'text-blue-600',
+                    isAnimated: true,
+                };
+            }
             return {
                 icon: '🔧',
                 label: `Calling ${formatToolName(event.name)}...`,
@@ -80,11 +106,21 @@ function getEventDisplay(event: AgentEvent): EventDisplay {
                 };
             }
 
+
+
+        case 'video_render_complete':
+            return {
+                icon: '✅',
+                label: 'Video preparation complete',
+                color: 'text-green-600',
+                isAnimated: false,
+            };
+
         case 'auto_render_start':
             return {
                 icon: '🎬',
                 label: 'Rendering video...',
-                color: 'text-orange-600',
+                color: 'text-blue-600',
                 isAnimated: true,
             };
 

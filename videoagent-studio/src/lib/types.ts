@@ -8,7 +8,10 @@ export type EventType =
     | 'auto_render_start'
     | 'auto_render_end'
     | 'auto_render_skipped'
-    | 'segment_warning';
+    | 'segment_warning'
+    | 'storyboard_update'
+    | 'video_render_start'
+    | 'video_render_complete';
 
 export interface AgentEvent {
     ts: string;
@@ -18,6 +21,7 @@ export interface AgentEvent {
     error?: string;
     message?: string;
     output?: string;
+    input?: any;
 }
 
 export interface Message {

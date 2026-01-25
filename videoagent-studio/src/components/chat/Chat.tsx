@@ -108,9 +108,9 @@ export function Chat() {
     };
 
     return (
-        <div className="flex flex-col h-full bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+        <div className="flex flex-col flex-1 min-h-0 bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
             {/* Header */}
-            <div className="px-4 py-3 border-b border-slate-200 bg-slate-50">
+            <div className="px-4 py-2 border-b border-slate-200 bg-slate-50">
                 <h2 className="font-semibold text-slate-800">Chat</h2>
                 <p className="text-xs text-slate-500">Chat with the LLM to create and edit your storyboard</p>
             </div>

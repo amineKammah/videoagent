@@ -169,11 +169,7 @@ export function SceneTimeline({
 
     return (
         <div className="mt-4 select-none">
-            {/* Time indicators */}
-            <div className="flex justify-between text-[10px] text-slate-500 mb-1 px-0.5">
-                <span>0:00</span>
-                <span>{formatTime(totalDuration)}</span>
-            </div>
+
 
             {/* Timeline container */}
             <div
@@ -277,17 +273,7 @@ export function SceneTimeline({
                 {/* Playhead indicator line (optional - for future) */}
             </div>
 
-            {/* VO constraint indicator */}
-            {voDuration && activeScene?.matched_scene && (
-                <div className="mt-2 flex items-center justify-center gap-2 text-[10px] text-slate-500">
-                    <svg className="w-3 h-3 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z"></path>
-                    </svg>
-                    <span className="text-amber-600">
-                        VO: {formatTime(voDuration)} • Trim range: {formatTime(minDuration)} – {formatTime(maxDuration)}
-                    </span>
-                </div>
-            )}
+
         </div>
     );
 }
