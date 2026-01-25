@@ -12,7 +12,7 @@ class Config:
 
     # Video library settings
     video_library_path: Path = field(
-        default_factory=lambda: Path("/Users/amineka/Downloads/Navan_Content/normalized_videos")
+        default_factory=lambda: Path("assets/normalized_videos")
     )
     transcript_library_path: Optional[Path] = None
     supported_formats: tuple = (".mp4", ".mov", ".avi", ".mkv", ".webm")

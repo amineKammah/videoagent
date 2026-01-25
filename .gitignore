@@ -17,3 +17,7 @@ backend/output/
 assets/*
 !assets/test_videos/
 !assets/test_videos/*
+!assets/normalized_videos/
+!assets/normalized_videos/*
+!assets/normalized_transcripts/
+!assets/normalized_transcripts/*

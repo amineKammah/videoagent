@@ -127,8 +127,8 @@ app.add_middleware(
 )
 
 agent_config = Config(
-    video_library_path=Path("/Users/amineka/Downloads/Navan_Content/normalized_videos"),
-    transcript_library_path=Path("/Users/amineka/Downloads/Navan_Content/normalized_transcripts"),
+    video_library_path=Path("assets/normalized_videos"),
+    transcript_library_path=Path("assets/normalized_transcripts"),
     output_dir=DEFAULT_OUTPUT_DIR,
 )
 agent_config.output_dir.mkdir(parents=True, exist_ok=True)
