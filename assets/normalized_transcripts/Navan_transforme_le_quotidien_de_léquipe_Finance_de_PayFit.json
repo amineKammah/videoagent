@@ -1,0 +1,130 @@
+{
+  "full_text": "Je m'appelle Julien Lachowski, et je suis FP&A director chez PayFit. PayFit est un logiciel de paie fran\u00e7ais qui permet une automatisation des processus de paie et plus globalement des Ressources Humaines. Avant Navan, on utilisait une solution qui \u00e9tait peut-\u00eatre un peu moins simple d'utilisation, et qui nous n\u00e9cessitait beaucoup de travail en back office. Nous avons choisi Navan pour la profondeur de son catalogue \u00e0 l'\u00e9tranger, donc dans les diff\u00e9rents pays dans lesquels nous avons besoin de voyager. Aussi pour l'exp\u00e9rience utilisateur, c'est-\u00e0-dire la simplicit\u00e9 de cette plateforme, c'est assez int\u00e9ressant. Ce qu'on appelle l'UX, c'est \u00e7a qui nous a fait finalement choisir la solution. On a quand m\u00eame les m\u00eames r\u00e9f\u00e9rences que sur des plateformes, un peu plus utilis\u00e9es \u00e0 titre personnel. Quand on voyage, il ne faut pas qu'on ait de mauvaises surprises et autant au niveau des administrateurs qu'au niveau du voyageur, c'est vraiment le cas avec la plateforme Navan. La possibilit\u00e9 de param\u00e9trer des politiques dynamiques sur Navan, en tant que financier, c'est hyper int\u00e9ressant, pour la simple et bonne raison qu'en fonction de la p\u00e9riode et du prix moyen des h\u00f4tels par exemple dans diff\u00e9rentes villes, \u00e7a va nous permettre d'adapter automatiquement le prix qu'on autorise \u00e0 nos collaborateurs d'utiliser pour booker leurs h\u00f4tels. Et donc, \u00e7a va repr\u00e9senter des opportunit\u00e9s d'optimisation des co\u00fbts qui sont non n\u00e9gligeables pour nous qui sommes financiers. L'impl\u00e9mentation de Navan, \u00e7a a \u00e9t\u00e9 aussi l'occasion de revoir nos politiques de voyages en interne et nos politiques de voyages un peu \"green\". Donc typiquement, on a mis en place des r\u00e8gles pour favoriser l'utilisation du train Versus l'avion sur certains cas de figure, par exemple, les allers-retours entre le domicile et le lieu de travail, ou des voyages sur des courtes distances. Donc gr\u00e2ce aux rapports qu'on peut sortir sur la plateforme Navan qui vont pouvoir calculer nos \u00e9missions de carbone par voyage, \u00e7a va nous permettre de calculer beaucoup plus facilement notre bilan carbone en fin d'ann\u00e9e et donc de s'apercevoir qu'on arrive gr\u00e2ce \u00e0 la plateforme Navan \u00e0 r\u00e9duire notre empreinte carbone li\u00e9e au d\u00e9placement chez PayFit. La ligne de cr\u00e9dit que nous met \u00e0 disposition Navan et l'avance de frais que \u00e7a repr\u00e9sente, \u00e7a a beaucoup simplifi\u00e9 les processus comptables puisque avec notre ancienne plateforme, on avait une multitude de transactions qu'on devait comptabiliser et suivre. Et aujourd'hui, on n'a plus qu'une facture en fin de mois, qu'on re\u00e7oit, qu'on arrive \u00e0 importer automatiquement dans notre ERP. Il est vrai que depuis l'impl\u00e9mentation de Navan, on a gagn\u00e9 beaucoup de temps dans la gestion de tous ces frais, dans le tracking des co\u00fbts li\u00e9s aux d\u00e9placements de nos collaborateurs. Et donc forc\u00e9ment, pour moi, \u00e7a a \u00e9t\u00e9 du temps gagn\u00e9. Donc j'ai pu me concentrer sur d'autres t\u00e2ches \u00e0 plus forte valeur ajout\u00e9e et \u00e7a a pu m'aider dans la r\u00e9alisation de mes objectifs \u00e0 moyen terme.",
+  "segments": [
+    {
+      "start": 0.0,
+      "end": 8.1,
+      "text": "Intro and company overview."
+    },
+    {
+      "start": 8.1,
+      "end": 13.9,
+      "text": "Je m'appelle Julien Lachowski, et je suis FP&A director chez PayFit."
+    },
+    {
+      "start": 13.9,
+      "end": 20.8,
+      "text": "PayFit est un logiciel de paie fran\u00e7ais qui permet une automatisation des processus de paie et plus globalement des Ressources Humaines."
+    },
+    {
+      "start": 20.8,
+      "end": 29.1,
+      "text": "Avant Navan, on utilisait une solution qui \u00e9tait peut-\u00eatre un peu moins simple d'utilisation, et qui nous n\u00e9cessitait beaucoup de travail en back office."
+    },
+    {
+      "start": 29.1,
+      "end": 37.1,
+      "text": "Nous avons choisi Navan pour la profondeur de son catalogue \u00e0 l'\u00e9tranger, donc dans les diff\u00e9rents pays dans lesquels nous avons besoin de voyager."
+    },
+    {
+      "start": 37.1,
+      "end": 44.4,
+      "text": "Aussi pour l'exp\u00e9rience utilisateur, c'est-\u00e0-dire la simplicit\u00e9 de cette plateforme, c'est assez int\u00e9ressant."
+    },
+    {
+      "start": 44.4,
+      "end": 48.9,
+      "text": "Ce qu'on appelle l'UX, c'est \u00e7a qui nous a fait finalement choisir la solution."
+    },
+    {
+      "start": 48.9,
+      "end": 56.4,
+      "text": "On a quand m\u00eame les m\u00eames r\u00e9f\u00e9rences que sur des plateformes, un peu plus utilis\u00e9es \u00e0 titre personnel."
+    },
+    {
+      "start": 56.4,
+      "end": 68.2,
+      "text": "Quand on voyage, il ne faut pas qu'on ait de mauvaises surprises et autant au niveau des administrateurs qu'au niveau du voyageur, c'est vraiment le cas avec la plateforme Navan."
+    },
+    {
+      "start": 108.9,
+      "end": 113.8,
+      "text": "La possibilit\u00e9 de param\u00e9trer des politiques dynamiques sur Navan, en tant que financier, c'est hyper int\u00e9ressant,"
+    },
+    {
+      "start": 113.8,
+      "end": 121.7,
+      "text": "pour la simple et bonne raison qu'en fonction de la p\u00e9riode et du prix moyen des h\u00f4tels par exemple dans diff\u00e9rentes villes,"
+    },
+    {
+      "start": 121.7,
+      "end": 130.6,
+      "text": "\u00e7a va nous permettre d'adapter automatiquement le prix qu'on autorise \u00e0 nos collaborateurs d'utiliser pour booker leurs h\u00f4tels."
+    },
+    {
+      "start": 130.6,
+      "end": 138.4,
+      "text": "Et donc, \u00e7a va repr\u00e9senter des opportunit\u00e9s d'optimisation des co\u00fbts qui sont non n\u00e9gligeables pour nous qui sommes financiers."
+    },
+    {
+      "start": 138.4,
+      "end": 149.8,
+      "text": "L'impl\u00e9mentation de Navan, \u00e7a a \u00e9t\u00e9 aussi l'occasion de revoir nos politiques de voyages en interne et nos politiques de voyages un peu \"green\"."
+    },
+    {
+      "start": 149.8,
+      "end": 161.9,
+      "text": "Donc typiquement, on a mis en place des r\u00e8gles pour favoriser l'utilisation du train Versus l'avion sur certains cas de figure, par exemple, les allers-retours entre le domicile et le lieu de travail,"
+    },
+    {
+      "start": 161.9,
+      "end": 165.2,
+      "text": "ou des voyages sur des courtes distances."
+    },
+    {
+      "start": 165.2,
+      "end": 174.4,
+      "text": "Donc gr\u00e2ce aux rapports qu'on peut sortir sur la plateforme Navan qui vont pouvoir calculer nos \u00e9missions de carbone par voyage,"
+    },
+    {
+      "start": 174.4,
+      "end": 182.2,
+      "text": "\u00e7a va nous permettre de calculer beaucoup plus facilement notre bilan carbone en fin d'ann\u00e9e"
+    },
+    {
+      "start": 182.2,
+      "end": 192.1,
+      "text": "et donc de s'apercevoir qu'on arrive gr\u00e2ce \u00e0 la plateforme Navan \u00e0 r\u00e9duire notre empreinte carbone li\u00e9e au d\u00e9placement chez PayFit."
+    },
+    {
+      "start": 225.1,
+      "end": 234.3,
+      "text": "La ligne de cr\u00e9dit que nous met \u00e0 disposition Navan et l'avance de frais que \u00e7a repr\u00e9sente, \u00e7a a beaucoup simplifi\u00e9 les processus comptables"
+    },
+    {
+      "start": 234.3,
+      "end": 242.0,
+      "text": "puisque avec notre ancienne plateforme, on avait une multitude de transactions qu'on devait comptabiliser et suivre."
+    },
+    {
+      "start": 242.0,
+      "end": 249.2,
+      "text": "Et aujourd'hui, on n'a plus qu'une facture en fin de mois, qu'on re\u00e7oit, qu'on arrive \u00e0 importer automatiquement dans notre ERP."
+    },
+    {
+      "start": 249.2,
+      "end": 259.9,
+      "text": "Il est vrai que depuis l'impl\u00e9mentation de Navan, on a gagn\u00e9 beaucoup de temps dans la gestion de tous ces frais, dans le tracking des co\u00fbts li\u00e9s aux d\u00e9placements de nos collaborateurs."
+    },
+    {
+      "start": 259.9,
+      "end": 268.3,
+      "text": "Et donc forc\u00e9ment, pour moi, \u00e7a a \u00e9t\u00e9 du temps gagn\u00e9. Donc j'ai pu me concentrer sur d'autres t\u00e2ches \u00e0 plus forte valeur ajout\u00e9e"
+    },
+    {
+      "start": 268.3,
+      "end": 277.0,
+      "text": "et \u00e7a a pu m'aider dans la r\u00e9alisation de mes objectifs \u00e0 moyen terme."
+    }
+  ]
+}

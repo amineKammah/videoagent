@@ -1,0 +1,180 @@
+{
+  "full_text": "So we implemented Navan just over four months ago. We have about a million dollars in spend already, but that is to say that we've saved $65,000 on air travel and over $100,000 on hotel stays to date. So 8x8 is a cloud-based communications company here in the Silicon Valley. We provide communications platforms as a service globally. As a process improvement manager and global T&E administrator here at 8x8, I oversee 8x8's travel booking and expense and reimbursement sides of things. So yeah, we had a few key requirements. One, we needed a global travel tool. We no longer wanted to use one that required us to have two separate systems and then didn't cover all our locations worldwide. We needed an expense tool that would circumvent our payroll process. We were processing thousands of expense reports every month, and that was just taking so much time from all the other work that payroll has to do. And we needed it to integrate with all the systems that we had. So once we decided on Navan, we had a very ambitious onboarding timeline. We were able to do it in three months instead of six months. We were a little apprehensive once we were starting the onboarding process because it was going so quickly and so smoothly. We wondered here at 8x8 what we were missing, what was going to be the other shoe to drop, what did we leave out, what did we forget. And it turns out Navan hadn't forgotten anything. It was just that easy and that intuitive. We're always extremely worried about compliance and employees being and staying within policy. Our biggest concern was employees might not know that they are within policy or not. We didn't have that real-time feedback when they would submit an expense, and it gave you the heads up of this expense line item will be flagged, and you have that inside Navan. Navan's going to tell you as you're making your booking if you're within policy or not. For instance, here at 8x8, we have a policy that says you need to book travel outside of 14 days. You know as soon as you select your dates within that 14-day window that you're going to be flagged for being out of policy. If a hotel room or a flight is out of policy, you're going to be notified before you even make that selection. That was something that we didn't have with our last travel management solution. It's been super easy for our finance team. We didn't have to take on any more employees, and more importantly, we didn't have to lose anybody. But the workload that we did have here in the finance org, that wasn't built to be a travel management team, no longer has to deal with all those travel management expense responsibilities that they did before. Employee feedback has been largely positive, and that's reflected in our Net Promoter Score of +52. We have a CSAT score of 4.5 out of 5. So I would absolutely recommend Navan to a colleague or someone in the same position I am. I would absolutely recommend that they take a look at Navan as their travel management solution going forward because it's a global solution, it's easy to integrate, it's a one-stop shop for booking expense reimbursement, and the feedback has been overwhelmingly positive.",
+  "segments": [
+    {
+      "start": 0.0,
+      "end": 6.5,
+      "text": "So we implemented Navan just over four months ago. We have about a million dollars in spend already,"
+    },
+    {
+      "start": 6.5,
+      "end": 11.5,
+      "text": "but that is to say that we've saved $65,000 on air travel"
+    },
+    {
+      "start": 11.5,
+      "end": 17.5,
+      "text": "and over $100,000 on hotel stays to date."
+    },
+    {
+      "start": 17.5,
+      "end": 23.0,
+      "text": "So 8x8 is a cloud-based communications company here in the Silicon Valley."
+    },
+    {
+      "start": 23.0,
+      "end": 27.0,
+      "text": "We provide communications platforms as a service globally."
+    },
+    {
+      "start": 27.0,
+      "end": 35.0,
+      "text": "As a process improvement manager and global T&E administrator here at 8x8, I oversee 8x8's"
+    },
+    {
+      "start": 35.0,
+      "end": 39.0,
+      "text": "travel booking and expense and reimbursement sides of things."
+    },
+    {
+      "start": 39.0,
+      "end": 44.0,
+      "text": "So yeah, we had a few key requirements. One, we needed a global travel tool."
+    },
+    {
+      "start": 44.0,
+      "end": 51.0,
+      "text": "We no longer wanted to use one that required us to have two separate systems and then didn't cover all our locations worldwide."
+    },
+    {
+      "start": 51.0,
+      "end": 56.0,
+      "text": "We needed an expense tool that would circumvent our payroll process."
+    },
+    {
+      "start": 56.0,
+      "end": 64.0,
+      "text": "We were processing thousands of expense reports every month, and that was just taking so much time from all the other work that payroll has to do."
+    },
+    {
+      "start": 64.0,
+      "end": 69.5,
+      "text": "And we needed it to integrate with all the systems that we had."
+    },
+    {
+      "start": 69.5,
+      "end": 74.0,
+      "text": "So once we decided on Navan, we had a very ambitious onboarding timeline."
+    },
+    {
+      "start": 74.0,
+      "end": 79.5,
+      "text": "We were able to do it in three months instead of six months."
+    },
+    {
+      "start": 79.5,
+      "end": 85.0,
+      "text": "We were a little apprehensive once we were starting the onboarding process because it was going so quickly and so smoothly."
+    },
+    {
+      "start": 85.0,
+      "end": 91.5,
+      "text": "We wondered here at 8x8 what we were missing, what was going to be the other shoe to drop, what did we leave out, what did we forget."
+    },
+    {
+      "start": 91.5,
+      "end": 100.0,
+      "text": "And it turns out Navan hadn't forgotten anything. It was just that easy and that intuitive."
+    },
+    {
+      "start": 100.0,
+      "end": 105.0,
+      "text": "We're always extremely worried about compliance and employees being and staying within policy."
+    },
+    {
+      "start": 105.0,
+      "end": 111.0,
+      "text": "Our biggest concern was employees might not know that they are within policy or not."
+    },
+    {
+      "start": 111.0,
+      "end": 118.0,
+      "text": "We didn't have that real-time feedback when they would submit an expense, and it gave you the heads up of this expense line item will be flagged,"
+    },
+    {
+      "start": 118.0,
+      "end": 122.5,
+      "text": "and you have that inside Navan. Navan's going to tell you as you're making your booking if you're within policy or not."
+    },
+    {
+      "start": 122.5,
+      "end": 128.5,
+      "text": "For instance, here at 8x8, we have a policy that says you need to book travel outside of 14 days."
+    },
+    {
+      "start": 128.5,
+      "end": 134.5,
+      "text": "You know as soon as you select your dates within that 14-day window that you're going to be flagged for being out of policy."
+    },
+    {
+      "start": 134.5,
+      "end": 142.0,
+      "text": "If a hotel room or a flight is out of policy, you're going to be notified before you even make that selection."
+    },
+    {
+      "start": 142.0,
+      "end": 147.0,
+      "text": "That was something that we didn't have with our last travel management solution."
+    },
+    {
+      "start": 147.0,
+      "end": 152.0,
+      "text": "It's been super easy for our finance team. We didn't have to take on any more employees,"
+    },
+    {
+      "start": 152.0,
+      "end": 157.0,
+      "text": "and more importantly, we didn't have to lose anybody."
+    },
+    {
+      "start": 157.0,
+      "end": 165.0,
+      "text": "But the workload that we did have here in the finance org, that wasn't built to be a travel management team,"
+    },
+    {
+      "start": 165.0,
+      "end": 171.0,
+      "text": "no longer has to deal with all those travel management expense responsibilities that they did before."
+    },
+    {
+      "start": 171.0,
+      "end": 176.0,
+      "text": "Employee feedback has been largely positive, and that's reflected in our Net Promoter Score of +52."
+    },
+    {
+      "start": 176.0,
+      "end": 181.0,
+      "text": "We have a CSAT score of 4.5 out of 5."
+    },
+    {
+      "start": 181.0,
+      "end": 186.0,
+      "text": "So I would absolutely recommend Navan to a colleague or someone in the same position I am."
+    },
+    {
+      "start": 186.0,
+      "end": 194.0,
+      "text": "I would absolutely recommend that they take a look at Navan as their travel management solution going forward"
+    },
+    {
+      "start": 194.0,
+      "end": 199.0,
+      "text": "because it's a global solution, it's easy to integrate, it's a one-stop shop for booking expense reimbursement,"
+    },
+    {
+      "start": 199.0,
+      "end": 204.0,
+      "text": "and the feedback has been overwhelmingly positive."
+    }
+  ]
+}

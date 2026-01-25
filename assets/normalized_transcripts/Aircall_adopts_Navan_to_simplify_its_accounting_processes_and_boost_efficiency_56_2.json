@@ -1,0 +1,120 @@
+{
+  "full_text": "Aircall is a telecommunication platform. It's a phone app with AI integrated. We have offices in Paris, in the US, in Spain, in Germany, and also in Australia. Aircall used to have TravelPerk as a vendor. Our main struggle was about the reconciliation between the invoices and the payments. Aircall chose Navan for two reasons. The first one is reducing the amount of vendors for traveling and expense purposes. And we also didn't have a direct integration with NetSuite. We don't need to import any data - everything is integrated. So it's a lot of time saving every month. With Navan, Aircall covers all the costs, and employees don't have to pay up front any more. The first time I used Navan, I found it really user-friendly. And although I had multiple flight options, it was very tailored to what I was looking for. Because I didn't have my card at the time, the meals that we had over there, we had to pay it out of pocket, but I found it very easy to submit the expenses, and the refund went through really quickly. What we need to track as AP accountants is all the costs. Usually we struggle to have the payments and to know what we need to book as costs. So having the Navan cards, people can spend and we already know that this money is spent. We just need the receipts. So it's easy to track. We can get the data by department, by cost centres, by teams, and also by companies. It's very friendly and easy to use. You can easily set up policies and it's applicable instantly. Navan is adaptive, flexible, and easy to use.",
+  "segments": [
+    {
+      "start": 0.0,
+      "end": 5.4,
+      "text": "Aircall is a telecommunication platform."
+    },
+    {
+      "start": 5.4,
+      "end": 9.2,
+      "text": "It's a phone app with AI integrated."
+    },
+    {
+      "start": 9.2,
+      "end": 21.0,
+      "text": "We have offices in Paris, in the US, in Spain, in Germany, and also in Australia."
+    },
+    {
+      "start": 21.0,
+      "end": 26.5,
+      "text": "Aircall used to have TravelPerk as a vendor."
+    },
+    {
+      "start": 26.5,
+      "end": 33.0,
+      "text": "Our main struggle was about the reconciliation between the invoices and the payments."
+    },
+    {
+      "start": 33.0,
+      "end": 35.5,
+      "text": "Aircall chose Navan for two reasons."
+    },
+    {
+      "start": 35.5,
+      "end": 41.5,
+      "text": "The first one is reducing the amount of vendors for traveling and expense purposes."
+    },
+    {
+      "start": 41.5,
+      "end": 46.5,
+      "text": "And we also didn't have a direct integration with NetSuite."
+    },
+    {
+      "start": 46.5,
+      "end": 51.5,
+      "text": "We don't need to import any data - everything is integrated."
+    },
+    {
+      "start": 51.5,
+      "end": 54.5,
+      "text": "So it's a lot of time saving every month."
+    },
+    {
+      "start": 54.5,
+      "end": 59.5,
+      "text": "With Navan, Aircall covers all the costs, and employees don't have to pay up front any more."
+    },
+    {
+      "start": 59.5,
+      "end": 107.0,
+      "text": "The first time I used Navan, I found it really user-friendly."
+    },
+    {
+      "start": 107.0,
+      "end": 113.2,
+      "text": "And although I had multiple flight options, it was very tailored to what I was looking for."
+    },
+    {
+      "start": 113.2,
+      "end": 118.5,
+      "text": "Because I didn't have my card at the time, the meals that we had over there, we had to pay it out of pocket,"
+    },
+    {
+      "start": 118.5,
+      "end": 125.0,
+      "text": "but I found it very easy to submit the expenses, and the refund went through really quickly."
+    },
+    {
+      "start": 125.0,
+      "end": 131.0,
+      "text": "What we need to track as AP accountants is all the costs."
+    },
+    {
+      "start": 131.0,
+      "end": 137.5,
+      "text": "Usually we struggle to have the payments and to know what we need to book as costs."
+    },
+    {
+      "start": 137.5,
+      "end": 144.0,
+      "text": "So having the Navan cards, people can spend and we already know that this money is spent."
+    },
+    {
+      "start": 144.0,
+      "end": 147.2,
+      "text": "We just need the receipts."
+    },
+    {
+      "start": 147.2,
+      "end": 152.0,
+      "text": "So it's easy to track. We can get the data by department, by cost centres,"
+    },
+    {
+      "start": 152.0,
+      "end": 156.0,
+      "text": "by teams, and also by companies. It's very friendly and easy to use."
+    },
+    {
+      "start": 156.0,
+      "end": 204.0,
+      "text": "You can easily set up policies and it's applicable instantly."
+    },
+    {
+      "start": 204.0,
+      "end": 216.0,
+      "text": "Navan is adaptive, flexible, and easy to use."
+    }
+  ]
+}

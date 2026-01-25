@@ -1,0 +1,95 @@
+{
+  "full_text": "If I have to describe Navan in a few words, it's a AI for travel and expense. Zuora is a leading cloud-based SaaS provider of subscription management and monetization solutions. We started on our overall AI journey a year ago, and AI is now embedded and infused in all the things that we do. One of the key pain points and challenges that that we had in our last solution is it was not consistent, it was fragmented, it took lot of manual effort for an employee to submit expenses and get paid, and even for our finance teams it was lot of manual effort to review and approve. Now we don't have to worry when an expense comes in, okay, did it meet the policies or not? Now it is, the policies are standardized across across all of our regions. And so employees can just go put in their information and see what's out there. Navan offers the ability to really build our own unique approach for the accounting teams, focusing on those high risk areas like policy flags, different data analytics tools rather than reviewing everything at once. It also enhances our ability in terms of data, really enabling us to develop a tailored strategy that can really maximize operational efficiency and data accuracy. Navan became a consolidated travel and expense platform for business and personal use. Our experience implementing Navan, it was very seamless. Our launch was across 17 countries. Usually other platforms that as a system administrator, we need to go through the our learning curve to understand how system is structured. However, Navan configuration data structure is transparent, easy to adopt, easy to understand. I'm very excited about what Navan's AI capabilities can offer for Zuora. When we launched the new solution from Navan, we trained our Zoe on all the common questions and policies and other areas and so when this new solution was rolled out, we directed our employees to go to Zoe and get as much as help as possible. That enabled us to drive adoption usage quickly. So that is why we are looking forward to partner with companies like Navan and to see how we can enable that agent of agent communication and to make that experience better for our employees.",
+  "segments": [
+    {
+      "start": 0.0,
+      "end": 5.0,
+      "text": "If I have to describe Navan in a few words, it's a AI for travel and expense."
+    },
+    {
+      "start": 5.0,
+      "end": 12.0,
+      "text": "Zuora is a leading cloud-based SaaS provider of subscription management and monetization solutions."
+    },
+    {
+      "start": 12.0,
+      "end": 20.0,
+      "text": "We started on our overall AI journey a year ago, and AI is now embedded and infused in all the things that we do."
+    },
+    {
+      "start": 20.0,
+      "end": 30.0,
+      "text": "One of the key pain points and challenges that that we had in our last solution is it was not consistent, it was fragmented, it took lot of manual effort for an employee to submit expenses and get paid."
+    },
+    {
+      "start": 30.0,
+      "end": 38.0,
+      "text": "And even for our finance teams it was lot of manual effort to review and approve."
+    },
+    {
+      "start": 38.0,
+      "end": 44.0,
+      "text": "Now we don't have to worry when an expense comes in, okay, did it meet the policies or not?"
+    },
+    {
+      "start": 44.0,
+      "end": 54.0,
+      "text": "Now it is, the policies are standardized across across all of our regions. And so employees can just go put in their information and see what's out there."
+    },
+    {
+      "start": 54.0,
+      "end": 66.0,
+      "text": "Navan offers the ability to really build our own unique approach for the accounting teams, focusing on those high risk areas like policy flags, different data analytics tools rather than reviewing everything at once."
+    },
+    {
+      "start": 66.0,
+      "end": 77.0,
+      "text": "It also enhances our ability in terms of data, really enabling us to develop a tailored strategy that can really maximize operational efficiency and data accuracy."
+    },
+    {
+      "start": 77.0,
+      "end": 85.0,
+      "text": "Navan became a consolidated travel and expense platform for business and personal use."
+    },
+    {
+      "start": 85.0,
+      "end": 93.0,
+      "text": "Our experience implementing Navan, it was very seamless. Our launch was across 17 countries."
+    },
+    {
+      "start": 93.0,
+      "end": 103.0,
+      "text": "Usually other platforms that as a system administrator, we need to go through the our learning curve to understand how system is structured."
+    },
+    {
+      "start": 103.0,
+      "end": 112.0,
+      "text": "However, Navan configuration data structure is transparent, easy to adopt, easy to understand."
+    },
+    {
+      "start": 112.0,
+      "end": 118.0,
+      "text": "I'm very excited about what Navan's AI capabilities can offer for Zuora."
+    },
+    {
+      "start": 118.0,
+      "end": 128.0,
+      "text": "When we launched the new solution from Navan, we trained our Zoe on all the common questions and policies and other areas."
+    },
+    {
+      "start": 128.0,
+      "end": 135.0,
+      "text": "And so when this new solution was rolled out, we directed our employees to go to Zoe and get as much as help as possible."
+    },
+    {
+      "start": 135.0,
+      "end": 140.0,
+      "text": "That enabled us to drive adoption usage quickly."
+    },
+    {
+      "start": 140.0,
+      "end": 152.0,
+      "text": "So that is why we are looking forward to partner with companies like Navan and to see how we can enable that agent of agent communication and to make that experience better for our employees."
+    }
+  ]
+}

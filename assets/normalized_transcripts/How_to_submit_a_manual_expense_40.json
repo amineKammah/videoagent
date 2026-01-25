@@ -1,0 +1,45 @@
+{
+  "full_text": "Hi, my name is Doug, I'm an account manager here at Navan, and today we're going to run through submitting a manual expense through the Navan app. On the expense tab of the app, you'll see the option to add new transaction at the bottom right. When we click this, we'll have the option to scan a receipt, type in details, log distance driven, or import from personal card. I'm going to scan a receipt where I've purchased a coffee here. You see that I've taken a photo and I'm saying I'm going to use this photo here. In this time, we're scanning the receipt for all the relevant details, including merchant, tax, pricing, whatever it might be, and we can double check the details in here. You'll see that we have the merchant, the expense type, and we can also track if we're on a trip or not. Once we're ready, we can submit this and it goes to the admin for approval.",
+  "segments": [
+    {
+      "start_time": 0.0,
+      "end_time": 6.5,
+      "text": "Intro and title card: How to submit a manual expense."
+    },
+    {
+      "start_time": 6.5,
+      "end_time": 13.0,
+      "text": "Hi, my name is Doug, I'm an account manager here at Navan, and today we're going to run through submitting a manual expense through the Navan app."
+    },
+    {
+      "start_time": 13.0,
+      "end_time": 18.0,
+      "text": "On the expense tab of the app, you'll see the option to add new transaction at the bottom right."
+    },
+    {
+      "start_time": 18.0,
+      "end_time": 25.0,
+      "text": "When we click this, we'll have the option to scan a receipt, type in details, log distance driven, or import from personal card."
+    },
+    {
+      "start_time": 25.0,
+      "end_time": 32.0,
+      "text": "I'm going to scan a receipt where I've purchased a coffee here. You see that I've taken a photo and I'm saying I'm going to use this photo here."
+    },
+    {
+      "start_time": 32.0,
+      "end_time": 41.0,
+      "text": "In this time, we're scanning the receipt for all the relevant details, including merchant, tax, pricing, whatever it might be."
+    },
+    {
+      "start_time": 41.0,
+      "end_time": 50.0,
+      "text": "And we can double check the details in here. You'll see that we have the merchant, the expense type, and we can also track if we're on a trip or not."
+    },
+    {
+      "start_time": 50.0,
+      "end_time": 55.0,
+      "text": "Once we're ready, we can submit this and it goes to the admin for approval."
+    }
+  ]
+}

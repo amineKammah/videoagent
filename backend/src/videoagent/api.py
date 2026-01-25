@@ -276,7 +276,7 @@ def get_video_metadata(video_id: str) -> VideoMetadataResponse:
     
     return VideoMetadataResponse(
         id=video.id,
-        path=str(video.path),
+        path=str(video.path.absolute()),
         filename=video.filename,
         duration=video.duration,
         resolution=video.resolution,

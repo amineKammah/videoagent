@@ -1,0 +1,55 @@
+{
+  "full_text": "Introducing Navan. The all-in-one super platform for corporate travel and expense management. With Navan, employees book travel on their own. When on the go, they just snap a photo of their receipt. Navan handles the rest. But what happens if I go over budget? Relax, your policy has you covered. Real time dashboards? Check. Scheduled reports? Check. Everyone is happy? Check. This is the future of corporate travel and expense management. Experience Navan today. It's free to get started.",
+  "segments": [
+    {
+      "start": 0.0,
+      "end": 3.0,
+      "text": "Introducing Navan."
+    },
+    {
+      "start": 3.0,
+      "end": 7.0,
+      "text": "The all-in-one super platform for corporate travel and expense management."
+    },
+    {
+      "start": 7.0,
+      "end": 10.0,
+      "text": "With Navan, employees book travel on their own."
+    },
+    {
+      "start": 10.0,
+      "end": 12.0,
+      "text": "When on the go, they just snap a photo of their receipt."
+    },
+    {
+      "start": 12.0,
+      "end": 14.0,
+      "text": "Navan handles the rest."
+    },
+    {
+      "start": 14.0,
+      "end": 17.0,
+      "text": "But what happens if I go over budget? Relax, your policy has you covered."
+    },
+    {
+      "start": 17.0,
+      "end": 22.0,
+      "text": "Real time dashboards? Check. Scheduled reports? Check."
+    },
+    {
+      "start": 22.0,
+      "end": 26.0,
+      "text": "Everyone is happy? Check."
+    },
+    {
+      "start": 26.0,
+      "end": 30.0,
+      "text": "This is the future of corporate travel and expense management. Experience Navan today."
+    },
+    {
+      "start": 30.0,
+      "end": 32.0,
+      "text": "It's free to get started."
+    }
+  ]
+}

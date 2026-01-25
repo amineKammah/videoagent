@@ -1,0 +1,20 @@
+{
+  "full_text": "Where to? Location. London, UK. Delta Air Lines, $392. JFK 8:20 am, Nonstop, LHR 8:10 pm. Earn Delta SkyMiles. American Airlines, $458. JFK 9:25 am, Nonstop, LHR 9:25 pm. Earn AAdvantage miles. British Airways, $413. JFK 7:35 pm, Nonstop, LHR 7:45 am. Earn Avios.",
+  "segments": [
+    {
+      "start": 0.0,
+      "end": 2.0,
+      "text": "Where to?"
+    },
+    {
+      "start": 2.0,
+      "end": 4.0,
+      "text": "London, UK"
+    },
+    {
+      "start": 4.0,
+      "end": 7.0,
+      "text": "Flight options for Delta, American Airlines, and British Airways."
+    }
+  ]
+}

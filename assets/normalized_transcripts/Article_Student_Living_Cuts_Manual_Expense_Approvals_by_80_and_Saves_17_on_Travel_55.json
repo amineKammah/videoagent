@@ -1,0 +1,100 @@
+{
+  "full_text": "With Navan, you can rely on the data extracts that you receive and know that you have 100% of the data. With our previous solution, it was genuinely like a whole finance and accounting department's undertaking to reconcile the data every month. Article Student Living is a vertically integrated student housing company with 500 employees and 50 assets throughout the United States. There were challenges with travel management specifically, so much so that people opted not even to use it. So they would use their JP Morgan corporate credit card and just book off the platform and use Expedia or some other online service. With Navan, everything being centralized makes it so much easier for the user. From our perspective on the finance and accounting group, we didn't have any sort of visualizations or dashboards, so we couldn't really get information out of the system without doing deep data dives, pivot tables, Excel work. Our previous solution had no integrations with any of our systems. It was essentially fully manual from people coding their expenses to approvals to recording things within our ledger. Because of our challenges, I knew that due to the size of our company, we needed something that would be a more comprehensive solution. We moved away from having disparate systems. With Navan, that was all lumped into one program. So it allows us to have quicker insights and actually put controls on the front end to prevent excessive spend or any sort of fraudulent activity. Our previous solution, 100% of transactions needed to be submitted, approved, and processed before they were actually included within our financial statements. So the fact that Navan is essentially automatically approving transactions because they're within our policy, that saves time for managers because they know that their team is spending within policy and they can really focus on either higher dollar spend amounts or things that might fall outside of the normal course of business. With our old T&E platform, our director of marketing would actually have to carve out four to six hours for one Saturday in a month to go through all the individual transactions for in-house ad spend. With Navan, because we're able to quickly set up the virtual P-cards and have individual funding accounts and pre-allocated GL codes, all of that Saturday coding work is a thing of the past. Moving from our old T&E system to Navan, we've saved 17% on travel. That's our biggest bucket of discretionary spend, so it was important for us to find a solution where we can monitor it effectively and ultimately save money. The fact that we have a 96% adoption rate with people using the travel platform and the Navan expense card, that provides immediate visibility for our department heads and our finance and accounting team.",
+  "segments": [
+    {
+      "start": 0.0,
+      "end": 6.8,
+      "text": "With Navan, you can rely on the data extracts that you receive and know that you have 100% of the data."
+    },
+    {
+      "start": 6.8,
+      "end": 17.5,
+      "text": "With our previous solution, it was genuinely like a whole finance and accounting department's undertaking to reconcile the data every month."
+    },
+    {
+      "start": 17.5,
+      "end": 27.6,
+      "text": "Article Student Living is a vertically integrated student housing company with 500 employees and 50 assets throughout the United States."
+    },
+    {
+      "start": 27.6,
+      "end": 33.6,
+      "text": "There were challenges with travel management specifically, so much so that people opted not even to use it."
+    },
+    {
+      "start": 33.6,
+      "end": 43.1,
+      "text": "So they would use their JP Morgan corporate credit card and just book off the platform and use Expedia or some other online service."
+    },
+    {
+      "start": 43.1,
+      "end": 50.1,
+      "text": "With Navan, everything being centralized makes it so much easier for the user."
+    },
+    {
+      "start": 50.1,
+      "end": 66.8,
+      "text": "From our perspective on the finance and accounting group, we didn't have any sort of visualizations or dashboards, so we couldn't really get information out of the system without doing deep data dives, pivot tables, Excel work."
+    },
+    {
+      "start": 66.8,
+      "end": 74.0,
+      "text": "Our previous solution had no integrations with any of our systems."
+    },
+    {
+      "start": 74.0,
+      "end": 84.4,
+      "text": "It was essentially fully manual from people coding their expenses to approvals to recording things within our ledger."
+    },
+    {
+      "start": 84.4,
+      "end": 92.5,
+      "text": "Because of our challenges, I knew that due to the size of our company, we needed something that would be a more comprehensive solution."
+    },
+    {
+      "start": 92.5,
+      "end": 100.2,
+      "text": "We moved away from having disparate systems. With Navan, that was all lumped into one program."
+    },
+    {
+      "start": 100.2,
+      "end": 110.1,
+      "text": "So it allows us to have quicker insights and actually put controls on the front end to prevent excessive spend or any sort of fraudulent activity."
+    },
+    {
+      "start": 110.1,
+      "end": 121.7,
+      "text": "Our previous solution, 100% of transactions needed to be submitted, approved, and processed before they were actually included within our financial statements."
+    },
+    {
+      "start": 121.7,
+      "end": 139.7,
+      "text": "So the fact that Navan is essentially automatically approving transactions because they're within our policy, that saves time for managers because they know that their team is spending within policy and they can really focus on either higher dollar spend amounts or things that might fall outside of the normal course of business."
+    },
+    {
+      "start": 139.7,
+      "end": 154.5,
+      "text": "With our old T&E platform, our director of marketing would actually have to carve out four to six hours for one Saturday in a month to go through all the individual transactions for in-house ad spend."
+    },
+    {
+      "start": 154.5,
+      "end": 170.1,
+      "text": "With Navan, because we're able to quickly set up the virtual P-cards and have individual funding accounts and pre-allocated GL codes, all of that Saturday coding work is a thing of the past."
+    },
+    {
+      "start": 170.1,
+      "end": 178.1,
+      "text": "Moving from our old T&E system to Navan, we've saved 17% on travel."
+    },
+    {
+      "start": 178.1,
+      "end": 186.2,
+      "text": "That's our biggest bucket of discretionary spend, so it was important for us to find a solution where we can monitor it effectively and ultimately save money."
+    },
+    {
+      "start": 186.2,
+      "end": 200.0,
+      "text": "The fact that we have a 96% adoption rate with people using the travel platform and the Navan expense card, that provides immediate visibility for our department heads and our finance and accounting team."
+    }
+  ]
+}

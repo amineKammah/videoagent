@@ -1,0 +1,80 @@
+{
+  "full_text": "Our philosophy at Navan is simple: deliver smarter travel and expense management for your business and an experience travelers love. Today, we're here to show you how our latest release delivers on that promise. This is the Navan Summer 2025 release. When a business trip ends, the work is often just beginning for finance and accounting teams. Moving data between your T&E platform and accounting system is often a bottleneck that requires manual exports, uploads, and reconciliation. That's why we've added Sage Intacct to our suite of direct integrations. Now, all transactions flow directly to your ledger, instantly and accurately, ensuring cleaner books and quicker month-end close. But that's only one part of the equation. The other is ensuring you get the most value from your spend in the first place, and that starts with smarter booking. Our new split ticketing feature for UK rail does exactly that. It automatically splits a single journey into multiple cheaper tickets. Your traveler's journey is exactly the same, the savings are simply built-in. Now, smarter booking also means giving travelers more confidence when planning their next trip. We put on-time performance data front and center in our shopping flow to help you avoid those notoriously late flights and choose a more reliable option. When booking trains, we've expanded seat selection across more carriers, letting you lock in the right seat for yourself or for your entire team right from Navan. And finally, rebooking a hotel you love is now even easier. We show your full stay history for any property so you can find that favorite and book it again in seconds. Let's talk about one of the biggest headaches for finance teams: recovering funds for out-of-policy or personal spend on corporate cards. It's a manual process of chasing employees and running messy payroll deductions. We've solved this problem for Navan cards, but the challenge remained for other linked corporate cards, until now. Navan Connect, which lets you extend the benefits of our expense solution to the cards of your choice, now supports repayments. This means employees can repay personal spend on any connected cards right from Navan. For finance teams, this means the funds are recovered and reconciled in one clean step. Everything you saw today is another step forward in our core mission: making travel easy for every frequent traveler. This is what drives us, and we're just getting started. See you next time.",
+  "segments": [
+    {
+      "start": 0.0,
+      "end": 9.5,
+      "text": "Our philosophy at Navan is simple: deliver smarter travel and expense management for your business and an experience travelers love."
+    },
+    {
+      "start": 9.5,
+      "end": 16.5,
+      "text": "Today, we're here to show you how our latest release delivers on that promise. This is the Navan Summer 2025 release."
+    },
+    {
+      "start": 16.5,
+      "end": 28.5,
+      "text": "When a business trip ends, the work is often just beginning for finance and accounting teams. Moving data between your T&E platform and accounting system is often a bottleneck that requires manual exports, uploads, and reconciliation."
+    },
+    {
+      "start": 28.5,
+      "end": 40.0,
+      "text": "That's why we've added Sage Intacct to our suite of direct integrations. Now, all transactions flow directly to your ledger, instantly and accurately, ensuring cleaner books and quicker month-end close."
+    },
+    {
+      "start": 40.0,
+      "end": 50.0,
+      "text": "But that's only one part of the equation. The other is ensuring you get the most value from your spend in the first place, and that starts with smarter booking. Our new split ticketing feature for UK rail does exactly that."
+    },
+    {
+      "start": 50.0,
+      "end": 58.0,
+      "text": "It automatically splits a single journey into multiple cheaper tickets. Your traveler's journey is exactly the same, the savings are simply built-in."
+    },
+    {
+      "start": 58.0,
+      "end": 63.0,
+      "text": "Now, smarter booking also means giving travelers more confidence when planning their next trip."
+    },
+    {
+      "start": 63.0,
+      "end": 71.0,
+      "text": "We put on-time performance data front and center in our shopping flow to help you avoid those notoriously late flights and choose a more reliable option."
+    },
+    {
+      "start": 71.0,
+      "end": 80.0,
+      "text": "When booking trains, we've expanded seat selection across more carriers, letting you lock in the right seat for yourself or for your entire team right from Navan."
+    },
+    {
+      "start": 80.0,
+      "end": 89.0,
+      "text": "And finally, rebooking a hotel you love is now even easier. We show your full stay history for any property so you can find that favorite and book it again in seconds."
+    },
+    {
+      "start": 89.0,
+      "end": 102.0,
+      "text": "Let's talk about one of the biggest headaches for finance teams: recovering funds for out-of-policy or personal spend on corporate cards. It's a manual process of chasing employees and running messy payroll deductions."
+    },
+    {
+      "start": 102.0,
+      "end": 115.0,
+      "text": "We've solved this problem for Navan cards, but the challenge remained for other linked corporate cards, until now. Navan Connect, which lets you extend the benefits of our expense solution to the cards of your choice, now supports repayments."
+    },
+    {
+      "start": 115.0,
+      "end": 122.0,
+      "text": "This means employees can repay personal spend on any connected cards right from Navan."
+    },
+    {
+      "start": 122.0,
+      "end": 128.0,
+      "text": "For finance teams, this means the funds are recovered and reconciled in one clean step."
+    },
+    {
+      "start": 128.0,
+      "end": 144.0,
+      "text": "Everything you saw today is another step forward in our core mission: making travel easy for every frequent traveler. This is what drives us, and we're just getting started. See you next time."
+    }
+  ]
+}

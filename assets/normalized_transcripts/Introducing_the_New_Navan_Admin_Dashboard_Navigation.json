@@ -1,0 +1,55 @@
+{
+  "full_text": "Hey everyone, thanks for joining. I'm excited to walk you through the redesigned Navan admin dashboard navigation for both travel and expense admins. So, the biggest change obviously as you can see is we've moved from a top navigation to a left-hand side navigation. This makes it much faster and easier to get to where you need to go. So now your travel, expense, and configuration admin apps are grouped neatly on the left and everything stays right at your fingertips without page reloads. Next, you'll notice that the sections are expandable and collapsible as you see fit. So related pages are grouped together so you can stay organized and jump to exactly where you want to go without digging through all sorts of hidden menus. It's cleaner, it's simpler, and it's designed to help you stay focused on the task at hand. So yeah, we can't wait for you to experience the new navigation. It's built to definitely to simplify and speed up your workflow so you can manage travel and expense more efficiently. Thanks for taking a couple minutes to explore it and yeah we're excited for you all to dive in.",
+  "segments": [
+    {
+      "start_time": 0.0,
+      "end_time": 4.1,
+      "text": "Intro title: REDESIGNED NAVIGATION Admin dashboard"
+    },
+    {
+      "start_time": 4.1,
+      "end_time": 12.6,
+      "text": "Hey everyone, thanks for joining. I'm excited to walk you through the redesigned Navan admin dashboard navigation for both travel and expense admins."
+    },
+    {
+      "start_time": 12.6,
+      "end_time": 20.3,
+      "text": "So, the biggest change obviously as you can see is we've moved from a top navigation to a left-hand side navigation."
+    },
+    {
+      "start_time": 20.3,
+      "end_time": 24.1,
+      "text": "This makes it much faster and easier to get to where you need to go."
+    },
+    {
+      "start_time": 24.1,
+      "end_time": 33.1,
+      "text": "So now your travel, expense, and configuration admin apps are grouped neatly on the left and everything stays right at your fingertips without page reloads."
+    },
+    {
+      "start_time": 33.1,
+      "end_time": 38.3,
+      "text": "Next, you'll notice that the sections are expandable and collapsible as you see fit."
+    },
+    {
+      "start_time": 38.3,
+      "end_time": 46.5,
+      "text": "So related pages are grouped together so you can stay organized and jump to exactly where you want to go without digging through all sorts of hidden menus."
+    },
+    {
+      "start_time": 46.5,
+      "end_time": 52.4,
+      "text": "It's cleaner, it's simpler, and it's designed to help you stay focused on the task at hand."
+    },
+    {
+      "start_time": 52.4,
+      "end_time": 61.1,
+      "text": "So yeah, we can't wait for you to experience the new navigation. It's built to definitely to simplify and speed up your workflow so you can manage travel and expense more efficiently."
+    },
+    {
+      "start_time": 61.1,
+      "end_time": 105.0,
+      "text": "Thanks for taking a couple minutes to explore it and yeah we're excited for you all to dive in."
+    }
+  ]
+}

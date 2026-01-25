@@ -1,0 +1,65 @@
+{
+  "full_text": "And today we're going to run through booking your travel through the platform. When you're first invited into Navan, you are asked to input some basic personal information about yourself and to register your profile. But once you've done this, this is the homepage that will greet you every time you log into the Navan platform. To begin with, if we're booking a flight, we select, of course, our departure and our arrival airports. In this instance, we're going to say anywhere from London to anywhere to Berlin. And we can select our departure date and also decide whether this is going to be a round trip or a one-way trip, or even multi-city. Once we've done this, we can, of course, search for our flight. And we'll check with all the airlines that do carry this route to ensure you get all the options available to you when you're looking for your flights. Once the results have pulled through, there's going to be a lot of routes coming through, as you would expect. So you are able to filter your results to make sure it's best suited for you as well. Perhaps we want only a direct flight. We want to make sure we're departing or arriving at certain times. Or even if we have preferences about the airlines, airports, and also seeing what is in or out of policy. As you scroll through the results, you will see a shield which will show whether something is in or out of policy. For example, here, this is above the fare policy. And if we scroll further down, we'll see a result that's actually out of pricing policy as well. But if we go to the top, what we do at Navan is we do group our fares by what we class as base, standard, enhanced, premium. But to be more specific, if you click into a result, you can receive what is actually included in your flight, as well as the exact amenities for that class that you are flying with. But if we select this flight here, what will happen is a trip will be created for us and any further bookings for that specific trip can be booked out of your itinerary. By default, we've named this after the city that you're traveling to, but we can rename this, for example, if we call this a client visit and save that information. Once we've done that, we then review the details that we've selected already, for example, the departure date, the change and cancellation policy. When we are traveling, we ask if we'd like to share your contact information with the airline in case there's any sort of operational updates needed. Anytime you're traveling internationally, we do make sure you're aware that you need a passport and potentially a visa. And then we'll review the traveler information. So we can add bags, we can select our seats, and if we haven't added it in our profile, we can also add any loyalty points that we might have there as well. If you're a Navan Travel Payment user, there'll be a card automatically populated for you here. Otherwise, you can enter card information to pay for the flight. Once we've done that, we're ready to book and your trip is created.",
+  "segments": [
+    {
+      "start_time": 0.0,
+      "end_time": 6.0,
+      "text": "Intro animation showing Navan branding and airplane cabin."
+    },
+    {
+      "start_time": 7.0,
+      "end_time": 23.0,
+      "text": "Introduction and overview of the Navan homepage after profile setup."
+    },
+    {
+      "start_time": 24.0,
+      "end_time": 41.0,
+      "text": "Inputting flight details: departure, arrival, dates, and trip type."
+    },
+    {
+      "start_time": 42.0,
+      "end_time": 52.0,
+      "text": "Platform searching across multiple airlines for the best options."
+    },
+    {
+      "start_time": 53.0,
+      "end_time": 1.16,
+      "text": "Explanation of filters: direct flights, times, airlines, and policy compliance."
+    },
+    {
+      "start_time": 117.0,
+      "end_time": 129.0,
+      "text": "Demonstrating the shield icons for in-policy vs. out-of-policy bookings."
+    },
+    {
+      "start_time": 130.0,
+      "end_time": 147.0,
+      "text": "Grouping fares by class and reviewing specific amenities and inclusions."
+    },
+    {
+      "start_time": 148.0,
+      "end_time": 1.57,
+      "text": "Selecting a flight and generating a trip itinerary."
+    },
+    {
+      "start_time": 1.58,
+      "end_time": 2.09,
+      "text": "Checkout process: renaming the trip (e.g., 'Client Visit')."
+    },
+    {
+      "start_time": 2.1,
+      "end_time": 2.3,
+      "text": "Reviewing change/cancellation policies and travel document requirements."
+    },
+    {
+      "start_time": 2.31,
+      "end_time": 2.42,
+      "text": "Managing traveler info: adding bags, selecting seats, and loyalty points."
+    },
+    {
+      "start_time": 2.43,
+      "end_time": 3.0,
+      "text": "Payment method selection and final booking confirmation."
+    }
+  ]
+}

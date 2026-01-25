@@ -1,0 +1,35 @@
+{
+  "full_text": "Expensing Uber rides and meals just got easier. Connect your Uber for Business account to Navan. Uber receipts are automatically attached to each expense. No missing receipts. No manual uploads. Now with Navan and Uber for Business, expense reports drive themselves. Transform the way you travel.",
+  "segments": [
+    {
+      "start": 0.0,
+      "end": 4.5,
+      "text": "Expensing Uber rides and meals just got easier."
+    },
+    {
+      "start": 4.5,
+      "end": 10.0,
+      "text": "Connect your Uber for Business account to Navan."
+    },
+    {
+      "start": 16.0,
+      "end": 20.0,
+      "text": "Uber receipts are automatically attached to each expense."
+    },
+    {
+      "start": 20.0,
+      "end": 23.0,
+      "text": "No missing receipts. No manual uploads."
+    },
+    {
+      "start": 23.0,
+      "end": 26.0,
+      "text": "Now with Navan and Uber for Business, expense reports drive themselves."
+    },
+    {
+      "start": 26.0,
+      "end": 33.0,
+      "text": "Transform the way you travel."
+    }
+  ]
+}

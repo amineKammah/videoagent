@@ -1,0 +1,40 @@
+{
+  "full_text": "This is you, trying to book a trip on your business travel platform. And this is me, using Navan. This is you, wondering why your company uses a platform that looks like it's from the 90s. This is me, seeing my itinerary in one beautiful screen on my computer. And now my phone. And now my watch. I even earned all my loyalty points. This is you, stuck on hold trying to change your flight. This is me on Navan, changing my flight on my own. Now I'm halfway to Austin, sipping my welcome drink while reclining in my favorite seat. Bon voyage. This is you, comforting your CFO after she sees last month's travel spend. And this is me, sending a selfie to our CFO who's happy that Navan is saving her company loads. Appreciate the update. This is your company finally switching to Navan. And this is me, welcoming you to the good life. Navan. Get started, it's free.",
+  "segments": [
+    {
+      "start": 0.0,
+      "end": 6.0,
+      "text": "This is you, trying to book a trip on your business travel platform. And this is me, using Navan."
+    },
+    {
+      "start": 6.0,
+      "end": 12.0,
+      "text": "This is you, wondering why your company uses a platform that looks like it's from the 90s."
+    },
+    {
+      "start": 12.0,
+      "end": 21.0,
+      "text": "This is me, seeing my itinerary in one beautiful screen on my computer. And now my phone. And now my watch. I even earned all my loyalty points."
+    },
+    {
+      "start": 21.0,
+      "end": 29.0,
+      "text": "This is you, stuck on hold trying to change your flight. This is me on Navan, changing my flight on my own."
+    },
+    {
+      "start": 29.0,
+      "end": 38.0,
+      "text": "Now I'm halfway to Austin, sipping my welcome drink while reclining in my favorite seat. Bon voyage."
+    },
+    {
+      "start": 38.0,
+      "end": 50.0,
+      "text": "This is you, comforting your CFO after she sees last month's travel spend. And this is me, sending a selfie to our CFO who's happy that Navan is saving her company loads."
+    },
+    {
+      "start": 50.0,
+      "end": 64.0,
+      "text": "This is your company finally switching to Navan. And this is me, welcoming you to the good life. Navan. Get started, it's free."
+    }
+  ]
+}

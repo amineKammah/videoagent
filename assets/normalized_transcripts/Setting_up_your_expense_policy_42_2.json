@@ -1,0 +1,110 @@
+{
+  "full_text": "Hi, my name's Doug. I'm an account manager here at Navan. And today we're going to run through the configuration of your expense policy on the platform. To begin with, we're going to actually look at payments and expensing as a rule as a whole before we start looking at the specific policies themselves. And you'll see that under Expense Admin and Policy. To begin with, we can decide which users can and cannot have physical cards and also when they're active. As a reminder, on trip means 24 hours before the first part of travel begins and 24 hours after the travel finishes is classed as on trip. We can also set rules on receipts and how much someone needs to get to before they need to submit a receipt on that side as well. So for example, we can say over 75 US dollars, everyone will need to submit a receipt regardless of the expense itself. The next piece is around Navan Purchase Cards and who can request them and who needs to approve them. So we can say that people are allowed to enable... are allowed to request purchase cards in the platform. The manager will always review requests before they're submitted, but we can decide the threshold for when admins need to approve them as well through dual authorization. We can also say who those approvers might be. So is it going to be those that are account owners on the platform or specific expense admins in Navan too? We can also look at employee reimbursement methods about how we're going to pay back employees when they've had out-of-pocket expenses. We have three options. It's via payroll, which is an internal process, of course, or direct debit or direct deposit only to eligible employees. When Navan pays the employee back within 48 hours of the expense being approved, dropping straight into their bank account once they've linked it in Navan. We then look at what we can actually allocate to the virtual cards with the credit card authorization forms for booking hotels. We can see what charges are allowed in the platform. Typically it's just the room and the taxes, but you can also ensure that we can include breakfast and parking as well so that people aren't paying out of pocket for those expenses. We can allow some users to edit department, cost center, region, and subsidiary for their transactions. Typically, we suggest keeping this off as we don't want users to start moving all the departments and cost centers with their expenses. And the last piece is the fraud prevention limit. So again, this isn't linked to the specific policies themselves, but the overarching rule for the cards and expensing. In this instance, if someone was to spend over 10,000 pounds in one month, then every transaction going after that would be flagged and then anything up to 20,000 in that month would be automatically rejected. The next piece we're going to go into is travel expenses. As a reminder, users should be booking their travel through the Navan booking tool and these are for extra costs outside of these, for example, in airfare upgrades and baggage fees. We can set which GL codes are going to be tied to these specific lines and so every time someone makes a booking or has a transaction with airfare and fees, then that is automatically tied to the right GL code. And we can set the flag policy and decline limits as well. So in this instance, we can set a max price per transaction before something is flagged or even a max price per month before it starts getting flagged as well. We can also say whether it's going to be flagged for review or actually just automatically rejected in the platform as well. We can also set the decline limits in the platform too. So if we're between the flag limit and decline limit, when we reach the in this case 7,000 pounds per transaction, it will get declined. And as per any line in expense, we can decide who is actually going to be approving these flagged transactions, whether it's going to be an expense admin, a user's manager, or a specific individual within the system as well. We then move on to on-trip expenses, which is that 24 hours before and 24 hours after travel piece we discussed earlier. We can enable these policies, whether people can use them or not, and we're going to use the example as meals for myself whilst traveling. If I enable this, then we can again map the GL codes to the relevant one for our system, set our flag policy limit, which means that if someone reaches a 70 pounds per day for food, then it will start getting flagged to either the admins or the managers. And we can change this for whether it's going to be day, week, month, or year. When we reach the decline limit, the card will automatically decline at restaurants when someone is traveling and getting food for themselves. The rulesets are the same for the rest of these on-trip expenses. The next part we will look at is the off-trip expenses, in this case discretionary expenses here. Let's say we use the example for team events and meals. We might want to enable this for certain people and we set those rules in the same way as we did before. Similarly again, we're looking at benefits. We can give people the option to get for meals for myself. But if there are custom benefits that you have that you want to add, you can do so by giving it a name, a description, and even selecting which merchant types are accepted and linked to this expense as well. The last piece of this is on the job expenses. The flag and decline policy works in the same way. The only difference is distance driven and mileage reimbursement. We can set reimbursement rates for country for tax for tax purposes, set what the price is, and also what the policy is of how many miles someone can drive before it starts getting flagged as well.",
+  "segments": [
+    {
+      "start_time": 0,
+      "end_time": 7,
+      "transcript": "Hi, my name's Doug. I'm an account manager here at Navan. And today we're going to run through the configuration of your expense policy on the platform."
+    },
+    {
+      "start_time": 7,
+      "end_time": 25,
+      "transcript": "To begin with, we're going to actually look at payments and expensing as a rule as a whole before we start looking at the specific policies themselves. And you'll see that under Expense Admin and Policy."
+    },
+    {
+      "start_time": 25,
+      "end_time": 42,
+      "transcript": "To begin with, we can decide which users can and cannot have physical cards and also when they're active. As a reminder, on trip means 24 hours before the first part of travel begins and 24 hours after the travel finishes is classed as on trip."
+    },
+    {
+      "start_time": 42,
+      "end_time": 58,
+      "transcript": "We can also set rules on receipts and how much someone needs to get to before they need to submit a receipt on that side as well. So for example, we can say over 75 US dollars, everyone will need to submit a receipt regardless of the expense itself."
+    },
+    {
+      "start_time": 58,
+      "end_time": 121,
+      "transcript": "The next piece is around Navan Purchase Cards and who can request them and who needs to approve them. So we can say that people are allowed to enable... are allowed to request purchase cards in the platform. The manager will always review requests before they're submitted, but we can decide the threshold for when admins need to approve them as well through dual authorization."
+    },
+    {
+      "start_time": 121,
+      "end_time": 131,
+      "transcript": "We can also say who those approvers might be. So is it going to be those that are account owners on the platform or specific expense admins in Navan too?"
+    },
+    {
+      "start_time": 131,
+      "end_time": 155,
+      "transcript": "We can also look at employee reimbursement methods about how we're going to pay back employees when they've had out-of-pocket expenses. We have three options. It's via payroll, which is an internal process, of course, or direct debit or direct deposit only to eligible employees. When Navan pays the employee back within 48 hours of the expense being approved, dropping straight into their bank account once they've linked it in Navan."
+    },
+    {
+      "start_time": 155,
+      "end_time": 216,
+      "transcript": "We then look at what we can actually allocate to the virtual cards with the credit card authorization forms for booking hotels. We can see what charges are allowed in the platform. Typically it's just the room and the taxes, but you can also ensure that we can include breakfast and parking as well so that people aren't paying out of pocket for those expenses."
+    },
+    {
+      "start_time": 216,
+      "end_time": 232,
+      "transcript": "We can allow some users to edit department, cost center, region, and subsidiary for their transactions. Typically, we suggest keeping this off as we don't want users to start moving all the departments and cost centers with their expenses."
+    },
+    {
+      "start_time": 232,
+      "end_time": 255,
+      "transcript": "And the last piece is the fraud prevention limit. So again, this isn't linked to the specific policies themselves, but the overarching rule for the cards and expensing. In this instance, if someone was to spend over 10,000 pounds in one month, then every transaction going after that would be flagged and then anything up to 20,000 in that month would be automatically rejected."
+    },
+    {
+      "start_time": 255,
+      "end_time": 310,
+      "transcript": "The next piece we're going to go into is travel expenses. As a reminder, users should be booking their travel through the Navan booking tool and these are for extra costs outside of these, for example, in airfare upgrades and baggage fees."
+    },
+    {
+      "start_time": 310,
+      "end_time": 323,
+      "transcript": "We can set which GL codes are going to be tied to these specific lines and so every time someone makes a booking or has a transaction with airfare and fees, then that is automatically tied to the right GL code."
+    },
+    {
+      "start_time": 323,
+      "end_time": 343,
+      "transcript": "And we can set the flag policy and decline limits as well. So in this instance, we can set a max price per transaction before something is flagged or even a max price per month before it starts getting flagged as well. We can also say whether it's going to be flagged for review or actually just automatically rejected in the platform as well."
+    },
+    {
+      "start_time": 343,
+      "end_time": 354,
+      "transcript": "We can also set the decline limits in the platform too. So if we're between the flag limit and decline limit, when we reach the in this case 7,000 pounds per transaction, it will get declined."
+    },
+    {
+      "start_time": 354,
+      "end_time": 408,
+      "transcript": "And as per any line in expense, we can decide who is actually going to be approving these flagged transactions, whether it's going to be an expense admin, a user's manager, or a specific individual within the system as well."
+    },
+    {
+      "start_time": 408,
+      "end_time": 423,
+      "transcript": "We then move on to on-trip expenses, which is that 24 hours before and 24 hours after travel piece we discussed earlier."
+    },
+    {
+      "start_time": 423,
+      "end_time": 450,
+      "transcript": "We can enable these policies, whether people can use them or not, and we're going to use the example as meals for myself whilst traveling. If I enable this, then we can again map the GL codes to the relevant one for our system, set our flag policy limit, which means that if someone reaches a 70 pounds per day for food, then it will start getting flagged to either the admins or the managers. And we can change this for whether it's going to be day, week, month, or year. When we reach the decline limit, the card will automatically decline at restaurants when someone is traveling and getting food for themselves."
+    },
+    {
+      "start_time": 450,
+      "end_time": 454,
+      "transcript": "The rulesets are the same for the rest of these on-trip expenses."
+    },
+    {
+      "start_time": 454,
+      "end_time": 507,
+      "transcript": "The next part we will look at is the off-trip expenses, in this case discretionary expenses here. Let's say we use the example for team events and meals. We might want to enable this for certain people and we set those rules in the same way as we did before."
+    },
+    {
+      "start_time": 507,
+      "end_time": 527,
+      "transcript": "Similarly again, we're looking at benefits. We can give people the option to get for meals for myself. But if there are custom benefits that you have that you want to add, you can do so by giving it a name, a description, and even selecting which merchant types are accepted and linked to this expense as well."
+    },
+    {
+      "start_time": 527,
+      "end_time": 551,
+      "transcript": "The last piece of this is on the job expenses. The flag and decline policy works in the same way. The only difference is distance driven and mileage reimbursement. We can set reimbursement rates for country for tax for tax purposes, set what the price is, and also what the policy is of how many miles someone can drive before it starts getting flagged as well."
+    }
+  ]
+}

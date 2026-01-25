@@ -1,0 +1,685 @@
+{
+  "full_text": "All right. Hello everybody. I can't see the participants actually, but I'm being told that we have about 18 people on this call today. Nice to meet you all. My name is Jess. I'm our Vice President of Travel and Expense. I've been with Navan for four years, and this is actually my last week before maternity leave. And I call that out because you can probably hear the congestion and the fact that I'm out of breath. But thank you all for joining. We haven't done webinars in a little bit. I think there was some webinar fatigue post-COVID, but we're back and we think it's a great way to share some context on what Navan's doing, what we're seeing in the travel and expense industry. And we like to keep these short because I don't know that people can really pay attention for more than 30 minutes. So I'll actually kick us off today. I encourage you to post questions. I will have someone that can field some of the Q&A questions. So as we're going through this, if you have questions, please post them in there and we'll do our best to answer them as we go. For this first session of our webinar, I actually wanted to talk about fixing business travel's screenshot problem, as I call it. I'm on hundreds of customer calls monthly, and when we talk to prospective customers, they're often telling us, 'I'm constantly getting screenshots from people.' They're either finding cheaper rates elsewhere, they don't understand why they can't find something in platform, and so I like to call it the screenshot problem, right? Where they're trying to book a hotel and it seems that that boutique hotel is not in their system, or they are looking for a flight and for some reason it's slightly cheaper on the United website, or maybe they're looking to fly to Europe and then take a train and they can't find that either. And so really we're here to address today why the screenshot problem is happening and potentially why it's gotten worse post-COVID as well. Before we do that, I wanted to anchor us in a couple interesting numbers. We published a report in partnership with Skift earlier this year where we surveyed 15,000 travelers and admins to actually get their take on how compliance in their program has been post-pandemic, right? Since return to travel. And I think a really interesting stat is that most managers in finance, in procurement, actually feel like getting their program to 75 or 90% compliance, which was often the norm pre-COVID, has significantly declined. So coming out of COVID, 45% of them still felt like they were getting that 90% compliance they were looking for, and we've seen that decrease to 39% this year. And this is really the first time in history, I would say, that business travelers and the actual managers agree on something when it comes to travel. And the most common theme we've seen when we surveyed the travelers and the leaders in the business is that pretty much both of them cite that 46% of the time they're finding lower prices, right? Between 30 and 40%, it's usually either 'I'm finding lower prices elsewhere' or 'I'm finding better inventory elsewhere.' Better inventory could mean, you know, this one route that I couldn't find in Concur, or this one hotel that I couldn't find in Egencia or whatever online booking tool they're using. And so really, whenever we talk to leaders, and we've actually seen a significant uptick in companies going out to market, so in the last year alone, we saw a 70% uptick in companies actually going out to market, sometimes prematurely. You know, if they had a three or five-year contract, they were going to market much earlier because they're really faced with this forced tradeoff, right? On the one hand, they can either decide to prioritize cost savings and say, 'You know what? If our employees are doing the research and they're finding cheaper rates outside of the platform, let's let them book it. It'll save us money.' But as a result of that, the negative consequence is that they lose visibility and often times it's a duty of care risk, right? You're not sure where your travelers are traveling, and you know, I think the last few months has taught us that there's CrowdStrike outages and there's power outages in Europe and some planes are having issues. And so, you know, on the one hand they either have to decide, do we let these employees book off-platform if it's cheaper, or are we actually taking the other extreme which is no, we want to prioritize compliance, regardless of what you found elsewhere, we need you to book in-platform, that is our policy. And we want to drive compliance so we can keep you safe and have visibility, but then as a result, you're overspending. So that's really where we come in and try to help businesses solution through that piece. And I think that most people probably don't nerd out over travel as much as I do, and so I really wanted to talk through the root causes and why this is actually happening. The first reason this is actually happening, and actually all of them boil down to the legacy travel management company infrastructure. But the first reason that you're seeing missed inventory and you're getting those screenshots is because the legacy travel management companies rely primarily on the Global Distribution System (GDS). So when you think about it, three or four years ago everyone, every travel management company was at parity in terms of where we actually sourced our content. We all got content from the Global Distribution System. As technology has become more prevalent in travel and corporate travel, there are multiple different sources of inventory that can be pulled in. And so when you're only relying on the Global Distribution System and you're a more legacy travel management company that hasn't necessarily invested in the technology to pull this content, you're missing direct airline fares. You're not pulling that same content off the American Airlines or United website. You don't have access to low-cost carriers in Europe like the Ryanairs and EasyJets which are really popular. It even goes as far as rail providers in Europe who build technology and have no real appetite to be on the Global Distribution System. So the actual reason that you're getting those screenshots is because most legacy travel management companies haven't evolved to be able to be multi-provider by default and pull in these different types of content as content becomes more democratized. The second piece is the problem of higher prices, right? You're constantly seeing those screenshots and so yes, part of it is how inventory is sourced, but it's also actually how the GDS and that system prevents airlines and hotels from making pricing dynamic, right? So when you think of consumer sites or airline sites, hotel and airfare is one of the most dynamically priced pieces of content, right? I don't know that things on Amazon change prices that often or as often as airfare and hotels do. And so there's limitations with that old technology in terms of being able to pull dynamic pricing that mimics those consumer sites. Lastly, and the two are kind of intertwined, if you think of the travel management companies, many of them were started in the 80s or 90s and they were professional services firms, right? They built their business on human beings and they built their business on you calling agents for support. As a result, in the early 2000s when they had to innovate and actually invest in technology, they chose to partner instead of investing in technology, right? They partnered with that Global Distribution System and then they also partnered with online booking tools. And they never really invested in their own native in-house technology, which today leads to that second problem which is it's a very disjointed process where if you are building a global business travel program, you probably have multiple instances of an online booking tool. You might have one if you're lucky, but probably multiple travel management companies. These systems don't speak to each other and also really there's very little incentive for the online booking tool and those companies and the travel management companies to work together. The agency would prefer that you continue to call because that is their business. Are we getting any questions so far before I touch into Navan? I'm going to take that as a no. No questions just yet, but everyone is encouraged to drop anything they'd like to get answered into the Q&A box. Amazing. And so lastly, before we talk about how Navan can help the problem, these off-platform bookings, the screenshot problem that has become so prevalent post-COVID, is actually quite problematic, right? It leads to blind spots and duty of care gaps. So if we have any anyone that's on the physical security team or security team more broadly, you're probably thinking about that piece. If we have any finance leaders on the call, right? It's very difficult when people are finding content outside of the system to drive compliance blindly, right? And tell them that they must book in app. It also leads to just untracked spend and lost savings because they're not being governed by policy when they book outside. And then lastly on the back end, you're manually reconciling a lot of that data and you really don't have visibility into that travel spend until it's reimbursed or you know submitted for reimbursement 30, 60 days later. So that's really what we set out to solve. And so when these companies are going to market, we usually see pretty common themes in terms of what they're looking for. They're looking for more content and better pricing, right? They want to know that they have a future-proof partner that is going to give them access to better content but also the ability to continue, right? To pull content as it shows up. You know I'll give you an example, Navan has a very strong offering in India. Very few Indian carriers and providers are actually on the GDS, right? We have to go and connect to them directly. But program owners want more content and better pricing. They want an intuitive booking experience for their travelers. The reality is the systems you're providing them today have just evolved, right? Whether it's Zoom like we are on today or a DocuSign or whatever else it is, like these people need an intuitive experience when they're actually on the road that is also mobile friendly. And then lastly, they just want to be able to drive higher adoption and increase employee efficiency. Many companies have had to reduce their workforce and so it's becoming more important now than ever to ensure that your workforce is actually extremely efficient. All right, so who is Navan? I have no idea how many of you actually know our business, so if this is repetitive, you'll have to hear it again. But Navan is 10 years old. We're the only fully native travel and expense management platform. And what I mean by that is from day one, 10 years ago, we set out to build an all-in-one travel and expense platform. Travel is a company's largest expenditure. We always felt that it made sense to actually build the infrastructure in the back end to be a native travel and expense platform. I share that because most of our competitors out there today are not natively built as a travel and expense management platform. It's been put together and added on via acquisition, right? And so the way those systems speak to each other, the way data feeds from one part of the system to the other is very different when you've built it natively from the ground up as opposed to connecting these systems and white labeling them via acquisition. Navan today has 12,000 customers. We are the fourth largest travel management company and we have 61 offices globally. So we've grown extremely rapidly in the last 10 years. At this stage, we support customers across every vertical. Be it financial services, tech, manufacturing, CPG, we have a pretty wide array of customers that also range in shapes and sizes, right? So we support Unilever or Jones Lang LaSalle, right? Massive real estate company across their 100,000 employees. But then we also support, you know, the smaller more nimble companies that are looking to grow, whether it's Instacart or DoorDash and etc. So at this point we have, I would say we're at that sweet spot of being mature as a company, we know how to launch travel and expense quickly and efficiently, but because we're still founder-led, we've kept that same level of agility when it comes to how fast we innovate the product. And in fact, close to 30% of our revenue is still very much invested in R&D so we can keep pushing the boundaries of where our product is going. So in the simplest of terms, what does Navan do? We're an all-in-one platform. We were always started to be multi-provider by default, meaning we never wanted to build our entire business around the Global Distribution System. We built the infrastructure to be able to pull content from anywhere, be it direct connections, low-cost carriers, rail providers, cars, hotels, whatever it might be, we ingest it all. We from the get-go wanted to own the consumer experience, both on the travel and expense side. We felt that it was paramount to obsess over the user and own the actual experience ourselves. And so, you know, when you think of the user, it's actually not just the traveler. It's also the admins on the back end, right? How do we ensure that reporting is real-time? How can managers access their own content without needing to ping accounting for an end-of-month report? So we've been maniacally focused on that consumer experience. We also set out to help companies to proactively manage spend, right? So when you shift gears slightly on the expense side, we felt that expense management was too reactive of a process and it needed to become a proactive process. And so what we've done is build the connections so that enterprises can bring their own card program and we can embed policies on those cards to allow you to essentially set policy, right? And dictate what people are spending on proactively as opposed to reactively when they submit an expense report 30 or 60 days later. And then lastly, a big thing that differentiates us is just transparent pricing, right? So I've talked a lot about the technology today, but we are of course a full-blown travel management company with 64 offices globally. There are also human beings on the back end. What we didn't want to do is follow suit with the legacy industry of having a laundry list of fees and almost disincentivizing travelers from calling support when they need to. So from the get-go we set out to create very clear and transparent pricing so that finance and procurement leaders can essentially forecast how much they're going to spend on travel fees and expense fees every single year. And I got a question from someone, so before I touch on Zuora, we connect with all the major ERP systems: Workday, SAP, Oracle, NetSuite, whatever it might be. And so I would definitely encourage you to set up time if you want to speak to our team, but we would connect via API to whatever ERP system you're using at this point. All right, keep the questions coming. Really, this is one customer story but there's many anecdotes we can tell. I picked Zuora because I figured that we might have a lot of finance leaders on this call who might be familiar with Zuora or used it in the past. Zuora was one of those companies that was growing very rapidly and when we met them, via growth, they had kind of set up different travel management companies in each region because the perception was that we should use a different company that has actual expertise in each major region, which was actually a really common trend where it was like, you know, we should have a TMC in Europe that is really good with Europe or we should pick the best of the best in the US. And so they were in a situation where they had a couple different travel management companies, they had an expense system but they were connecting to so many different travel management companies that the data wasn't really flowing in and so it was really a massive effort to just think through how do we consolidate this, right? Is one of the three better and should we go with them, or do we actually just scratch the whole thing and start fresh? And so the key challenges that really led them to a change was they were missing content, there was a complete lack of automation in the travel booking process, nothing was really flowing to that expense management system seamlessly, and it was a lot of back-end work for the accounting teams who were having to manually process and review and audit every single expense report. And I think the biggest differentiator for Navan here was our global scope, the fact that we were all in one, but more importantly, our time to value, right? So we were able to launch them sub-60 days globally for travel and expense, right? And so part of our strength and agility is also how quickly we can launch customers. This is kind of a systemic problem that a lot of companies have felt, like the screenshot problem has existed for a few years but it seems daunting to change a system that touches every employee in the business. And so we really pride ourselves on being able to launch a customer, you know, if they're smaller within 30 days, and we have launched customers like Unilever in sub-90 days globally across all of their different offices. So keep that in mind, it tends to be one of the highest visibility but low impact projects that a finance and procurement team can work on. All right, I think I saw two more questions pop up. Ooh, I love that question. The platform is obviously top-tier, what's coming to Navan that gets you very excited? Yes, so two things. If any of you do follow our business, you will know that our co-founder and CTO Elon has been at the forefront of Agentic AI. So yes, of course we will remain a human business, you can't be a TMC without having agents in the back end that are supporting travelers, but what will allow Navan to continue to scale at this pace is that our Agentic AI, our AI agent Ava, today is handling 50% of our support requests. So it's really allowing our real human agents to focus on the more complex requests and the rest is handled by our AI. And so taking that a step farther, Elon our CTO believes that user experience as we know it really hasn't been disrupted in years, right? If you think about even just the shift to ChatGPT or how we're having a more conversational discussion with technology, travel should be no different. And so we're going to be launching something very exciting soon that is more related to user experience and should really allow travelers to essentially speak to an AI assistant. There's no reason you shouldn't be able to tell them 'Hey, you saw it on my calendar I have a big meeting in New York, organize my trip,' right? And it's more of a conversation than it is you clicking through buttons. All right, hopefully that answers your question. I can't see any faces which is very, very odd. I don't know if people are bored and off-camera or if they're actually engaged. The other question I got was can you walk us through how Navan improves the day-to-day experience for employees? Yes, great question. So on the travel side today, most employees are what we call cross-shopping. So they no longer trust Concur, so what they're doing before they book a trip is they go and they do a bunch of research, they find a trip that they like, and then they try to mimic that in the Concur system. What we've seen when they move over to Navan is a 90% reduction in that cross-shopping that they do. They then go book their trip, and the biggest difference is that very little of that trip requires any agent's assistance. So 95% of our trip bookings and the actual trip completion does not require you calling a live agent, which is not the case with legacy agencies. Travelers have to call agents if they need to apply an unused ticket, they have to call agents if they want to make a change to their trip, all of that is done self-service in Navan and especially post-pandemic, the feedback we get from travelers is 'Well I just let that unused ticket expire because I wasn't going to be on hold for an hour trying to use that ticket to book my trip.' So on the travel side it's the self-service piece. Because it's connected to expense, what it also does for those travelers is that the flight receipt and flight details flow automatically into Navan and that expense is just auto-expensed for them, they don't have to touch it. And then generally speaking as well on the expense side, what we're trying to do is remove the need for expense reports. So because the finance team is embedding policies on their cards and because we have all that card data and we have their travel booking data, we know if they're on a trip or not on a trip. So we know that they're allowed to spend on meals for example. So all of those expenses would be automatically approved, especially if they're under $75, because they're on a trip they have a per diem they're allowed to spend. So the whole idea is how much can we automate that experience for travelers and how much can we remove the need to actually speak to human beings when you're on a trip. So hopefully that answers your question, but I would very much encourage you to just take a demo and look at the actual system yourself. Can you speak on the security around AI? Yes, at a high level I can. You know we're SOC 2 compliant, every major security clearance we've needed we've gotten, I really should have our CISO here. Of course we provide single sign-on. When it comes to AI, your data is completely de-identified, we're not using company data to train the model, so none of your data actually makes it. And we're using OpenAI's LLM to train our AI. I think we have a lot of that information on our website, but if not I encourage you again through our website to just request more information and we can send you some of that. Last question, I feel like you and I need to do a solo call after this. What kind of real-time expense data or dashboards are available to manager and finance teams? A lot. So I would say that's really our strength. There's pre-built dashboards, we have an API so you could feed it into your BI tool and more importantly, we've actually partnered with ThoughtSpot to create advanced analytics so that essentially managers who perhaps aren't in finance, right? So I'm thinking of like revenue leaders in the business, who might want to do a specific query, could go in there and similar to ChatGPT say, 'You know, I'm planning a sales kickoff and I want to know how much we spent on sales kickoff the last three years,' right? And it's becoming much more conversational where it can then build that dashboard for them. So everything is real-time and we have standard reports that break down, you know, how much the business is spending within each one of your major general ledger categories, how that compares month-over-month, we have some peer data in there as well that's anonymized. So yeah, I would encourage you to take a look at it. Amazing. I don't want to keep people over the 30-minute mark, but please go to our website, schedule a meeting if helpful. Hopefully we can speak about your business one-on-one and really, really understand what your challenges are. And next time you get a screenshot from an angry traveler, now you know why. Thank you everybody.",
+  "segments": [
+    {
+      "start": 0.0,
+      "end": 9.0,
+      "text": "All right. Hello everybody. I can't see the participants actually, but I'm being told that we have about 18 people on this call today. Nice to meet you all."
+    },
+    {
+      "start": 9.0,
+      "end": 20.0,
+      "text": "My name is Jess. I'm our Vice President of Travel and Expense. I've been with Navan for four years, and this is actually my last week before maternity leave."
+    },
+    {
+      "start": 20.0,
+      "end": 35.0,
+      "text": "And I call that out because you can probably hear the congestion and the fact that I'm out of breath. But thank you all for joining. We haven't done webinars in a little bit."
+    },
+    {
+      "start": 35.0,
+      "end": 47.0,
+      "text": "I think there was some webinar fatigue post-COVID, but we're back and we think it's a great way to share some context on what Navan's doing, what we're seeing in the travel and expense industry."
+    },
+    {
+      "start": 47.0,
+      "end": 55.0,
+      "text": "And we like to keep these short because I don't know that people can really pay attention for more than 30 minutes. So I'll actually kick us off today."
+    },
+    {
+      "start": 55.0,
+      "end": 64.0,
+      "text": "I encourage you to post questions. I will have someone that can field some of the Q&A questions. So as we're going through this, if you have questions, please post them in there"
+    },
+    {
+      "start": 64.0,
+      "end": 73.0,
+      "text": "and we'll do our best to answer them as we go. For this first session of our webinar, I actually wanted to talk about fixing business travel's screenshot problem, as I call it."
+    },
+    {
+      "start": 73.0,
+      "end": 84.0,
+      "text": "I'm on hundreds of customer calls monthly, and when we talk to prospective customers, they're often telling us, 'I'm constantly getting screenshots from people.'"
+    },
+    {
+      "start": 84.0,
+      "end": 96.0,
+      "text": "They're either finding cheaper rates elsewhere, they don't understand why they can't find something in platform, and so I like to call it the screenshot problem, right?"
+    },
+    {
+      "start": 96.0,
+      "end": 105.0,
+      "text": "Where they're trying to book a hotel and it seems that that boutique hotel is not in their system, or they are looking for a flight and for some reason it's slightly cheaper on the United website."
+    },
+    {
+      "start": 105.0,
+      "end": 114.0,
+      "text": "Or maybe they're looking to fly to Europe and then take a train and they can't find that either."
+    },
+    {
+      "start": 114.0,
+      "end": 125.0,
+      "text": "And so really we're here to address today why the screenshot problem is happening and potentially why it's gotten worse post-COVID as well."
+    },
+    {
+      "start": 125.0,
+      "end": 135.0,
+      "text": "Before we do that, I wanted to anchor us in a couple interesting numbers. We published a report in partnership with Skift earlier this year"
+    },
+    {
+      "start": 135.0,
+      "end": 145.0,
+      "text": "where we surveyed 15,000 travelers and admins to actually get their take on how compliance in their program has been post-pandemic, right? Since return to travel."
+    },
+    {
+      "start": 145.0,
+      "end": 154.0,
+      "text": "And I think a really interesting stat is that most managers in finance, in procurement, actually feel like getting their program to 75 or 90% compliance,"
+    },
+    {
+      "start": 154.0,
+      "end": 164.0,
+      "text": "which was often the norm pre-COVID, has significantly declined. So coming out of COVID, 45% of them still felt like they were getting that 90% compliance they were looking for,"
+    },
+    {
+      "start": 164.0,
+      "end": 179.0,
+      "text": "and we've seen that decrease to 39% this year. And this is really the first time in history, I would say, that business travelers and the actual managers agree on something when it comes to travel."
+    },
+    {
+      "start": 179.0,
+      "end": 194.0,
+      "text": "And the most common theme we've seen when we surveyed the travelers and the leaders in the business is that pretty much both of them cite that 46% of the time they're finding lower prices,"
+    },
+    {
+      "start": 194.0,
+      "end": 209.0,
+      "text": "right? Between 30 and 40%, it's usually either 'I'm finding lower prices elsewhere' or 'I'm finding better inventory elsewhere.' Better inventory could mean, you know,"
+    },
+    {
+      "start": 209.0,
+      "end": 224.0,
+      "text": "this one route that I couldn't find in Concur, or this one hotel that I couldn't find in Egencia or whatever online booking tool they're using."
+    },
+    {
+      "start": 224.0,
+      "end": 234.0,
+      "text": "And so really, whenever we talk to leaders, and we've actually seen a significant uptick in companies going out to market,"
+    },
+    {
+      "start": 234.0,
+      "end": 249.0,
+      "text": "so in the last year alone, we saw a 70% uptick in companies actually going out to market, sometimes prematurely. You know, if they had a three or five-year contract,"
+    },
+    {
+      "start": 249.0,
+      "end": 264.0,
+      "text": "they were going to market much earlier because they're really faced with this forced tradeoff, right? On the one hand, they can either decide to prioritize cost savings"
+    },
+    {
+      "start": 264.0,
+      "end": 279.0,
+      "text": "and say, 'You know what? If our employees are doing the research and they're finding cheaper rates outside of the platform, let's let them book it. It'll save us money.'"
+    },
+    {
+      "start": 279.0,
+      "end": 294.0,
+      "text": "But as a result of that, the negative consequence is that they lose visibility and often times it's a duty of care risk, right? You're not sure where your travelers are traveling,"
+    },
+    {
+      "start": 294.0,
+      "end": 309.0,
+      "text": "and you know, I think the last few months has taught us that there's CrowdStrike outages and there's power outages in Europe and some planes are having issues."
+    },
+    {
+      "start": 309.0,
+      "end": 324.0,
+      "text": "And so, you know, on the one hand they either have to decide, do we let these employees book off-platform if it's cheaper, or are we actually taking the other extreme which is no,"
+    },
+    {
+      "start": 324.0,
+      "end": 339.0,
+      "text": "we want to prioritize compliance, regardless of what you found elsewhere, we need you to book in-platform, that is our policy. And we want to drive compliance so we can keep you safe and have visibility,"
+    },
+    {
+      "start": 339.0,
+      "end": 354.0,
+      "text": "but then as a result, you're overspending. So that's really where we come in and try to help businesses solution through that piece."
+    },
+    {
+      "start": 354.0,
+      "end": 369.0,
+      "text": "And I think that most people probably don't nerd out over travel as much as I do, and so I really wanted to talk through the root causes and why this is actually happening."
+    },
+    {
+      "start": 369.0,
+      "end": 384.0,
+      "text": "The first reason this is actually happening, and actually all of them boil down to the legacy travel management company infrastructure. But the first reason that you're seeing missed inventory"
+    },
+    {
+      "start": 384.0,
+      "end": 399.0,
+      "text": "and you're getting those screenshots is because the legacy travel management companies rely primarily on the Global Distribution System (GDS)."
+    },
+    {
+      "start": 399.0,
+      "end": 414.0,
+      "text": "So when you think about it, three or four years ago everyone, every travel management company was at parity in terms of where we actually sourced our content."
+    },
+    {
+      "start": 414.0,
+      "end": 429.0,
+      "text": "We all got content from the Global Distribution System. As technology has become more prevalent in travel and corporate travel, there are multiple different sources of inventory that can be pulled in."
+    },
+    {
+      "start": 429.0,
+      "end": 444.0,
+      "text": "And so when you're only relying on the Global Distribution System and you're a more legacy travel management company that hasn't necessarily invested in the technology to pull this content,"
+    },
+    {
+      "start": 444.0,
+      "end": 459.0,
+      "text": "you're missing direct airline fares. You're not pulling that same content off the American Airlines or United website. You don't have access to low-cost carriers in Europe"
+    },
+    {
+      "start": 459.0,
+      "end": 474.0,
+      "text": "like the Ryanairs and EasyJets which are really popular. It even goes as far as rail providers in Europe who build technology and have no real appetite to be on the Global Distribution System."
+    },
+    {
+      "start": 474.0,
+      "end": 489.0,
+      "text": "So the actual reason that you're getting those screenshots is because most legacy travel management companies haven't evolved to be able to be multi-provider by default"
+    },
+    {
+      "start": 489.0,
+      "end": 504.0,
+      "text": "and pull in these different types of content as content becomes more democratized. The second piece is the problem of higher prices, right? You're constantly seeing those screenshots"
+    },
+    {
+      "start": 504.0,
+      "end": 519.0,
+      "text": "and so yes, part of it is how inventory is sourced, but it's also actually how the GDS and that system prevents airlines and hotels from making pricing dynamic, right?"
+    },
+    {
+      "start": 519.0,
+      "end": 534.0,
+      "text": "So when you think of consumer sites or airline sites, hotel and airfare is one of the most dynamically priced pieces of content, right?"
+    },
+    {
+      "start": 534.0,
+      "end": 549.0,
+      "text": "I don't know that things on Amazon change prices that often or as often as airfare and hotels do. And so there's limitations with that old technology in terms of being able to pull dynamic pricing"
+    },
+    {
+      "start": 549.0,
+      "end": 564.0,
+      "text": "that mimics those consumer sites. Lastly, and the two are kind of intertwined, if you think of the travel management companies, many of them were started in the 80s or 90s"
+    },
+    {
+      "start": 564.0,
+      "end": 579.0,
+      "text": "and they were professional services firms, right? They built their business on human beings and they built their business on you calling agents for support."
+    },
+    {
+      "start": 579.0,
+      "end": 594.0,
+      "text": "As a result, in the early 2000s when they had to innovate and actually invest in technology, they chose to partner instead of investing in technology, right?"
+    },
+    {
+      "start": 594.0,
+      "end": 609.0,
+      "text": "They partnered with that Global Distribution System and then they also partnered with online booking tools. And they never really invested in their own native in-house technology,"
+    },
+    {
+      "start": 609.0,
+      "end": 624.0,
+      "text": "which today leads to that second problem which is it's a very disjointed process where if you are building a global business travel program, you probably have multiple instances of an online booking tool."
+    },
+    {
+      "start": 624.0,
+      "end": 639.0,
+      "text": "You might have one if you're lucky, but probably multiple travel management companies. These systems don't speak to each other and also really there's very little incentive"
+    },
+    {
+      "start": 639.0,
+      "end": 654.0,
+      "text": "for the online booking tool and those companies and the travel management companies to work together. The agency would prefer that you continue to call because that is their business."
+    },
+    {
+      "start": 654.0,
+      "end": 664.0,
+      "text": "Are we getting any questions so far before I touch into Navan? I'm going to take that as a no. No questions just yet, but everyone is encouraged to drop anything they'd like"
+    },
+    {
+      "start": 664.0,
+      "end": 673.0,
+      "text": "to get answered into the Q&A box. Amazing. And so lastly, before we talk about how Navan can help the problem, these off-platform bookings,"
+    },
+    {
+      "start": 673.0,
+      "end": 688.0,
+      "text": "the screenshot problem that has become so prevalent post-COVID, is actually quite problematic, right? It leads to blind spots and duty of care gaps."
+    },
+    {
+      "start": 688.0,
+      "end": 703.0,
+      "text": "So if we have any anyone that's on the physical security team or security team more broadly, you're probably thinking about that piece. If we have any finance leaders on the call, right?"
+    },
+    {
+      "start": 703.0,
+      "end": 718.0,
+      "text": "It's very difficult when people are finding content outside of the system to drive compliance blindly, right? And tell them that they must book in app."
+    },
+    {
+      "start": 718.0,
+      "end": 733.0,
+      "text": "It also leads to just untracked spend and lost savings because they're not being governed by policy when they book outside."
+    },
+    {
+      "start": 733.0,
+      "end": 748.0,
+      "text": "And then lastly on the back end, you're manually reconciling a lot of that data and you really don't have visibility into that travel spend until it's reimbursed or you know submitted for reimbursement"
+    },
+    {
+      "start": 748.0,
+      "end": 763.0,
+      "text": "30, 60 days later. So that's really what we set out to solve. And so when these companies are going to market, we usually see pretty common themes in terms of what they're looking for."
+    },
+    {
+      "start": 763.0,
+      "end": 778.0,
+      "text": "They're looking for more content and better pricing, right? They want to know that they have a future-proof partner that is going to give them access to better content but also the ability to continue,"
+    },
+    {
+      "start": 778.0,
+      "end": 793.0,
+      "text": "right? To pull content as it shows up. You know I'll give you an example, Navan has a very strong offering in India. Very few Indian carriers and providers are actually on the GDS, right?"
+    },
+    {
+      "start": 793.0,
+      "end": 808.0,
+      "text": "We have to go and connect to them directly. But program owners want more content and better pricing. They want an intuitive booking experience for their travelers."
+    },
+    {
+      "start": 808.0,
+      "end": 823.0,
+      "text": "The reality is the systems you're providing them today have just evolved, right? Whether it's Zoom like we are on today or a DocuSign or whatever else it is,"
+    },
+    {
+      "start": 823.0,
+      "end": 838.0,
+      "text": "like these people need an intuitive experience when they're actually on the road that is also mobile friendly. And then lastly, they just want to be able to drive higher adoption and increase employee efficiency."
+    },
+    {
+      "start": 838.0,
+      "end": 853.0,
+      "text": "Many companies have had to reduce their workforce and so it's becoming more important now than ever to ensure that your workforce is actually extremely efficient."
+    },
+    {
+      "start": 853.0,
+      "end": 868.0,
+      "text": "All right, so who is Navan? I have no idea how many of you actually know our business, so if this is repetitive, you'll have to hear it again. But Navan is 10 years old."
+    },
+    {
+      "start": 868.0,
+      "end": 883.0,
+      "text": "We're the only fully native travel and expense management platform. And what I mean by that is from day one, 10 years ago, we set out to build an all-in-one travel and expense platform."
+    },
+    {
+      "start": 883.0,
+      "end": 898.0,
+      "text": "Travel is a company's largest expenditure. We always felt that it made sense to actually build the infrastructure in the back end to be a native travel and expense platform."
+    },
+    {
+      "start": 898.0,
+      "end": 913.0,
+      "text": "I share that because most of our competitors out there today are not natively built as a travel and expense management platform. It's been put together and added on via acquisition, right?"
+    },
+    {
+      "start": 913.0,
+      "end": 928.0,
+      "text": "And so the way those systems speak to each other, the way data feeds from one part of the system to the other is very different when you've built it natively from the ground up"
+    },
+    {
+      "start": 928.0,
+      "end": 943.0,
+      "text": "as opposed to connecting these systems and white labeling them via acquisition. Navan today has 12,000 customers. We are the fourth largest travel management company and we have 61 offices globally."
+    },
+    {
+      "start": 943.0,
+      "end": 958.0,
+      "text": "So we've grown extremely rapidly in the last 10 years. At this stage, we support customers across every vertical. Be it financial services, tech, manufacturing, CPG,"
+    },
+    {
+      "start": 958.0,
+      "end": 973.0,
+      "text": "we have a pretty wide array of customers that also range in shapes and sizes, right? So we support Unilever or Jones Lang LaSalle, right?"
+    },
+    {
+      "start": 973.0,
+      "end": 988.0,
+      "text": "Massive real estate company across their 100,000 employees. But then we also support, you know, the smaller more nimble companies that are looking to grow, whether it's Instacart or DoorDash and etc."
+    },
+    {
+      "start": 988.0,
+      "end": 1003.0,
+      "text": "So at this point we have, I would say we're at that sweet spot of being mature as a company, we know how to launch travel and expense quickly and efficiently, but because we're still founder-led,"
+    },
+    {
+      "start": 1003.0,
+      "end": 1018.0,
+      "text": "we've kept that same level of agility when it comes to how fast we innovate the product. And in fact, close to 30% of our revenue is still very much invested in R&D"
+    },
+    {
+      "start": 1018.0,
+      "end": 1033.0,
+      "text": "so we can keep pushing the boundaries of where our product is going. So in the simplest of terms, what does Navan do? We're an all-in-one platform."
+    },
+    {
+      "start": 1033.0,
+      "end": 1048.0,
+      "text": "We were always started to be multi-provider by default, meaning we never wanted to build our entire business around the Global Distribution System."
+    },
+    {
+      "start": 1048.0,
+      "end": 1063.0,
+      "text": "We built the infrastructure to be able to pull content from anywhere, be it direct connections, low-cost carriers, rail providers, cars, hotels, whatever it might be, we ingest it all."
+    },
+    {
+      "start": 1063.0,
+      "end": 1078.0,
+      "text": "We from the get-go wanted to own the consumer experience, both on the travel and expense side. We felt that it was paramount to obsess over the user and own the actual experience ourselves."
+    },
+    {
+      "start": 1078.0,
+      "end": 1093.0,
+      "text": "And so, you know, when you think of the user, it's actually not just the traveler. It's also the admins on the back end, right? How do we ensure that reporting is real-time?"
+    },
+    {
+      "start": 1093.0,
+      "end": 1108.0,
+      "text": "How can managers access their own content without needing to ping accounting for an end-of-month report? So we've been maniacally focused on that consumer experience."
+    },
+    {
+      "start": 1108.0,
+      "end": 1123.0,
+      "text": "We also set out to help companies to proactively manage spend, right? So when you shift gears slightly on the expense side, we felt that expense management was too reactive of a process"
+    },
+    {
+      "start": 1123.0,
+      "end": 1138.0,
+      "text": "and it needed to become a proactive process. And so what we've done is build the connections so that enterprises can bring their own card program and we can embed policies on those cards"
+    },
+    {
+      "start": 1138.0,
+      "end": 1153.0,
+      "text": "to allow you to essentially set policy, right? And dictate what people are spending on proactively as opposed to reactively when they submit an expense report 30 or 60 days later."
+    },
+    {
+      "start": 1153.0,
+      "end": 1168.0,
+      "text": "And then lastly, a big thing that differentiates us is just transparent pricing, right? So I've talked a lot about the technology today, but we are of course a full-blown travel management company"
+    },
+    {
+      "start": 1168.0,
+      "end": 1183.0,
+      "text": "with 64 offices globally. There are also human beings on the back end. What we didn't want to do is follow suit with the legacy industry of having a laundry list of fees"
+    },
+    {
+      "start": 1183.0,
+      "end": 1198.0,
+      "text": "and almost disincentivizing travelers from calling support when they need to. So from the get-go we set out to create very clear and transparent pricing so that finance and procurement leaders"
+    },
+    {
+      "start": 1198.0,
+      "end": 1213.0,
+      "text": "can essentially forecast how much they're going to spend on travel fees and expense fees every single year. And I got a question from someone, so before I touch on Zuora,"
+    },
+    {
+      "start": 1213.0,
+      "end": 1228.0,
+      "text": "we connect with all the major ERP systems: Workday, SAP, Oracle, NetSuite, whatever it might be. And so I would definitely encourage you to set up time if you want to speak to our team,"
+    },
+    {
+      "start": 1228.0,
+      "end": 1243.0,
+      "text": "but we would connect via API to whatever ERP system you're using at this point. All right, keep the questions coming. Really, this is one customer story but there's many anecdotes we can tell."
+    },
+    {
+      "start": 1243.0,
+      "end": 1258.0,
+      "text": "I picked Zuora because I figured that we might have a lot of finance leaders on this call who might be familiar with Zuora or used it in the past. Zuora was one of those companies"
+    },
+    {
+      "start": 1258.0,
+      "end": 1273.0,
+      "text": "that was growing very rapidly and when we met them, via growth, they had kind of set up different travel management companies in each region because the perception was"
+    },
+    {
+      "start": 1273.0,
+      "end": 1288.0,
+      "text": "that we should use a different company that has actual expertise in each major region, which was actually a really common trend where it was like, you know,"
+    },
+    {
+      "start": 1288.0,
+      "end": 1303.0,
+      "text": "we should have a TMC in Europe that is really good with Europe or we should pick the best of the best in the US. And so they were in a situation where they had a couple different travel management companies,"
+    },
+    {
+      "start": 1303.0,
+      "end": 1318.0,
+      "text": "they had an expense system but they were connecting to so many different travel management companies that the data wasn't really flowing in and so it was really a massive effort to just think through"
+    },
+    {
+      "start": 1318.0,
+      "end": 1333.0,
+      "text": "how do we consolidate this, right? Is one of the three better and should we go with them, or do we actually just scratch the whole thing and start fresh?"
+    },
+    {
+      "start": 1333.0,
+      "end": 1348.0,
+      "text": "And so the key challenges that really led them to a change was they were missing content, there was a complete lack of automation in the travel booking process,"
+    },
+    {
+      "start": 1348.0,
+      "end": 1363.0,
+      "text": "nothing was really flowing to that expense management system seamlessly, and it was a lot of back-end work for the accounting teams who were having to manually process and review and audit every single expense report."
+    },
+    {
+      "start": 1363.0,
+      "end": 1378.0,
+      "text": "And I think the biggest differentiator for Navan here was our global scope, the fact that we were all in one, but more importantly, our time to value, right?"
+    },
+    {
+      "start": 1378.0,
+      "end": 1393.0,
+      "text": "So we were able to launch them sub-60 days globally for travel and expense, right? And so part of our strength and agility is also how quickly we can launch customers."
+    },
+    {
+      "start": 1393.0,
+      "end": 1408.0,
+      "text": "This is kind of a systemic problem that a lot of companies have felt, like the screenshot problem has existed for a few years but it seems daunting to change a system that touches every employee in the business."
+    },
+    {
+      "start": 1408.0,
+      "end": 1423.0,
+      "text": "And so we really pride ourselves on being able to launch a customer, you know, if they're smaller within 30 days, and we have launched customers like Unilever in sub-90 days globally across all of their different offices."
+    },
+    {
+      "start": 1423.0,
+      "end": 1438.0,
+      "text": "So keep that in mind, it tends to be one of the highest visibility but low impact projects that a finance and procurement team can work on. All right, I think I saw two more questions pop up."
+    },
+    {
+      "start": 1438.0,
+      "end": 1448.0,
+      "text": "Ooh, I love that question. The platform is obviously top-tier, what's coming to Navan that gets you very excited? Yes, so two things."
+    },
+    {
+      "start": 1448.0,
+      "end": 1463.0,
+      "text": "If any of you do follow our business, you will know that our co-founder and CTO Elon has been at the forefront of Agentic AI. So yes, of course we will remain a human business,"
+    },
+    {
+      "start": 1463.0,
+      "end": 1478.0,
+      "text": "you can't be a TMC without having agents in the back end that are supporting travelers, but what will allow Navan to continue to scale at this pace is that our Agentic AI,"
+    },
+    {
+      "start": 1478.0,
+      "end": 1493.0,
+      "text": "our AI agent Ava, today is handling 50% of our support requests. So it's really allowing our real human agents to focus on the more complex requests and the rest is handled by our AI."
+    },
+    {
+      "start": 1493.0,
+      "end": 1508.0,
+      "text": "And so taking that a step farther, Elon our CTO believes that user experience as we know it really hasn't been disrupted in years, right?"
+    },
+    {
+      "start": 1508.0,
+      "end": 1523.0,
+      "text": "If you think about even just the shift to ChatGPT or how we're having a more conversational discussion with technology, travel should be no different."
+    },
+    {
+      "start": 1523.0,
+      "end": 1538.0,
+      "text": "And so we're going to be launching something very exciting soon that is more related to user experience and should really allow travelers to essentially speak to an AI assistant."
+    },
+    {
+      "start": 1538.0,
+      "end": 1553.0,
+      "text": "There's no reason you shouldn't be able to tell them 'Hey, you saw it on my calendar I have a big meeting in New York, organize my trip,' right? And it's more of a conversation than it is you clicking through buttons."
+    },
+    {
+      "start": 1553.0,
+      "end": 1568.0,
+      "text": "All right, hopefully that answers your question. I can't see any faces which is very, very odd. I don't know if people are bored and off-camera or if they're actually engaged."
+    },
+    {
+      "start": 1568.0,
+      "end": 1583.0,
+      "text": "The other question I got was can you walk us through how Navan improves the day-to-day experience for employees? Yes, great question. So on the travel side today,"
+    },
+    {
+      "start": 1583.0,
+      "end": 1598.0,
+      "text": "most employees are what we call cross-shopping. So they no longer trust Concur, so what they're doing before they book a trip is they go and they do a bunch of research,"
+    },
+    {
+      "start": 1598.0,
+      "end": 1613.0,
+      "text": "they find a trip that they like, and then they try to mimic that in the Concur system. What we've seen when they move over to Navan is a 90% reduction in that cross-shopping that they do."
+    },
+    {
+      "start": 1613.0,
+      "end": 1628.0,
+      "text": "They then go book their trip, and the biggest difference is that very little of that trip requires any agent's assistance. So 95% of our trip bookings"
+    },
+    {
+      "start": 1628.0,
+      "end": 1643.0,
+      "text": "and the actual trip completion does not require you calling a live agent, which is not the case with legacy agencies. Travelers have to call agents if they need to apply an unused ticket,"
+    },
+    {
+      "start": 1643.0,
+      "end": 1658.0,
+      "text": "they have to call agents if they want to make a change to their trip, all of that is done self-service in Navan and especially post-pandemic, the feedback we get from travelers is"
+    },
+    {
+      "start": 1658.0,
+      "end": 1673.0,
+      "text": "'Well I just let that unused ticket expire because I wasn't going to be on hold for an hour trying to use that ticket to book my trip.' So on the travel side it's the self-service piece."
+    },
+    {
+      "start": 1673.0,
+      "end": 1688.0,
+      "text": "Because it's connected to expense, what it also does for those travelers is that the flight receipt and flight details flow automatically into Navan and that expense is just auto-expensed for them,"
+    },
+    {
+      "start": 1688.0,
+      "end": 1703.0,
+      "text": "they don't have to touch it. And then generally speaking as well on the expense side, what we're trying to do is remove the need for expense reports."
+    },
+    {
+      "start": 1703.0,
+      "end": 1718.0,
+      "text": "So because the finance team is embedding policies on their cards and because we have all that card data and we have their travel booking data, we know if they're on a trip or not on a trip."
+    },
+    {
+      "start": 1718.0,
+      "end": 1733.0,
+      "text": "So we know that they're allowed to spend on meals for example. So all of those expenses would be automatically approved, especially if they're under $75, because they're on a trip they have a per diem they're allowed to spend."
+    },
+    {
+      "start": 1733.0,
+      "end": 1748.0,
+      "text": "So the whole idea is how much can we automate that experience for travelers and how much can we remove the need to actually speak to human beings when you're on a trip."
+    },
+    {
+      "start": 1748.0,
+      "end": 1763.0,
+      "text": "So hopefully that answers your question, but I would very much encourage you to just take a demo and look at the actual system yourself. Can you speak on the security around AI?"
+    },
+    {
+      "start": 1763.0,
+      "end": 1778.0,
+      "text": "Yes, at a high level I can. You know we're SOC 2 compliant, every major security clearance we've needed we've gotten, I really should have our CISO here."
+    },
+    {
+      "start": 1778.0,
+      "end": 1793.0,
+      "text": "Of course we provide single sign-on. When it comes to AI, your data is completely de-identified, we're not using company data to train the model, so none of your data actually makes it."
+    },
+    {
+      "start": 1793.0,
+      "end": 1808.0,
+      "text": "And we're using OpenAI's LLM to train our AI. I think we have a lot of that information on our website, but if not I encourage you again through our website to just request more information"
+    },
+    {
+      "start": 1808.0,
+      "end": 1818.0,
+      "text": "and we can send you some of that. Last question, I feel like you and I need to do a solo call after this. What kind of real-time expense data or dashboards are available"
+    },
+    {
+      "start": 1818.0,
+      "end": 1833.0,
+      "text": "to manager and finance teams? A lot. So I would say that's really our strength. There's pre-built dashboards, we have an API so you could feed it into your BI tool"
+    },
+    {
+      "start": 1833.0,
+      "end": 1848.0,
+      "text": "and more importantly, we've actually partnered with ThoughtSpot to create advanced analytics so that essentially managers who perhaps aren't in finance, right?"
+    },
+    {
+      "start": 1848.0,
+      "end": 1863.0,
+      "text": "So I'm thinking of like revenue leaders in the business, who might want to do a specific query, could go in there and similar to ChatGPT say, 'You know, I'm planning a sales kickoff"
+    },
+    {
+      "start": 1863.0,
+      "end": 1878.0,
+      "text": "and I want to know how much we spent on sales kickoff the last three years,' right? And it's becoming much more conversational where it can then build that dashboard for them. So everything is real-time"
+    },
+    {
+      "start": 1878.0,
+      "end": 1893.0,
+      "text": "and we have standard reports that break down, you know, how much the business is spending within each one of your major general ledger categories, how that compares month-over-month,"
+    },
+    {
+      "start": 1893.0,
+      "end": 1908.0,
+      "text": "we have some peer data in there as well that's anonymized. So yeah, I would encourage you to take a look at it. Amazing. I don't want to keep people over the 30-minute mark,"
+    },
+    {
+      "start": 1908.0,
+      "end": 1918.0,
+      "text": "but please go to our website, schedule a meeting if helpful. Hopefully we can speak about your business one-on-one and really, really understand what your challenges are."
+    },
+    {
+      "start": 1918.0,
+      "end": 1927.0,
+      "text": "And next time you get a screenshot from an angry traveler, now you know why. Thank you everybody."
+    }
+  ]
+}

@@ -1,0 +1,30 @@
+{
+  "full_text": "Hi, my name's Doug. I'm an account manager here at Navan and today we're going to run through ordering your physical Navan card through the platform. If you're eligible for a card, when you log in, you'll see the ability to order Navan card through the portal and you'll just need to input some basic information about yourself to ensure we know where to send the card and we have all your details correct. Make sure you're matching your date of birth to what's in your government ID or your passport as well as your contact information such as your mobile phone. In terms of addresses, you can either ship to a custom address which could be your home or actually one that's linked to a company office address as well. Once you've done this, you just simply click Order card and then when it arrives, you click the button to activate your card and you're good to go and start spending.",
+  "segments": [
+    {
+      "start_time": 7.0,
+      "end_time": 14.0,
+      "text": "Hi, my name's Doug. I'm an account manager here at Navan and today we're going to run through ordering your physical Navan card through the platform."
+    },
+    {
+      "start_time": 14.0,
+      "end_time": 27.0,
+      "text": "If you're eligible for a card, when you log in, you'll see the ability to order Navan card through the portal and you'll just need to input some basic information about yourself to ensure we know where to send the card and we have all your details correct."
+    },
+    {
+      "start_time": 27.0,
+      "end_time": 35.0,
+      "text": "Make sure you're matching your date of birth to what's in your government ID or your passport as well as your contact information such as your mobile phone."
+    },
+    {
+      "start_time": 35.0,
+      "end_time": 44.0,
+      "text": "In terms of addresses, you can either ship to a custom address which could be your home or actually one that's linked to a company office address as well."
+    },
+    {
+      "start_time": 44.0,
+      "end_time": 54.0,
+      "text": "Once you've done this, you just simply click Order card and then when it arrives, you click the button to activate your card and you're good to go and start spending."
+    }
+  ]
+}

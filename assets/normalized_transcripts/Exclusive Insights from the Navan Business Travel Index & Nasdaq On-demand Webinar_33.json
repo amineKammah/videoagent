@@ -1,0 +1,220 @@
+{
+  "full_text": "Hi, I'm Phil Mackintosh, Nasdaq's Chief Economist, and I'm here today with Amy Butte, the CFO from Navan. Thank you for having me. And the reason we're here is Navan runs a travel business where you can book travel and it keeps track of travel expenses. And so you get to see millions of transactions across thousands of different companies. And you're a little bit like me, you like data, so you've built a travel index. The cool thing about the travel index is it's going to be a global benchmark. It's going to show business travel activity, but not just airlines, it's going to be able to show hotels and expenses as well. And I'm proud to say my economist team has collaborated with Navan to build this index. I think it's pretty unique, so it's going to give new visibility into the decision-making of corporates and corporate travel in America and around the world. Yes. My first question, pretty easy question I think, is what motivated Navan to do a business travel index? Great question, and thank you for having me and thanks for the partnership with Nasdaq. We really appreciate it. You and I both know when we geek out with data, it's not just what the data says, but knowing that you can trust it. And we really feel like we built that in that partnership. Going back to your question, when I arrived at Navan about a year and a half ago, and I was asking the question about what are the trends in travel, what I realized is that there was lots of data out there or indices like a TSA index about consumer travel, but there wasn't necessarily an index to help me benchmark our customers and our activity relative to business travel. So we really wanted to be able to create an index so that whether it's our customers, whether it's investors, whether it's our users, can really have a sense of what's taking place in business travel, separate from consumer travel. Yes, so one of the things that I read in the report is that business travel is up 15%, which I guess shouldn't surprise me when I get on airplanes these days. But what do you think's driving the growth in business travel, especially in the current economic climate? So to be clear, we're going to put this out on a quarterly basis. It's kind of like same-store sales for business travel, and that 15% was June '24 to June '25. And business travel's up 15%. In contrast, TSA data, which represents a broader universe of consumer data, was down 1%. And so that kind of comes to why the double-digit growth during that time period versus consumer. You know, for us, what we're seeing across our customer base and on a global basis is that companies have realized, especially post-COVID, that we're in a different world. Businesses depend on that face-to-face interaction. Zooms serve their purpose, right? Virtual meetings, virtual events served their purpose and they still do to a certain extent, but you really can't replicate that face-to-face. Yeah. And one of the things that really interested me out of the data was the TSA shows pretty constant activity levels of flights, but business travel is in cycles. Why do you think that happens? Yeah, actually consumer travel and business travel have their own patterns. So as you would anticipate, you take your personal trips during the summer months and during the holidays, right? Kind of November and December. And from a business standpoint, what we see is that people travel more kind of in February, March, and April, or September, October, and early November. Think about how that correlates to when you're doing your planning and talking to your team. Think about how it correlates to when we have conferences and when you want to kind of learn from others. So those trends are really opposite and the report shows that they don't go in tandem. They really run very differently. They complement each other, which is great for the airlines I guess. So because you can drill down into things like meals and hotels and airlines separately, what can you see about those sorts of trends? So we're actually able to see where people are booking more hotels and where they're booking more air trips and where they're spending more. What was fascinating to me was that we actually saw an uptick in international spend and international hotel spend in particular. So you would have kind of thought with perhaps some of the uncertainty in the market, people would have paired back. And the opposite was true. People really leaned in, or companies really leaned in to the investment on a global basis. Right. And so when we think about air and hotel, what do you think this says about the state of the airlines and the hotel industry? Well, it's not across the board, right? It's healthy. I think it says that companies view travel not as discretionary, but as a baseline. Both air and hotel travel spending and transaction volumes are up overall, but the rate of growth varies significantly across industries. So for example, financial services and media and entertainment organizations are not only maintaining their travel, but they're also increasing their volume. It grew 31% and 25% respectively during that same time frame. Overseas hotel spend grew 17% year-over-year during that time, driven primarily once again by media and entertainment and the real estate industries. We believe that it's those industries where you really gotta shake a hand to seal a deal or that one-on-one contact matters that that's where we saw that incremental growth during that June to June period. Interesting. And so since you've released this report, what have you learned from the other CFOs and companies using the data? Well, I'll tell you what I was surprised by the most is that the spend wasn't really on big conferences, right? It wasn't on big entertainment. It was really on individual travel, individual meals, T&E, individual taxi and rideshare, even internet that people were buying. So what it said to me is that this was really much more about one-on-one interaction or small team gatherings rather than these big, big events that I think maybe you and I grew up with. I still feel like there's plenty of big events. Do you have any final takeaways just thinking about the index and how people can get access to it? Sure. Well, first of all, I hope that our customers will look at it and help be able to benchmark their investment in travel relative to other companies like themselves. Not just overall global travel, but what's happening in your industry? What's happening in your region? And are you making the most of those investment dollars? Because people really are investing in that travel portion of their budget. Also, we hope that other people will start to take a look at it. Whether it's investors who are interested in investing in the travel space, whether it's data geeks like you and me. So we really hope that people will take a look at it. Now, if you want to take a look at it, please feel free to go to navan.com/bti. People will have full access to the report, our takeaways, and we look forward to releasing this on a quarterly basis as well. Fantastic. Amy, it's been great talking to you. Great to talk to you and thank you again for all the partnership. You're welcome.",
+  "segments": [
+    {
+      "start": 0.0,
+      "end": 6.8,
+      "text": "Hi, I'm Phil Mackintosh, Nasdaq's Chief Economist, and I'm here today with Amy Butte, the CFO from Navan."
+    },
+    {
+      "start": 6.8,
+      "end": 14.8,
+      "text": "Thank you for having me. And the reason we're here is Navan runs a travel business where you can book travel and it keeps track of travel expenses."
+    },
+    {
+      "start": 14.8,
+      "end": 22.4,
+      "text": "And so you get to see millions of transactions across thousands of different companies. And you're a little bit like me, you like data, so you've built a travel index."
+    },
+    {
+      "start": 22.4,
+      "end": 32.5,
+      "text": "The cool thing about the travel index is it's going to be a global benchmark. It's going to show business travel activity, but not just airlines, it's going to be able to show hotels and expenses as well."
+    },
+    {
+      "start": 32.5,
+      "end": 41.5,
+      "text": "And I'm proud to say my economist team has collaborated with Navan to build this index. I think it's pretty unique, so it's going to give new visibility into the decision-making of corporates and corporate travel in America and around the world."
+    },
+    {
+      "start": 41.5,
+      "end": 56.4,
+      "text": "Yes. My first question, pretty easy question I think, is what motivated Navan to do a business travel index?"
+    },
+    {
+      "start": 56.4,
+      "end": 67.5,
+      "text": "Great question, and thank you for having me and thanks for the partnership with Nasdaq. We really appreciate it. You and I both know when we geek out with data, it's not just what the data says, but knowing that you can trust it."
+    },
+    {
+      "start": 67.5,
+      "end": 76.5,
+      "text": "And we really feel like we built that in that partnership. Going back to your question, when I arrived at Navan about a year and a half ago, and I was asking the question about what are the trends in travel,"
+    },
+    {
+      "start": 76.5,
+      "end": 85.5,
+      "text": "what I realized is that there was lots of data out there or indices like a TSA index about consumer travel, but there wasn't necessarily an index to help me benchmark our customers and our activity relative to business travel."
+    },
+    {
+      "start": 85.5,
+      "end": 93.8,
+      "text": "So we really wanted to be able to create an index so that whether it's our customers, whether it's investors, whether it's our users, can really have a sense of what's taking place in business travel, separate from consumer travel."
+    },
+    {
+      "start": 93.8,
+      "end": 102.5,
+      "text": "Yes, so one of the things that I read in the report is that business travel is up 15%, which I guess shouldn't surprise me when I get on airplanes these days."
+    },
+    {
+      "start": 102.5,
+      "end": 113.8,
+      "text": "But what do you think's driving the growth in business travel, especially in the current economic climate?"
+    },
+    {
+      "start": 113.8,
+      "end": 122.5,
+      "text": "So to be clear, we're going to put this out on a quarterly basis. It's kind of like same-store sales for business travel, and that 15% was June '24 to June '25."
+    },
+    {
+      "start": 122.5,
+      "end": 133.5,
+      "text": "And business travel's up 15%. In contrast, TSA data, which represents a broader universe of consumer data, was down 1%."
+    },
+    {
+      "start": 133.5,
+      "end": 145.5,
+      "text": "And so that kind of comes to why the double-digit growth during that time period versus consumer. You know, for us, what we're seeing across our customer base and on a global basis"
+    },
+    {
+      "start": 145.5,
+      "end": 156.4,
+      "text": "is that companies have realized, especially post-COVID, that we're in a different world. Businesses depend on that face-to-face interaction."
+    },
+    {
+      "start": 156.4,
+      "end": 167.5,
+      "text": "Zooms serve their purpose, right? Virtual meetings, virtual events served their purpose and they still do to a certain extent, but you really can't replicate that face-to-face."
+    },
+    {
+      "start": 167.5,
+      "end": 178.5,
+      "text": "Yeah. And one of the things that really interested me out of the data was the TSA shows pretty constant activity levels of flights, but business travel is in cycles. Why do you think that happens?"
+    },
+    {
+      "start": 178.5,
+      "end": 189.4,
+      "text": "Yeah, actually consumer travel and business travel have their own patterns. So as you would anticipate, you take your personal trips during the summer months and during the holidays, right?"
+    },
+    {
+      "start": 189.4,
+      "end": 199.5,
+      "text": "Kind of November and December. And from a business standpoint, what we see is that people travel more kind of in February, March, and April, or September, October, and early November."
+    },
+    {
+      "start": 199.5,
+      "end": 209.5,
+      "text": "Think about how that correlates to when you're doing your planning and talking to your team. Think about how it correlates to when we have conferences and when you want to kind of learn from others."
+    },
+    {
+      "start": 209.5,
+      "end": 221.4,
+      "text": "So those trends are really opposite and the report shows that they don't go in tandem. They really run very differently. They complement each other, which is great for the airlines I guess."
+    },
+    {
+      "start": 221.4,
+      "end": 232.5,
+      "text": "So because you can drill down into things like meals and hotels and airlines separately, what can you see about those sorts of trends?"
+    },
+    {
+      "start": 232.5,
+      "end": 242.4,
+      "text": "So we're actually able to see where people are booking more hotels and where they're booking more air trips and where they're spending more."
+    },
+    {
+      "start": 242.4,
+      "end": 253.5,
+      "text": "What was fascinating to me was that we actually saw an uptick in international spend and international hotel spend in particular."
+    },
+    {
+      "start": 253.5,
+      "end": 266.5,
+      "text": "So you would have kind of thought with perhaps some of the uncertainty in the market, people would have paired back. And the opposite was true. People really leaned in, or companies really leaned in to the investment on a global basis."
+    },
+    {
+      "start": 266.5,
+      "end": 277.5,
+      "text": "Right. And so when we think about air and hotel, what do you think this says about the state of the airlines and the hotel industry?"
+    },
+    {
+      "start": 277.5,
+      "end": 288.4,
+      "text": "Well, it's not across the board, right? It's healthy. I think it says that companies view travel not as discretionary, but as a baseline."
+    },
+    {
+      "start": 288.4,
+      "end": 303.5,
+      "text": "Both air and hotel travel spending and transaction volumes are up overall, but the rate of growth varies significantly across industries. So for example, financial services and media and entertainment organizations"
+    },
+    {
+      "start": 303.5,
+      "end": 314.4,
+      "text": "are not only maintaining their travel, but they're also increasing their volume. It grew 31% and 25% respectively during that same time frame."
+    },
+    {
+      "start": 314.4,
+      "end": 325.5,
+      "text": "Overseas hotel spend grew 17% year-over-year during that time, driven primarily once again by media and entertainment and the real estate industries."
+    },
+    {
+      "start": 325.5,
+      "end": 336.5,
+      "text": "We believe that it's those industries where you really gotta shake a hand to seal a deal or that one-on-one contact matters that that's where we saw that incremental growth during that June to June period."
+    },
+    {
+      "start": 336.5,
+      "end": 348.5,
+      "text": "Interesting. And so since you've released this report, what have you learned from the other CFOs and companies using the data?"
+    },
+    {
+      "start": 348.5,
+      "end": 357.5,
+      "text": "Well, I'll tell you what I was surprised by the most is that the spend wasn't really on big conferences, right? It wasn't on big entertainment."
+    },
+    {
+      "start": 357.5,
+      "end": 366.5,
+      "text": "It was really on individual travel, individual meals, T&E, individual taxi and rideshare, even internet that people were buying."
+    },
+    {
+      "start": 366.5,
+      "end": 378.5,
+      "text": "So what it said to me is that this was really much more about one-on-one interaction or small team gatherings rather than these big, big events that I think maybe you and I grew up with."
+    },
+    {
+      "start": 378.5,
+      "end": 387.5,
+      "text": "I still feel like there's plenty of big events. Do you have any final takeaways just thinking about the index and how people can get access to it?"
+    },
+    {
+      "start": 387.5,
+      "end": 398.5,
+      "text": "Sure. Well, first of all, I hope that our customers will look at it and help be able to benchmark their investment in travel relative to other companies like themselves."
+    },
+    {
+      "start": 398.5,
+      "end": 408.5,
+      "text": "Not just overall global travel, but what's happening in your industry? What's happening in your region? And are you making the most of those investment dollars?"
+    },
+    {
+      "start": 408.5,
+      "end": 418.5,
+      "text": "Because people really are investing in that travel portion of their budget. Also, we hope that other people will start to take a look at it."
+    },
+    {
+      "start": 418.5,
+      "end": 428.5,
+      "text": "Whether it's investors who are interested in investing in the travel space, whether it's data geeks like you and me. So we really hope that people will take a look at it."
+    },
+    {
+      "start": 428.5,
+      "end": 441.5,
+      "text": "Now, if you want to take a look at it, please feel free to go to navan.com/bti. People will have full access to the report, our takeaways, and we look forward to releasing this on a quarterly basis as well."
+    },
+    {
+      "start": 441.5,
+      "end": 451.5,
+      "text": "Fantastic. Amy, it's been great talking to you. Great to talk to you and thank you again for all the partnership. You're welcome."
+    }
+  ]
+}

@@ -1,0 +1,70 @@
+{
+  "full_text": "I'd like to invite on stage Mr. Ilan Twig, who is the CTO and co-founder of Navan. And certainly we at Reuters love to use Navan. So thank you for joining us. Navan has built a cognitive system where the LLMs supervise each other in a way that allows kind of the repeatability of actual credible responses that are not intended to frustrate. Yes. Because the only way for me to trust an employee or to trust a bot is to know that it's always going to perform, that I can trust it all the time. No one would ever hire an employee that says 'I lied.' That's LLMs! The LLMs lie, and that's why you do not see them replacing humans yet. So how do we get from, then, that which obviously isn't usable for the purpose of a travel agent or otherwise, to something that is? I'm getting a call from one of our customer success managers, and I asked her, explain to me what was it that you miss so much in this bot that you do not get from the live agents? I mean, it's live agents. And she said, your bot is never wrong, and when it doesn't know, it takes me to an agent. In a way, what we ended up building is something that is, I call it Navan cognition. It's a highly functioning cognitive system. LLMs are not. It's a framework that ensures that these things can think and mimic the human behavior. Today it carries, I just checked before the interview, the first few days of January, we crossed the 7,000 checks per day for the first time, less than 40% of them get to the live agent, so it actually solves close to 60%.",
+  "segments": [
+    {
+      "start": 14.5,
+      "end": 19.5,
+      "text": "I'd like to invite on stage Mr. Ilan Twig, who is the CTO and co-founder of Navan."
+    },
+    {
+      "start": 19.5,
+      "end": 24.0,
+      "text": "And certainly we at Reuters love to use Navan. So thank you for joining us."
+    },
+    {
+      "start": 24.1,
+      "end": 30.5,
+      "text": "Navan has built a cognitive system where the LLMs supervise each other in a way that allows kind of the repeatability of actual credible responses."
+    },
+    {
+      "start": 30.6,
+      "end": 40.0,
+      "text": "That are not intended to frustrate. Yes. Because the only way for me to trust an employee or to trust a bot is to know that it's always going to perform."
+    },
+    {
+      "start": 40.1,
+      "end": 50.0,
+      "text": "That I can trust it all the time. No one would ever hire an employee that says 'I lied.' That's LLMs!"
+    },
+    {
+      "start": 50.1,
+      "end": 58.0,
+      "text": "The LLMs lie, and that's why you do not see them replacing humans yet."
+    },
+    {
+      "start": 58.1,
+      "end": 107.0,
+      "text": "So how do we get from, then, that which obviously isn't usable for the purpose of a travel agent or otherwise, to something that is?"
+    },
+    {
+      "start": 107.1,
+      "end": 115.0,
+      "text": "I'm getting a call from one of our customer success managers, and I asked her, explain to me what was it that you miss so much in this bot?"
+    },
+    {
+      "start": 115.1,
+      "end": 127.0,
+      "text": "She said, your bot is never wrong, and when it doesn't know, it takes me to an agent."
+    },
+    {
+      "start": 127.1,
+      "end": 136.0,
+      "text": "In a way, what we ended up building is something that is, I call it Navan cognition. It's a highly functioning cognitive system."
+    },
+    {
+      "start": 136.1,
+      "end": 143.0,
+      "text": "LLMs are not. It's a framework that ensures that these things can think and mimic the human behavior."
+    },
+    {
+      "start": 143.1,
+      "end": 152.0,
+      "text": "Today it carries... we crossed the 7,000 checks per day for the first time."
+    },
+    {
+      "start": 152.1,
+      "end": 160.0,
+      "text": "Less than 40% of them get to the live agent, so it actually solves close to 60%."
+    }
+  ]
+}

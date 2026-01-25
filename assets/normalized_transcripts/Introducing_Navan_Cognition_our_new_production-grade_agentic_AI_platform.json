@@ -1,0 +1,50 @@
+{
+  "full_text": "I'm Ilan, CTO and co-founder of Navan. Navan Cognition is an AI platform for building intelligent, reliable and trustworthy AI agent teams. Already at Navan, we've put Navan Cognition to use by building our virtual travel agent, Ava, who handles thousands of daily interactions with customers, prioritizing zero critical errors with unmatched customer satisfaction. Now it's your turn. The future isn't just smarter AI tools, it's intelligent, reliable AI teams. Ready to build? Sign up for early access at navancognition.ai.",
+  "segments": [
+    {
+      "start": 0.0,
+      "end": 3.0,
+      "text": "I'm Ilan, CTO and co-founder of Navan."
+    },
+    {
+      "start": 3.0,
+      "end": 8.0,
+      "text": "Navan Cognition is an AI platform for building intelligent, reliable and trustworthy AI agent teams."
+    },
+    {
+      "start": 8.0,
+      "end": 14.0,
+      "text": "Already at Navan, we've put Navan Cognition to use by building our virtual travel agent, Ava,"
+    },
+    {
+      "start": 14.0,
+      "end": 20.0,
+      "text": "who handles thousands of daily interactions with customers,"
+    },
+    {
+      "start": 20.0,
+      "end": 25.0,
+      "text": "prioritizing zero critical errors with unmatched customer satisfaction."
+    },
+    {
+      "start": 25.0,
+      "end": 28.0,
+      "text": "Now it's your turn."
+    },
+    {
+      "start": 28.0,
+      "end": 33.0,
+      "text": "The future isn't just smarter AI tools, it's intelligent, reliable AI teams."
+    },
+    {
+      "start": 33.0,
+      "end": 36.0,
+      "text": "Ready to build?"
+    },
+    {
+      "start": 36.0,
+      "end": 46.0,
+      "text": "Sign up for early access at navancognition.ai."
+    }
+  ]
+}

@@ -1,0 +1,30 @@
+{
+  "full_text": "The world's smartest corporate card just teamed up with the world's best enterprise travel to deliver BrexPay for Navan. The new gold standard in enterprise travel.",
+  "segments": [
+    {
+      "start": 0.0,
+      "end": 2.1,
+      "text": "The world's smartest corporate card"
+    },
+    {
+      "start": 2.1,
+      "end": 3.4,
+      "text": "just teamed up with"
+    },
+    {
+      "start": 3.4,
+      "end": 6.1,
+      "text": "the world's best enterprise travel"
+    },
+    {
+      "start": 6.1,
+      "end": 9.4,
+      "text": "to deliver BrexPay for Navan."
+    },
+    {
+      "start": 9.4,
+      "end": 14.4,
+      "text": "The new gold standard in enterprise travel."
+    }
+  ]
+}

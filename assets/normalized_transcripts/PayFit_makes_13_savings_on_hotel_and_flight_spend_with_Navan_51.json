@@ -1,0 +1,95 @@
+{
+  "full_text": "My name is Julien Lachowski and I'm FP&A Director at PayFit. Before Navan, we used a solution which wasn't user-friendly and required a lot of back-office work. We chose Navan for its broad global inventory, particularly in the different countries we travel to, and also for the user experience. The ease of using the platform is great for us. The so-called 'UX' is what made us choose Navan's solution in the end. We can access the same travel inventory as on consumer travel platforms. When traveling, we want to avoid unpleasant surprises for admins as well as for travelers, and the Navan platform helps us achieve this. Being able to set up dynamic policies on Navan, as a finance manager, is great. The dynamic policy feature considers the date and median price of hotels in different cities and uses this information to automatically adjust the price at which our employees can book their hotel rooms. This creates opportunities in terms of cost optimization that are game-changing for us in the finance team. Navan's implementation has also been an opportunity for us to review our internal travel policies and our 'green' travel policies. Typically, we set up rules to encourage the use of trains instead of planes for certain types of trips, for example between an employee's home and the office location, or short trips. Thanks to the reporting available on the Navan platform, which allows us to calculate each trip's carbon emissions, we can accurately measure our carbon emissions and we know, thanks to the Navan platform, how we can reduce the carbon footprint of business travel at PayFit. The credit line provided by Navan, and the cash advance that goes with it, have really simplified our accounting processes. With our previous platform, we had to process and track countless transactions. Today, we receive one bill at the end of the month and we import it automatically into our ERP. It's true that since implementing Navan, we've saved a lot of time managing expenses and tracking the costs related to our employees' business trips. It helps me save a lot of time, and I'm now able to focus on other tasks with more added value in order to meet my objectives.",
+  "segments": [
+    {
+      "start": 8.0,
+      "end": 13.0,
+      "text": "My name is Julien Lachowski and I'm FP&A Director at PayFit."
+    },
+    {
+      "start": 21.0,
+      "end": 29.0,
+      "text": "Before Navan, we used a solution which wasn't user-friendly and required a lot of back-office work."
+    },
+    {
+      "start": 29.0,
+      "end": 37.0,
+      "text": "We chose Navan for its broad global inventory, particularly in the different countries we travel to, and also for the user experience."
+    },
+    {
+      "start": 38.0,
+      "end": 49.0,
+      "text": "The ease of using the platform is great for us. The so-called 'UX' is what made us choose Navan's solution in the end."
+    },
+    {
+      "start": 50.0,
+      "end": 56.0,
+      "text": "We can access the same travel inventory as on consumer travel platforms."
+    },
+    {
+      "start": 56.0,
+      "end": 64.0,
+      "text": "When traveling, we want to avoid unpleasant surprises for admins as well as for travelers, and the Navan platform helps us achieve this."
+    },
+    {
+      "start": 108.0,
+      "end": 114.0,
+      "text": "Being able to set up dynamic policies on Navan, as a finance manager, is great."
+    },
+    {
+      "start": 114.0,
+      "end": 130.0,
+      "text": "The dynamic policy feature considers the date and median price of hotels in different cities and uses this information to automatically adjust the price at which our employees can book their hotel rooms."
+    },
+    {
+      "start": 130.0,
+      "end": 138.0,
+      "text": "This creates opportunities in terms of cost optimization that are game-changing for us in the finance team."
+    },
+    {
+      "start": 138.0,
+      "end": 146.0,
+      "text": "Navan's implementation has also been an opportunity for us to review our internal travel policies and our 'green' travel policies."
+    },
+    {
+      "start": 147.0,
+      "end": 161.0,
+      "text": "Typically, we set up rules to encourage the use of trains instead of planes for certain types of trips, for example between an employee's home and the office location, or short trips."
+    },
+    {
+      "start": 202.0,
+      "end": 213.0,
+      "text": "Thanks to the reporting available on the Navan platform, which allows us to calculate each trip's carbon emissions, we can accurately measure our carbon emissions..."
+    },
+    {
+      "start": 214.0,
+      "end": 224.0,
+      "text": "and we know, thanks to the Navan platform, how we can reduce the carbon footprint of business travel at PayFit."
+    },
+    {
+      "start": 225.0,
+      "end": 234.0,
+      "text": "The credit line provided by Navan, and the cash advance that goes with it, have really simplified our accounting processes."
+    },
+    {
+      "start": 234.0,
+      "end": 241.0,
+      "text": "With our previous platform, we had to process and track countless transactions."
+    },
+    {
+      "start": 242.0,
+      "end": 249.0,
+      "text": "Today, we receive one bill at the end of the month and we import it automatically into our ERP."
+    },
+    {
+      "start": 249.0,
+      "end": 259.0,
+      "text": "It's true that since implementing Navan, we've saved a lot of time managing expenses and tracking the costs related to our employees' business trips."
+    },
+    {
+      "start": 260.0,
+      "end": 310.0,
+      "text": "It helps me save a lot of time, and I'm now able to focus on other tasks with more added value in order to meet my objectives."
+    }
+  ]
+}

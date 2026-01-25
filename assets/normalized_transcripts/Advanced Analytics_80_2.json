@@ -1,0 +1,45 @@
+{
+  "full_text": "Advanced Analytics. Travel intelligence... that's actually intelligent. Track spend. Spot trends. Uncover more. Stay one step ahead. Out of policy spend has hit your threshold. Your data \u2014 brought to life. Turn travel data into your success story. Navan.",
+  "segments": [
+    {
+      "start": 0.0,
+      "end": 1.0,
+      "text": "Advanced Analytics."
+    },
+    {
+      "start": 1.0,
+      "end": 3.0,
+      "text": "Travel intelligence... that's actually intelligent."
+    },
+    {
+      "start": 3.0,
+      "end": 5.0,
+      "text": "Track spend."
+    },
+    {
+      "start": 5.0,
+      "end": 7.0,
+      "text": "Spot trends."
+    },
+    {
+      "start": 7.0,
+      "end": 9.0,
+      "text": "Uncover more."
+    },
+    {
+      "start": 9.0,
+      "end": 12.0,
+      "text": "Stay one step ahead. Out of policy spend has hit your threshold."
+    },
+    {
+      "start": 12.0,
+      "end": 17.0,
+      "text": "Your data \u2014 brought to life."
+    },
+    {
+      "start": 17.0,
+      "end": 23.0,
+      "text": "Turn travel data into your success story. Navan."
+    }
+  ]
+}
