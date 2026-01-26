@@ -33,8 +33,8 @@ from videoagent.config import Config, default_config
 from videoagent.editor import VideoEditor
 from videoagent.gemini import GeminiClient
 from videoagent.library import VideoLibrary
-from videoagent.models import RenderResult, VoiceOver
-from videoagent.story import PersonalizedStoryGenerator, _StoryboardScene
+from videoagent.models import RenderResult, VoiceOver, VideoBrief
+from videoagent.story import PersonalizedStoryGenerator, _StoryboardScene, _MatchedScene
 from videoagent.voice import VoiceOverGenerator, estimate_speech_duration
 
 
@@ -48,9 +48,20 @@ class StoryboardSceneUpdatePayload(BaseModel):
     scene: _StoryboardScene
 
 
-class CustomerDetailsUpdatePayload(BaseModel):
+class MatchedSceneUpdateItem(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    details: str
+    scene_id: str
+    matched_scene: _MatchedScene
+
+
+class MatchedScenesUpdatePayload(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    scenes: list[MatchedSceneUpdateItem]
+
+
+class VideoBriefUpdatePayload(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    brief: VideoBrief
 
 
 class SceneMatchRequest(BaseModel):
@@ -99,57 +110,7 @@ class AgentResponse(BaseModel):
     )
 
 
-class VideoAgentService:
-    def __init__(self, config: Config, base_dir: Path):
-        self.config = config
-        self.base_dir = base_dir
-        self.event_store = EventStore(base_dir)
-        self.storyboard_store = StoryboardStore(base_dir)
-        self.customer_store = CustomerStore(base_dir)
 
-        # Initialize core components
-        _load_env()
-        # ... (rest of init)
-
-    # ... (other methods)
-
-    def run_turn(self, session_id: str, user_message: str) -> dict:
-        """Run a single turn of the agent, returning structured response."""
-        # ... (setup)
-        
-        # We need to inject instructions for structured output? 
-        # Actually, providing response_schema is usually enough for Gemini 
-        # but explicit instructions help quality.
-        
-        model = self._create_model(session_id)
-        agent = Agent(
-            model=model,
-            system_prompt=self._build_system_prompt(),
-            # ... tools ...
-        )
-        
-        # We are using `agent.run(user_message)`.
-        # The `Agent` class from `agents` library might not support structured output config directly in `run`?
-        # Typically structured output (constrained generation) is a Model capability.
-        # But `Agent` loop generally returns the final *string* answer.
-        
-        # Wait, the `agents` library (likely `google-genai-agents` or similar custom one) might abstract this.
-        # The User provided `agent_runtime.py` shows:
-        # `response = runner.run(agent=agent, input=user_message, ...)`
-        # `return response.output` which is a string.
-        
-        # If I want structured output from the *Agent's final answer*, I should instruct it in the System Prompt 
-        # AND enforce it if possible, OR just ask it to output JSON in valid JSON format.
-        # Since we use `lite_llm` or `google.genai`, we might use `response_schema` if the underlying `Agent` supports passing config.
-        
-        # **Alternative Plan**:
-        # Ask the agent to ALWAYS reply in valid JSON format matching the schema.
-        # "You must answer in JSON format: { 'response': '...', 'suggested_actions': [...] }"
-        # And try to parse it. 
-        # Given we are using Gemini 1.5/2.0 Flash, it follows schemas well.
-        
-        # Update system prompt to demand JSON output.
-        pass
 
 
 def _parse_timestamp(text: str) -> float:
@@ -253,28 +214,29 @@ class StoryboardStore:
 
 
 @dataclass
-class CustomerStore:
+class BriefStore:
     base_dir: Path
     _lock: Lock = field(default_factory=Lock)
 
-    def _customer_path(self, session_id: str) -> Path:
-        return self.base_dir / f"{session_id}.customer.json"
+    def _brief_path(self, session_id: str) -> Path:
+        return self.base_dir / f"{session_id}.brief.json"
 
-    def load(self, session_id: str) -> Optional[str]:
-        path = self._customer_path(session_id)
+    def load(self, session_id: str) -> Optional[VideoBrief]:
+        path = self._brief_path(session_id)
         if not path.exists():
             return None
         with self._lock, path.open("r", encoding="utf-8") as handle:
-            return json.load(handle)
+            data = json.load(handle)
+        return VideoBrief.model_validate(data)
 
-    def save(self, session_id: str, details: str) -> None:
-        path = self._customer_path(session_id)
+    def save(self, session_id: str, brief: VideoBrief) -> None:
+        path = self._brief_path(session_id)
         self.base_dir.mkdir(parents=True, exist_ok=True)
         with self._lock, path.open("w", encoding="utf-8") as handle:
-            json.dump(details, handle, indent=2)
+            json.dump(brief.model_dump(mode="json"), handle, indent=2)
 
     def clear(self, session_id: str) -> None:
-        path = self._customer_path(session_id)
+        path = self._brief_path(session_id)
         if path.exists():
             path.unlink()
 
@@ -343,7 +305,7 @@ def _select_api_key(config: Config, model_name: str) -> Optional[str]:
 def _build_tools(
     config: Config,
     storyboard_store: StoryboardStore,
-    customer_store: CustomerStore,
+    brief_store: BriefStore,
     event_store: EventStore,
     session_id: str,
     auto_render_callback: Optional[Callable[[], None]] = None,
@@ -386,6 +348,8 @@ def _build_tools(
             return wrapped
         return decorator
 
+
+
     @function_tool(
         failure_error_function=tool_error("update_storyboard"),
         strict_mode=True,
@@ -425,12 +389,46 @@ def _build_tools(
         event_store.append(session_id, {"type": "storyboard_update"})
         return "Storyboard scene updated successfully"
 
-    @function_tool(failure_error_function=tool_error("update_customer_details"), strict_mode=True)
-    @log_tool("update_customer_details")
-    def update_customer_details(payload: CustomerDetailsUpdatePayload) -> str:
-        """Replace the customer details text for this session (must be full description, not a delta)."""
-        customer_store.save(session_id, payload.details)
-        return "UI updated successfully"
+    @function_tool(
+        failure_error_function=tool_error("update_matched_scenes"),
+        strict_mode=True,
+    )
+    @log_tool("update_matched_scenes")
+    def update_matched_scenes(
+        payload: MatchedScenesUpdatePayload,
+    ) -> str:
+        """Update the matched_scene field for specific storyboard scenes."""
+        scenes = storyboard_store.load(session_id) or []
+        if not scenes:
+            return "No storyboard scenes found. Create a storyboard before updating matched scenes."
+        
+        scene_map = {scene.scene_id: scene for scene in scenes}
+        updated_count = 0
+        missing_ids = []
+
+        for item in payload.scenes:
+            if item.scene_id in scene_map:
+                scene_map[item.scene_id].matched_scene = item.matched_scene
+                updated_count += 1
+            else:
+                missing_ids.append(item.scene_id)
+        
+        if updated_count > 0:
+            storyboard_store.save(session_id, scenes)
+            event_store.append(session_id, {"type": "storyboard_update"})
+        
+        msg = f"Updated matched details for {updated_count} scene(s)."
+        if missing_ids:
+            msg += f" Warning: Scene IDs not found: {', '.join(missing_ids)}"
+        return msg
+
+    @function_tool(failure_error_function=tool_error("update_video_brief"), strict_mode=True)
+    @log_tool("update_video_brief")
+    def update_video_brief(payload: VideoBriefUpdatePayload) -> str:
+        """Update/Replace the video brief details (objective, persona, key_messages)."""
+        brief_store.save(session_id, payload.brief)
+        event_store.append(session_id, {"type": "video_brief_update"})
+        return "Video brief updated successfully. UI will reflect changes."
 
     @function_tool(failure_error_function=tool_error("render_storyboard"), strict_mode=False)
     @log_tool("render_storyboard")
@@ -1000,7 +998,7 @@ EXAMPLE OUTPUT:
         return (
             f"{json.dumps(response_payload)}\n"
             "Message: Review the candidates and confirm which one meets the requirements. "
-            "Then update the story segment with your chosen clip. "
+            "Then update the story board with your chosen clip using 'update_matched_scenes'. "
             "If no clips match the requirements, update the notes and call this tool again."
         )
     @function_tool(failure_error_function=tool_error("estimate_voice_duration"), strict_mode=False)
@@ -1135,7 +1133,8 @@ Example:
     return [
         update_storyboard,
         update_storyboard_scene,
-        update_customer_details,
+        update_matched_scenes,
+        update_video_brief,
         match_scene_to_video,
         generate_voice_overs,
         estimate_voice_duration,
@@ -1301,7 +1300,7 @@ class VideoAgentService:
         self.base_dir = base_dir or (Path.cwd() / "output" / "agent_sessions")
         self.base_dir.mkdir(parents=True, exist_ok=True)
         self.storyboard_store = StoryboardStore(self.base_dir)
-        self.customer_store = CustomerStore(self.base_dir)
+        self.brief_store = BriefStore(self.base_dir)
         self.event_store = EventStore(self.base_dir)
         self.chat_store = ChatStore(self.base_dir)
         self.session_db_path = self.base_dir / "agent_memory.db"
@@ -1313,6 +1312,7 @@ class VideoAgentService:
         self._render_futures: dict[str, object] = {}
         _load_env()
         self._configure_tracing()
+
         self._base_instructions = """# Collaborative Video Editing Agent System Prompt
 
 ## Role & Core Behavior
@@ -1325,10 +1325,19 @@ You are a **Collaborative Video Editing Agent**. Your goal is to help a user ite
 
 ---
 
+## Stage 0: Video Brief Creation (MANDATORY FIRST STEP)
+
+**Goal:** Define the objective, persona, and key messages for the video.
+* **Action:** You must ALWAYS start by creating a Video Brief based on the user's input.
+* **Tool:** Use `update_video_brief` to save the brief.
+* **Constraint:** You CANNOT proceed to Storyboard Generation until the Video Brief is created and saved.
+
+---
+
 ## Stage 1: Storyboard Generation
 
 **Goal:** Create a high-level narrative plan including titles, purposes, scripts, and `use_voice_over` status.
-* **Action:** Call `update_storyboard` to save changes.
+* **Action:** Call `update_storyboard` to save changes. Make sure 'matched_scene' is empty for all scenes at this stage.
 * **Constraint:** Once the initial storyboard is created, **IMMEDIATELY** proceed to Stage 2. Do NOT ask for user feedback.
 * **Testimony Rule:** Customer testimonies must **NOT** have a voice over. The testimony should always be introduced the in previous scene. Otherwise it might feel abrupt.
 * **Introductions:** The scene immediately preceding a testimony must introduce the speaker by name, role, and company if available.
@@ -1349,19 +1358,14 @@ You are a **Collaborative Video Editing Agent**. Your goal is to help a user ite
 * **Clarity:** If a voice over is present, avoid scenes with people speaking or visible subtitles.
 * **Language:** If the original voice is kept, make sure the selected candidate is in the same language as the final video.
 * **Testimony Clips:** Prompt for ~30s for testimonies to ensure they look genuine.
-
-### 3. Rendering
-### 3. Rendering
-* **Execution:** The system will automatically render the video when scenes are matched.
-* **Communication:** Inform the user when you are matching scenes.
-
-Inform the user that the video is being generated. There is no need to explain the voice over generation or the scene matching.
 DO NOT use the transcript to match scenes. Always rely on your scene matching tool.
-
 The scene matching is a fairly dynamic process.
 You might have to split, merge or completely rewrite a scene to make it a better fit for the user request.
 If you change the voice over script, make sure you regenerate the audio to get the new duration. If the new duration does not match the duration of the video, you will need to find a new video to match the new duration.
 
+
+### 3. Rendering
+* **Execution:** The system will automatically render the video when scenes are matched.
 ---
 ## Response Format
 
@@ -1381,6 +1385,9 @@ If you change the voice over script, make sure you regenerate the audio to get t
 * Handling errors: If you hit a technical issue, try to rerun the tool a second time. If it's still not working, inform the user that you have hit a technical issue and ask them to try again later.
 """
 
+    def get_video_brief(self, session_id: str) -> Optional[VideoBrief]:
+        return self.brief_store.load(session_id)
+
     def _configure_tracing(self) -> None:
         tracing_key = os.environ.get("OPENAI_API_KEY")
         if tracing_key:
@@ -1396,10 +1403,10 @@ If you change the voice over script, make sure you regenerate the audio to get t
 
     def _build_context_payload(self, session_id: str, video_transcripts: list[dict]) -> dict:
         storyboard_scenes = self.storyboard_store.load(session_id)
-        customer_details = self.customer_store.load(session_id)
+        video_brief = self.brief_store.load(session_id)
         return {
             "video_transcripts": video_transcripts,
-            "customer_details": customer_details,
+            "video_brief": video_brief.model_dump(mode="json") if video_brief else None,
             "storyboard_scenes": [
                 scene.model_dump(mode="json")
                 for scene in storyboard_scenes
@@ -1429,7 +1436,7 @@ If you change the voice over script, make sure you regenerate the audio to get t
             tools = _build_tools(
                 self.config,
                 self.storyboard_store,
-                self.customer_store,
+                self.brief_store,
                 self.event_store,
                 session_id,
                 auto_render_callback=lambda: self.schedule_auto_render(session_id),
@@ -1489,11 +1496,8 @@ If you change the voice over script, make sure you regenerate the audio to get t
     def save_storyboard(self, session_id: str, scenes: list[_StoryboardScene]) -> None:
         self.storyboard_store.save(session_id, scenes)
 
-    def get_customer_details(self, session_id: str) -> Optional[str]:
-        return self.customer_store.load(session_id)
-
-    def save_customer_details(self, session_id: str, details: str) -> None:
-        self.customer_store.save(session_id, details)
+    def save_video_brief(self, session_id: str, brief: VideoBrief) -> None:
+        self.brief_store.save(session_id, brief)
 
     def get_chat_history(self, session_id: str) -> list[dict]:
         """Get all chat messages for a session."""
@@ -1548,7 +1552,7 @@ If you change the voice over script, make sure you regenerate the audio to get t
         session = SQLiteSession(session_id, str(self.session_db_path))
         ui_update_tools = {
             "update_storyboard",
-            "update_customer_details",
+            "update_video_brief",
         }
         redacted_args = json.dumps(
             {"note": "REDACTED TO REDUCE TOKEN USAGE; SEE LATEST STATE IN SYSTEM PROMPT"}
@@ -1670,6 +1674,6 @@ If you change the voice over script, make sure you regenerate the audio to get t
         generator = PersonalizedStoryGenerator(self.config)
         scenes = generator.plan_storyboard(brief)
         self.storyboard_store.save(session_id, scenes)
-        if brief:
-            self.customer_store.save(session_id, brief)
+        # if brief:
+        #     self.brief_store.save(session_id, brief) # Cannot save raw string to BriefStore
         return scenes

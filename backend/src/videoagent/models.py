@@ -15,6 +15,15 @@ class VideoAgentModel(BaseModel):
     model_config = ConfigDict(arbitrary_types_allowed=True, validate_assignment=True)
 
 
+class VideoBrief(VideoAgentModel):
+    """
+    Structured brief for a video project.
+    """
+    video_objective: str
+    persona: str
+    key_messages: list[str]
+
+
 class SegmentType(Enum):
     """Type of segment in a story."""
     VIDEO_CLIP = "video_clip"

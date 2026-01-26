@@ -17,6 +17,8 @@ export const metadata: Metadata = {
   description: "AI-powered video creation studio",
 };
 
+import { Navbar } from "@/components/Navbar";
+
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -27,6 +29,7 @@ export default function RootLayout({
       <body
         className={`${sora.variable} ${fraunces.variable} font-sans antialiased`}
       >
+        <Navbar />
         {children}
       </body>
     </html>

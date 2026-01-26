@@ -15,6 +15,7 @@ export function useEventPolling() {
     const setScenes = useSessionStore(state => state.setScenes);
     const setVideoGenerating = useSessionStore(state => state.setVideoGenerating);
     const setVideoPath = useSessionStore(state => state.setVideoPath);
+    const setVideoBrief = useSessionStore(state => state.setVideoBrief);
 
     const intervalRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -39,6 +40,15 @@ export function useEventPolling() {
                         } catch (err) {
                             console.error('Failed to fetch storyboard on update:', err);
                         }
+                    } else if (event.type === 'video_brief_update') {
+                        try {
+                            const brief = await api.getVideoBrief(session.id);
+                            if (brief) {
+                                setVideoBrief(brief);
+                            }
+                        } catch (err) {
+                            console.error('Failed to fetch video brief on update:', err);
+                        }
                     } else if (event.type === 'video_render_start' || event.type === 'auto_render_start') {
                         setVideoGenerating(true);
                         setVideoPath(null);
@@ -56,7 +66,7 @@ export function useEventPolling() {
         } catch (error) {
             console.error('Error polling events:', error);
         }
-    }, [session?.id, eventsCursor, addEvent, setEventsCursor, setScenes, setVideoGenerating, setVideoPath]);
+    }, [session?.id, eventsCursor, addEvent, setEventsCursor, setScenes, setVideoGenerating, setVideoPath, setVideoBrief]);
 
     useEffect(() => {
         if (isProcessing && session?.id) {

@@ -7,6 +7,8 @@ import {
     SessionResponse,
     StoryboardScene,
     VideoMetadata,
+    Customer,
+    VideoBrief,
 } from './types';
 
 
@@ -100,6 +102,11 @@ export const api = {
         return handleResponse<ChatHistoryResponse>(response);
     },
 
+    getVideoBrief: async (sessionId: string): Promise<VideoBrief | null> => {
+        const response = await fetchWithTimeout(`${API_BASE}/agent/sessions/${sessionId}/brief`);
+        return handleResponse<VideoBrief | null>(response);
+    },
+
     updateStoryboard: async (sessionId: string, scenes: StoryboardScene[]): Promise<void> => {
         await fetchWithTimeout(`${API_BASE}/agent/sessions/${sessionId}/storyboard`, {
             method: 'PATCH',
@@ -132,10 +139,16 @@ export const api = {
         return handleResponse(response);
     },
 
-    // Video Metadata
     getVideoMetadata: async (videoId: string): Promise<VideoMetadata> => {
         const response = await fetchWithTimeout(`${API_BASE}/agent/library/videos/${videoId}`);
         return handleResponse<VideoMetadata>(response);
     },
+
+    // Customers
+    getCustomers: async (): Promise<Customer[]> => {
+        const response = await fetchWithTimeout(`${API_BASE}/customers`);
+        return handleResponse<Customer[]>(response);
+    },
+
 };
 

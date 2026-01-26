@@ -14,7 +14,7 @@ export function Sidebar() {
 
     const [sessionInput, setSessionInput] = useState('');
     const [isCreating, setIsCreating] = useState(false);
-    const [isCollapsed, setIsCollapsed] = useState(false);
+    const [isCollapsed, setIsCollapsed] = useState(true);
     const [sessions, setSessions] = useState<SessionListItem[]>([]);
 
     // Check API health on mount
@@ -182,8 +182,8 @@ export function Sidebar() {
                                     key={s.session_id}
                                     onClick={() => handleSelectSession(s.session_id)}
                                     className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-colors ${session?.id === s.session_id
-                                            ? 'bg-teal-50 text-teal-700 border border-teal-200'
-                                            : 'hover:bg-slate-100 text-slate-600'
+                                        ? 'bg-teal-50 text-teal-700 border border-teal-200'
+                                        : 'hover:bg-slate-100 text-slate-600'
                                         }`}
                                 >
                                     <p className="font-mono text-xs truncate">

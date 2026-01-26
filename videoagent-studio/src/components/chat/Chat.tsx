@@ -1,6 +1,8 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
+import { useSearchParams, useRouter } from 'next/navigation';
+
 import { useSessionStore } from '@/store/session';
 import { useEventPolling } from '@/hooks/useEventPolling';
 import { MessageList } from './MessageList';
@@ -14,12 +16,17 @@ export function Chat() {
     const isProcessing = useSessionStore(state => state.isProcessing);
     const setProcessing = useSessionStore(state => state.setProcessing);
     const setScenes = useSessionStore(state => state.setScenes);
-    const setCustomerDetails = useSessionStore(state => state.setCustomerDetails);
+    const setVideoBrief = useSessionStore(state => state.setVideoBrief);
     const clearEvents = useSessionStore(state => state.clearEvents);
     const addMessage = useSessionStore(state => state.addMessage);
 
     const [inputValue, setInputValue] = useState('');
     const [error, setError] = useState<string | null>(null);
+
+    // Auto-send message from URL params
+    const searchParams = useSearchParams();
+    const router = useRouter();
+
 
     // Start polling when processing
     useEventPolling();
@@ -71,9 +78,9 @@ export function Chat() {
                         setScenes(response.scenes);
                     }
 
-                    // Update customer details if returned
-                    if (response.customer_details) {
-                        setCustomerDetails(response.customer_details);
+                    // Update video brief if returned
+                    if (response.video_brief) {
+                        setVideoBrief(response.video_brief);
                     }
                 })
                 .catch(err => {
@@ -98,7 +105,24 @@ export function Chat() {
             setProcessing(false);
         }
 
-    }, [session, inputValue, isProcessing, setProcessing, setScenes, setCustomerDetails, clearEvents, addMessage]);
+    }, [session, inputValue, isProcessing, setProcessing, setScenes, setVideoBrief, clearEvents, addMessage]);
+
+    // Check for initial message in URL
+    const hasInitialMessageRef = useRef(false);
+    useEffect(() => {
+        if (session && !isProcessing && !hasInitialMessageRef.current) {
+            const initialMessage = searchParams.get('initialMessage');
+            if (initialMessage) {
+                hasInitialMessageRef.current = true;
+                // Remove param from URL without refresh
+                const newParams = new URLSearchParams(searchParams.toString());
+                newParams.delete('initialMessage');
+                router.replace(`?${newParams.toString()}`);
+
+                handleSend(initialMessage);
+            }
+        }
+    }, [session, isProcessing, searchParams, router, handleSend]);
 
     const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
         if (e.key === 'Enter' && !e.shiftKey) {

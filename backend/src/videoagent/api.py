@@ -13,7 +13,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from videoagent.agent_runtime import VideoAgentService
 from videoagent.config import Config
-from videoagent.models import RenderResult
+from videoagent.models import RenderResult, VideoBrief
 from videoagent.story import _StoryboardScene
 from videoagent.library import VideoLibrary
 
@@ -55,7 +55,7 @@ class AgentChatResponse(BaseModel):
     message: str
     suggested_actions: list[str] = Field(default_factory=list)
     scenes: Optional[list[_StoryboardScene]]
-    customer_details: Optional[str]
+    video_brief: Optional[VideoBrief]
 
 
 class AgentStoryboardResponse(BaseModel):
@@ -117,7 +117,18 @@ class ChatHistoryResponse(BaseModel):
     messages: list[ChatMessage]
 
 
-app = FastAPI(title="VideoAgent API", version="0.1.0")
+
+from contextlib import asynccontextmanager
+from videoagent.database import init_db, get_all_customers
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup: Initialize fetching/database
+    init_db()
+    yield
+    # Shutdown: Clean up if needed
+
+app = FastAPI(title="VideoAgent API", version="0.1.0", lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -141,6 +152,11 @@ agent_service = VideoAgentService(
 @app.get("/health", response_model=HealthResponse)
 def health() -> HealthResponse:
     return HealthResponse(status="ok")
+
+
+@app.get("/customers")
+def list_customers():
+    return get_all_customers()
 
 
 @app.get("/agent/sessions", response_model=SessionListResponse)
@@ -174,13 +190,13 @@ def agent_chat(request: AgentChatRequest) -> AgentChatResponse:
         suggested_actions = result.get("suggested_actions", [])
 
     scenes = agent_service.get_storyboard(request.session_id)
-    customer_details = agent_service.get_customer_details(request.session_id)
+    video_brief = agent_service.get_video_brief(request.session_id)
     return AgentChatResponse(
         session_id=request.session_id,
         message=message,
         suggested_actions=suggested_actions,
         scenes=scenes,
-        customer_details=customer_details,
+        video_brief=video_brief,
     )
 
 
@@ -198,6 +214,11 @@ def draft_storyboard(request: AgentStoryboardRequest) -> AgentStoryboardResponse
 def get_storyboard(session_id: str) -> AgentStoryboardResponse:
     scenes = agent_service.get_storyboard(session_id) or []
     return AgentStoryboardResponse(session_id=session_id, scenes=scenes)
+
+
+@app.get("/agent/sessions/{session_id}/brief", response_model=Optional[VideoBrief])
+def get_video_brief(session_id: str) -> Optional[VideoBrief]:
+    return agent_service.get_video_brief(session_id)
 
 
 @app.patch("/agent/sessions/{session_id}/storyboard", response_model=AgentStoryboardResponse)

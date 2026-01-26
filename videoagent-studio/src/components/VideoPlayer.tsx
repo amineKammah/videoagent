@@ -611,17 +611,17 @@ export function VideoPlayer() {
     if (!hasMatchedScenes) return null;
 
     return (
-        <div className="w-full h-full flex flex-col">
+        <div className="w-full flex flex-col">
 
 
             {/* Video Area (Black) */}
-            <div className="flex-1 relative min-h-0 bg-black flex flex-col overflow-hidden">
+            <div className="w-full max-w-5xl mx-auto aspect-video relative bg-black flex flex-col overflow-hidden">
 
                 {/* Main Player */}
-                <div className="flex-1 w-full relative min-h-0 flex items-center justify-center">
+                <div className="w-full h-full relative flex items-center justify-center">
                     <video
                         ref={videoRef}
-                        className="max-h-full max-w-full object-contain"
+                        className="w-full h-full object-contain"
                         playsInline
                     />
 
@@ -714,7 +714,7 @@ export function VideoPlayer() {
             </div>
 
             {/* Timeline & Feedback Footer */}
-            <div className="bg-white border-t border-slate-200 px-4 py-2">
+            <div className="bg-white border-t border-slate-200 px-0 py-2">
                 {/* Scene Timeline */}
                 <SceneTimeline
                     scenes={scenes}

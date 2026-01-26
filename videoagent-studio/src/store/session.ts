@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { api } from '@/lib/api';
-import { AgentEvent, Message, Session, StoryboardScene } from '@/lib/types';
+import { AgentEvent, Message, Session, StoryboardScene, VideoBrief } from '@/lib/types';
 
 interface SessionStore {
     // State
@@ -8,7 +8,7 @@ interface SessionStore {
     messages: Message[];
     events: AgentEvent[];
     scenes: StoryboardScene[];
-    customerDetails: string;
+    videoBrief: VideoBrief | null;
     isProcessing: boolean;
     eventsCursor: number | undefined;
     apiHealthy: boolean;
@@ -25,7 +25,7 @@ interface SessionStore {
     setEvents: (events: AgentEvent[]) => void;
     setEventsCursor: (cursor: number) => void;
     setScenes: (scenes: StoryboardScene[]) => void;
-    setCustomerDetails: (details: string) => void;
+    setVideoBrief: (brief: VideoBrief | null) => void;
     setProcessing: (isProcessing: boolean) => void;
     setVideoGenerating: (generating: boolean) => void;
     setVideoPath: (path: string | null) => void;
@@ -39,7 +39,7 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
     messages: [],
     events: [],
     scenes: [],
-    customerDetails: '',
+    videoBrief: null,
     isProcessing: false,
     eventsCursor: undefined,
     apiHealthy: false,
@@ -63,7 +63,7 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
                 messages: [],
                 events: [],
                 scenes: [],
-                customerDetails: '',
+                videoBrief: null,
                 isProcessing: false,
                 eventsCursor: undefined,
             });
@@ -80,7 +80,7 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
             messages: [],
             events: [],
             scenes: [],
-            customerDetails: '',
+            videoBrief: null,
             isProcessing: false,
             eventsCursor: undefined,
         });
@@ -93,6 +93,16 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
             }
         } catch (error) {
             console.error('Failed to load storyboard:', error);
+        }
+
+        // Fetch the video brief
+        try {
+            const brief = await api.getVideoBrief(sessionId);
+            if (brief) {
+                set({ videoBrief: brief });
+            }
+        } catch (error) {
+            console.error('Failed to load video brief:', error);
         }
 
         // Fetch the chat history for this session
@@ -153,7 +163,7 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
                 messages: [...state.messages, assistantMessage],
                 isProcessing: false,
                 scenes: response.scenes || state.scenes,
-                customerDetails: response.customer_details || state.customerDetails,
+                videoBrief: response.video_brief || state.videoBrief,
             }));
         } catch (error) {
             // Add error message
@@ -190,8 +200,8 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
         set({ scenes });
     },
 
-    setCustomerDetails: (details: string) => {
-        set({ customerDetails: details });
+    setVideoBrief: (brief: VideoBrief | null) => {
+        set({ videoBrief: brief });
     },
 
     setProcessing: (isProcessing: boolean) => {
@@ -216,7 +226,7 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
             messages: [],
             events: [],
             scenes: [],
-            customerDetails: '',
+            videoBrief: null,
             isProcessing: false,
             eventsCursor: undefined,
             videoGenerating: false,

@@ -21,3 +21,6 @@ assets/*
 !assets/normalized_videos/*
 !assets/normalized_transcripts/
 !assets/normalized_transcripts/*
+!assets/test_customers.csv
+
+.DS_Store

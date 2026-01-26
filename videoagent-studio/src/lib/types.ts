@@ -11,7 +11,8 @@ export type EventType =
     | 'segment_warning'
     | 'storyboard_update'
     | 'video_render_start'
-    | 'video_render_complete';
+    | 'video_render_complete'
+    | 'video_brief_update';
 
 export interface AgentEvent {
     ts: string;
@@ -72,12 +73,19 @@ export interface VideoMetadata {
     fps: number;
 }
 
+
+export interface VideoBrief {
+    video_objective: string;
+    persona: string;
+    key_messages: string[];
+}
+
 // API Response types
 export interface ChatResponse {
     session_id: string;
     message: string;
     scenes: StoryboardScene[] | null;
-    customer_details: string | null;
+    video_brief?: VideoBrief | null;
     suggested_actions?: string[];
 }
 
@@ -114,4 +122,16 @@ export interface ChatHistoryMessage {
 export interface ChatHistoryResponse {
     session_id: string;
     messages: ChatHistoryMessage[];
+}
+
+export interface Customer {
+    id: number;
+    brand_id: number;
+    name: string;
+    title: string;
+    company: string;
+    industry: string;
+    company_size: string;
+    created_at: string;
+    [key: string]: any;
 }

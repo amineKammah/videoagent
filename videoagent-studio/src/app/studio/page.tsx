@@ -14,7 +14,7 @@ export default function StudioPage() {
     const hasMatchedScenes = scenes.some(s => s.matched_scene);
     const showVideo = videoGenerating || hasMatchedScenes;
     return (
-        <div className="flex h-screen bg-slate-50">
+        <div className="flex h-[calc(100vh-4rem)] bg-slate-50">
             {/* Sidebar */}
             <Sidebar />
 
@@ -33,29 +33,34 @@ export default function StudioPage() {
                     </div>
 
                     {/* Right Panel - Brief + Storyboard + Video */}
-                    <div className="col-span-3 min-h-0 flex flex-col gap-2 overflow-hidden">
+                    <div className="col-span-3 min-h-0 flex flex-col gap-6 overflow-y-auto pr-2 custom-scrollbar">
                         {/* Project Brief - Collapsible */}
                         <ProjectBrief />
 
-                        {/* Video Player or Generation Status - Takes remaining space */}
-                        {/* Video Status - Compact when generating */}
-                        {videoGenerating && (
-                            <div className="flex-shrink-0">
-                                <VideoStatus />
-                            </div>
-                        )}
+                        {/* Video Player Section */}
+                        {(videoGenerating || hasMatchedScenes) && (
+                            <div className="w-full bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden flex flex-col shrink-0">
+                                {/* Video Header */}
+                                <div className="px-4 py-2 border-b border-slate-200 bg-slate-50 flex justify-between items-center">
+                                    <div>
+                                        <h3 className="font-semibold text-slate-800">Video Preview</h3>
+                                        <p className="text-xs text-slate-500">Real-time composition</p>
+                                    </div>
+                                </div>
 
-                        {/* Video Player - Large when ready */}
-                        {!videoGenerating && hasMatchedScenes && (
-                            <div className="flex-1 min-h-0 overflow-hidden relative rounded-xl border border-slate-200 shadow-sm bg-black">
-                                <div className="absolute inset-0">
-                                    <VideoPlayer />
+                                {/* Content */}
+                                <div className="flex-1 relative min-h-0">
+                                    {videoGenerating && !hasMatchedScenes ? (
+                                        <VideoStatus />
+                                    ) : (
+                                        <VideoPlayer />
+                                    )}
                                 </div>
                             </div>
                         )}
 
-                        {/* Storyboard - Adaptive height: Small when video player is active, otherwise hugs content (up to full height) */}
-                        <div className={`${(!videoGenerating && hasMatchedScenes) ? 'h-64 flex-shrink-0' : 'flex-initial min-h-0'} w-full bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden flex flex-col transition-all duration-300`}>
+                        {/* Storyboard */}
+                        <div className="w-full bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden flex flex-col shrink-0 transition-all duration-300">
                             <div className="px-4 py-2 border-b border-slate-200 bg-slate-50">
                                 <h2 className="font-semibold text-slate-800">Storyboard</h2>
                                 <p className="text-xs text-slate-500">Scenes and matched video clips</p>
@@ -68,5 +73,6 @@ export default function StudioPage() {
                 </div>
             </main>
         </div>
+
     );
 }

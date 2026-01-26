@@ -168,7 +168,7 @@ export function SceneTimeline({
     if (totalDuration === 0) return null;
 
     return (
-        <div className="mt-4 select-none">
+        <div className="mt-4 px-4 select-none">
 
 
             {/* Timeline container */}
