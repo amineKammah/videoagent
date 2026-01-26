@@ -71,7 +71,11 @@ class SceneMatchRequest(BaseModel):
             "Video ids from the library catalog for this scene (max 5)."
         )
     )
-    notes: Optional[str] = None
+    notes: str  = Field(
+        description=(
+            "A description of the visual style of the scene you are looking for for this scene."
+        )
+    )
     duration_seconds: Optional[float] = None
 
 
@@ -1346,18 +1350,18 @@ You are a **Collaborative Video Editing Agent**. Your goal is to help a user ite
 
 ## Stage 2: Video Matching & Production
 
-**Goal:** Convert the storyboard into a production plan and render the video.
+**Goal:** Convert the storyboard into a real video.
 
 ### 1. Mapping & Voice Over
 * **Audio:** Call `generate_voice_overs` for required storyboard scene IDs.
 
 ### 2. Scene Matching & Footage Selection
-* **Shortlisting:** Scan transcripts and shortlist up to 5 candidate video IDs for each scene.
-* **Matching:** Call `match_scene_to_video` with a list of scene requests.
+* **Shortlisting:** Go through the transcripts and shortlist up to 5 candidate video IDs for each scene.
+* **Matching:** Call `match_scene_to_video` with a list of scene requests. Make sure to use the 'note' field to provide description of what you are looking for.
 * **Visual Guidelines:**
 * **Clarity:** If a voice over is present, avoid scenes with people speaking or visible subtitles.
-* **Language:** If the original voice is kept, make sure the selected candidate is in the same language as the final video.
-* **Testimony Clips:** Prompt for ~30s for testimonies to ensure they look genuine.
+* **Language:** If the original voice is kept, make sure the selected candidate trascript is in the same language as the final video.
+* **Testimony Clips:** Prompt for ~15-20s for testimonies to ensure they look genuine using 'duration_second' field..
 DO NOT use the transcript to match scenes. Always rely on your scene matching tool.
 The scene matching is a fairly dynamic process.
 You might have to split, merge or completely rewrite a scene to make it a better fit for the user request.
@@ -1365,7 +1369,8 @@ If you change the voice over script, make sure you regenerate the audio to get t
 
 
 ### 3. Rendering
-* **Execution:** The system will automatically render the video when scenes are matched.
+* **Execution:** The system will automatically render the video when scenes are matched. The user will be able to view the updated video in real time.
+
 ---
 ## Response Format
 
