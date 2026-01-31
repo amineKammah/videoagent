@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useSessionStore } from '@/store/session';
+import { useSearchParams, useRouter } from 'next/navigation';
 import { api } from '@/lib/api';
 import { SessionListItem } from '@/lib/types';
 
@@ -16,6 +17,9 @@ export function Sidebar() {
     const [isCreating, setIsCreating] = useState(false);
     const [isCollapsed, setIsCollapsed] = useState(true);
     const [sessions, setSessions] = useState<SessionListItem[]>([]);
+
+    const searchParams = useSearchParams();
+    const router = useRouter();
 
     // Check API health on mount
     useEffect(() => {
@@ -40,12 +44,25 @@ export function Sidebar() {
         }
     };
 
-    // Auto-create session if API is healthy and no session exists
+    // Load session from URL if present
     useEffect(() => {
-        if (apiHealthy && !session && !isCreating) {
+        const sessionId = searchParams.get('sessionId');
+        if (sessionId && apiHealthy) {
+            // If we have a session ID in URL, load it
+            // Only if it's different from current
+            if (session?.id !== sessionId) {
+                loadSession(sessionId);
+            }
+        }
+    }, [apiHealthy, searchParams, session]); // Check when these change
+
+    // Auto-create session if API is healthy and no session exists AND no session in URL
+    useEffect(() => {
+        const sessionIdParam = searchParams.get('sessionId');
+        if (apiHealthy && !session && !isCreating && !sessionIdParam) {
             handleNewSession();
         }
-    }, [apiHealthy, session]);
+    }, [apiHealthy, session, searchParams]);
 
     const handleNewSession = async () => {
         setIsCreating(true);

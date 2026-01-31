@@ -55,6 +55,7 @@ class GeminiClient:
                 api_key = os.getenv("VERTEX_API_KEY")
             else:
                 api_key = os.getenv("GEMINI_API_KEY")
+            print("DEBUGINFO\n\n\n\n", api_key, vertexai)
             return genai.Client(
                 vertexai=vertexai,
                 api_key=api_key,
@@ -321,35 +322,6 @@ class GeminiClient:
 
         return await asyncio.gather(*[_run(contents) for contents in contents_list])
 
-    def analyze_video(
-        self,
-        video_file: object,
-        prompt: str,
-        response_model: type[T],
-        max_tokens: int = 1000,
-    ) -> T:
-        """
-        Analyze a video with structured output.
-
-        Args:
-            video_file: Uploaded file object
-            prompt: The prompt
-            response_model: Pydantic model for response
-            max_tokens: Max output tokens
-
-        Returns:
-            Parsed Pydantic model instance
-        """
-        response = self.generate_content(
-            model=self.config.gemini_model,
-            contents=[video_file, prompt],
-            config={
-                "max_output_tokens": max_tokens,
-                "response_mime_type": "application/json",
-                "response_json_schema": response_model.model_json_schema(),
-            },
-        )
-        return response_model.model_validate_json(response.text)
 
     async def generate_speech_async(
         self,

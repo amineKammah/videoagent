@@ -110,18 +110,31 @@ export function Chat() {
     // Check for initial message in URL
     const hasInitialMessageRef = useRef(false);
     useEffect(() => {
-        if (session && !isProcessing && !hasInitialMessageRef.current) {
-            const initialMessage = searchParams.get('initialMessage');
-            if (initialMessage) {
-                hasInitialMessageRef.current = true;
-                // Remove param from URL without refresh
-                const newParams = new URLSearchParams(searchParams.toString());
-                newParams.delete('initialMessage');
-                router.replace(`?${newParams.toString()}`);
+        // Get params
+        const initialMessage = searchParams.get('initialMessage');
+        const urlSessionId = searchParams.get('sessionId');
 
-                handleSend(initialMessage);
-            }
+        // Guard clauses
+        if (!session || isProcessing || !initialMessage || hasInitialMessageRef.current) {
+            return;
         }
+
+        // CRITICAL: If a specific session ID is requested in URL, ensure we are in that session
+        // This prevents a race condition where we send the message to a stale session 
+        // before the Sidebar has had a chance to switch to the new one.
+        if (urlSessionId && session.id !== urlSessionId) {
+            return;
+        }
+
+        // Proceed to send
+        hasInitialMessageRef.current = true;
+
+        // Remove param from URL without refresh
+        const newParams = new URLSearchParams(searchParams.toString());
+        newParams.delete('initialMessage');
+        router.replace(`?${newParams.toString()}`);
+
+        handleSend(initialMessage);
     }, [session, isProcessing, searchParams, router, handleSend]);
 
     const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {

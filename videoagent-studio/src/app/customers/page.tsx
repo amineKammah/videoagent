@@ -82,7 +82,7 @@ export default function CustomersPage() {
 function CustomerModal({ customer, onClose }: { customer: Customer; onClose: () => void }) {
     const router = useRouter();
 
-    const handleGenerateVideo = () => {
+    const handleGenerateVideo = async () => {
         // Format prompt for LLM with ALL details
         let prompt = "Create a video for this customer with the following details:\n\n";
 
@@ -98,7 +98,16 @@ function CustomerModal({ customer, onClose }: { customer: Customer; onClose: () 
         });
 
         const encodedPrompt = encodeURIComponent(prompt.trim());
-        router.push(`/studio?initialMessage=${encodedPrompt}`);
+
+        try {
+            // Create a new session first
+            const session = await api.createSession();
+            router.push(`/studio?sessionId=${session.session_id}&initialMessage=${encodedPrompt}`);
+        } catch (error) {
+            console.error("Failed to create session:", error);
+            // Fallback to default behavior if session creation fails
+            router.push(`/studio?initialMessage=${encodedPrompt}`);
+        }
     };
 
     return (

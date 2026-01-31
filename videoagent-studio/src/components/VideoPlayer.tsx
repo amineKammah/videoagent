@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
+import { useState, useRef, useEffect, useCallback, useMemo, useImperativeHandle, forwardRef, ReactNode } from 'react';
 import { useSessionStore } from '@/store/session';
 import { api } from '@/lib/api';
 import { VideoMetadata, StoryboardScene } from '@/lib/types';
@@ -12,8 +12,33 @@ interface FeedbackNote {
     feedback: string;
 }
 
-export function VideoPlayer() {
+export interface VideoPlayerRef {
+    seekTo: (time: number) => void;
+    play: () => void;
+    pause: () => void;
+    getCurrentTime: () => number;
+}
+
+interface VideoPlayerProps {
+    onTimeUpdate?: (currentTime: number) => void;
+    onPlayChange?: (isPlaying: boolean) => void;
+    overlay?: ReactNode;
+    primaryAction?: ReactNode;
+    hideTimeline?: boolean;
+    className?: string;
+}
+
+export const VideoPlayer = forwardRef<VideoPlayerRef, VideoPlayerProps>(function VideoPlayer({
+    onTimeUpdate,
+    onPlayChange,
+    overlay,
+    primaryAction,
+    hideTimeline = false,
+    className
+}, ref) {
     const session = useSessionStore(state => state.session);
+    // ... rest of the component
+
     const scenes = useSessionStore(state => state.scenes);
     const setScenes = useSessionStore(state => state.setScenes);
 
@@ -27,6 +52,33 @@ export function VideoPlayer() {
 
     // Controls State
     const [currentTime, setCurrentTime] = useState(0); // Global time
+
+    // Notify parent of updates
+    useEffect(() => {
+        onTimeUpdate?.(currentTime);
+    }, [currentTime, onTimeUpdate]);
+
+    useEffect(() => {
+        onPlayChange?.(isPlaying);
+    }, [isPlaying, onPlayChange]);
+
+    // Expose refs
+    useImperativeHandle(ref, () => ({
+        seekTo: (time: number) => {
+            // We can use handleSeek but it expects an event. 
+            // Ideally we refactor handleSeek to separate logic. 
+            // Or construct a fake event.
+            handleSeek({ target: { value: time.toString() } } as any);
+        },
+        play: () => {
+            if (!isPlaying) togglePlay();
+        },
+        pause: () => {
+            if (isPlaying) togglePlay();
+        },
+        getCurrentTime: () => currentTime
+    }));
+
     const [isHoveringControls, setIsHoveringControls] = useState(false);
     const [volume, setVolume] = useState(1);
     const [isMuted, setIsMuted] = useState(false);
@@ -49,6 +101,10 @@ export function VideoPlayer() {
     }[]>([]);
 
     const sendMessage = useSessionStore(state => state.sendMessage);
+
+    // Export State
+    const [isExporting, setIsExporting] = useState(false);
+    const [exportError, setExportError] = useState<string | null>(null);
 
     const submitFeedback = () => {
         const sceneStartTime = segmentStarts[currentSceneIndex];
@@ -96,6 +152,42 @@ export function VideoPlayer() {
             setPendingFeedback([]);
         } catch (e) {
             console.error("Failed to send batch feedback", e);
+        }
+    };
+
+    const handleExport = async () => {
+        if (!session?.id) return;
+
+        setIsExporting(true);
+        setExportError(null);
+
+        try {
+            // Call the render API
+            const result = await api.renderVideo(session.id);
+
+            if (result.render_result.success && result.render_result.output_path) {
+                // Fetch the rendered video and trigger download
+                const videoUrl = `/api/video?path=${encodeURIComponent(result.render_result.output_path)}`;
+                const response = await fetch(videoUrl);
+                const blob = await response.blob();
+
+                // Create download link
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `exported-video-${new Date().toISOString().slice(0, 10)}.mp4`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                window.URL.revokeObjectURL(url);
+            } else {
+                setExportError(result.render_result.error_message || 'Failed to render video');
+            }
+        } catch (e) {
+            console.error("Export failed", e);
+            setExportError(e instanceof Error ? e.message : 'Export failed');
+        } finally {
+            setIsExporting(false);
         }
     };
 
@@ -676,25 +768,47 @@ export function VideoPlayer() {
                                 </span>
                             </div>
 
-                            <button onClick={toggleFullscreen} className="hover:text-teal-400">
-                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" /></svg>
-                            </button>
+                            <div className="flex items-center gap-2">
+                                {/* Export Button */}
+                                <button
+                                    onClick={handleExport}
+                                    disabled={isExporting}
+                                    className="hover:text-teal-400 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1"
+                                    title={isExporting ? "Exporting..." : "Export Video"}
+                                >
+                                    {isExporting ? (
+                                        <svg className="w-5 h-5 animate-spin" fill="none" viewBox="0 0 24 24">
+                                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                        </svg>
+                                    ) : (
+                                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                                        </svg>
+                                    )}
+                                </button>
+
+                                {/* Fullscreen Button */}
+                                <button onClick={toggleFullscreen} className="hover:text-teal-400">
+                                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" /></svg>
+                                </button>
+                            </div>
                         </div>
                     </div>
 
-                    {/* Feedback Button (Floating Bottom Right) */}
-                    {/* Feedback Button (Floating Bottom Right) */}
-                    {/* Feedback Button (Floating Bottom Left) */}
+                    {/* Primary Action Button (Floating Bottom Left) */}
                     <div className="absolute bottom-20 left-4 z-30">
-                        <button
-                            onClick={handleReportIssue}
-                            className="group bg-teal-600 hover:bg-teal-700 text-white text-sm font-medium px-4 py-2 rounded-full shadow-lg flex items-center gap-2 transition-all hover:scale-105 hover:shadow-teal-500/20 border border-transparent hover:border-teal-400"
-                        >
-                            <svg className="w-4 h-4 text-teal-100 group-hover:text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path>
-                            </svg>
-                            Request Change
-                        </button>
+                        {primaryAction ? primaryAction : (
+                            <button
+                                onClick={handleReportIssue}
+                                className="group bg-teal-600 hover:bg-teal-700 text-white text-sm font-medium px-4 py-2 rounded-full shadow-lg flex items-center gap-2 transition-all hover:scale-105 hover:shadow-teal-500/20 border border-transparent hover:border-teal-400"
+                            >
+                                <svg className="w-4 h-4 text-teal-100 group-hover:text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path>
+                                </svg>
+                                Request Change
+                            </button>
+                        )}
                     </div>
                     {/* Hidden Audio for VO */}
                     <audio ref={audioRef} className="hidden" />
@@ -813,4 +927,4 @@ export function VideoPlayer() {
             )}
         </div>
     );
-}
+}); // End forwardRef

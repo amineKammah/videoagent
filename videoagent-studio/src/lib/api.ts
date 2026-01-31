@@ -9,6 +9,12 @@ import {
     VideoMetadata,
     Customer,
     VideoBrief,
+    Annotation,
+    CreateAnnotationRequest,
+    UpdateAnnotationRequest,
+    AnnotationMetrics,
+    ComparisonResult,
+    SessionStatus,
 } from './types';
 
 
@@ -115,6 +121,14 @@ export const api = {
         });
     },
 
+    updateSessionStatus: async (sessionId: string, status: SessionStatus, annotatorId?: string): Promise<void> => {
+        await fetchWithTimeout(`${API_BASE}/annotations/${sessionId}/status`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ status, annotator_id: annotatorId }),
+        });
+    },
+
     // Draft storyboard from brief (long timeout)
     draftStoryboard: async (sessionId: string, brief: string): Promise<{ scenes: StoryboardScene[] }> => {
         const response = await fetchWithTimeout(
@@ -150,5 +164,103 @@ export const api = {
         return handleResponse<Customer[]>(response);
     },
 
-};
+    // ========================================================================
+    // Annotations
+    // ========================================================================
 
+    getSessionAnnotationCounts: async (): Promise<Record<string, number>> => {
+        const response = await fetchWithTimeout(`${API_BASE}/annotations/stats/counts`);
+        return handleResponse<Record<string, number>>(response);
+    },
+
+    listAnnotations: async (sessionId: string, annotatorId?: string): Promise<Annotation[]> => {
+        const url = new URL(`${API_BASE}/annotations/${sessionId}`);
+        if (annotatorId) {
+            url.searchParams.set('annotator_id', annotatorId);
+        }
+        const response = await fetchWithTimeout(url.toString());
+        const data = await handleResponse<{ annotations: Annotation[] }>(response);
+        return data.annotations;
+    },
+
+    createAnnotation: async (request: CreateAnnotationRequest): Promise<Annotation> => {
+        const response = await fetchWithTimeout(`${API_BASE}/annotations`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(request),
+        });
+        return handleResponse<Annotation>(response);
+    },
+
+    updateAnnotation: async (id: string, updates: UpdateAnnotationRequest): Promise<Annotation> => {
+        const response = await fetchWithTimeout(`${API_BASE}/annotations/${id}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(updates),
+        });
+        return handleResponse<Annotation>(response);
+    },
+
+    deleteAnnotation: async (id: string): Promise<void> => {
+        await fetchWithTimeout(`${API_BASE}/annotations/${id}`, {
+            method: 'DELETE',
+        });
+    },
+
+    getAnnotationMetrics: async (sessionId: string): Promise<AnnotationMetrics> => {
+        const response = await fetchWithTimeout(`${API_BASE}/annotations/${sessionId}/metrics`);
+        return handleResponse<AnnotationMetrics>(response);
+    },
+
+    compareAnnotations: async (sessionId: string, annotatorIds?: string[]): Promise<ComparisonResult> => {
+        const url = new URL(`${API_BASE}/annotations/${sessionId}/compare`);
+        if (annotatorIds && annotatorIds.length > 0) {
+            url.searchParams.set('annotator_ids', annotatorIds.join(','));
+        }
+        const response = await fetchWithTimeout(url.toString());
+        return handleResponse<ComparisonResult>(response);
+        return handleResponse<ComparisonResult>(response);
+    },
+
+    setSessionStatus: async (sessionId: string, status: SessionStatus): Promise<{ session_id: string, status: SessionStatus }> => {
+        const response = await fetchWithTimeout(`${API_BASE}/annotations/${sessionId}/status`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ status }),
+        });
+        return handleResponse(response);
+    },
+
+    getSessionStatus: async (sessionId: string): Promise<{ session_id: string, status: SessionStatus }> => {
+        const response = await fetchWithTimeout(`${API_BASE}/annotations/${sessionId}/status`);
+        return handleResponse(response);
+    },
+
+    getAllSessionStatuses: async (): Promise<Record<string, SessionStatus>> => {
+        const response = await fetchWithTimeout(`${API_BASE}/annotations/stats/statuses`);
+        return handleResponse(response);
+    },
+
+    getAllSessionConflicts: async (): Promise<Record<string, number>> => {
+        const response = await fetchWithTimeout(`${API_BASE}/annotations/stats/conflicts`);
+        return handleResponse(response);
+    },
+
+    resolveAnnotations: async (annotationIds: string[], resolvedBy?: string): Promise<{ resolved_count: number }> => {
+        const response = await fetchWithTimeout(`${API_BASE}/annotations/resolve`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ annotation_ids: annotationIds, resolved_by: resolvedBy }),
+        });
+        return handleResponse(response);
+    },
+
+    rejectAnnotations: async (annotationIds: string[], resolvedBy?: string): Promise<{ rejected_count: number }> => {
+        const response = await fetchWithTimeout(`${API_BASE}/annotations/reject`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ annotation_ids: annotationIds, resolved_by: resolvedBy }),
+        });
+        return handleResponse(response);
+    },
+};

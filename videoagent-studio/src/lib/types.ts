@@ -135,3 +135,92 @@ export interface Customer {
     created_at: string;
     [key: string]: any;
 }
+
+// ============================================================================
+// Annotation Types
+// ============================================================================
+
+export type SessionStatus = 'pending' | 'reviewed';
+
+export type Severity = 'low' | 'medium' | 'high';
+
+export interface Annotation {
+    id: string;
+    session_id: string;
+    scene_id: string;
+    timestamp: number;           // Relative to scene
+    global_timestamp: number;    // Absolute in video
+    annotator_id: string;
+    annotator_name: string;
+    category: string;            // Free-text category
+    description: string;
+    severity: Severity;
+    created_at: string;
+    updated_at: string;
+    resolved: boolean;
+    resolved_by?: string;
+    rejected?: boolean;
+}
+
+export interface CreateAnnotationRequest {
+    session_id: string;
+    scene_id: string;
+    timestamp: number;
+    global_timestamp: number;
+    annotator_id: string;
+    annotator_name: string;
+    category: string;
+    description: string;
+    severity: Severity;
+}
+
+export interface UpdateAnnotationRequest {
+    category?: string;
+    description?: string;
+    severity?: Severity;
+    resolved?: boolean;
+    resolved_by?: string;
+}
+
+export interface AnnotationMetrics {
+    session_id: string;
+    total_annotations: number;
+    by_category: Record<string, number>;
+    by_scene: Record<string, number>;
+    by_severity: Record<Severity, number>;
+    faultless_scenes: number;
+    total_scenes: number;
+}
+
+export type ClusterStatus = 'agreement' | 'conflict' | 'unique';
+
+export interface ClusterResolution {
+    accepted_annotation_id: string;
+    resolved_by: string;
+    resolved_at: string;
+    notes?: string;
+}
+
+export interface AnnotationCluster {
+    id: string;
+    scene_id: string;
+    center_timestamp: number;
+    annotations: Annotation[];
+    status: 'agreement' | 'conflict' | 'unique';
+    annotator_count: number;
+    total_annotators: number;
+    resolved: boolean;
+    resolution?: ClusterResolution;
+}
+
+export interface ComparisonResult {
+    session_id: string;
+    annotators: string[];
+    clusters: AnnotationCluster[];
+    stats: {
+        total_clusters: number;
+        agreements: number;
+        conflicts: number;
+        unique_annotations: number;
+    };
+}

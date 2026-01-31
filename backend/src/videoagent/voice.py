@@ -223,6 +223,7 @@ class VoiceOverGenerator:
             script=script,
             audio_id=audio_id,
             duration=duration,
+            audio_path=str(audio_path),
         )
 
     async def generate_voice_overs_parallel(

@@ -1,5 +1,7 @@
 'use client';
 
+import { Suspense } from 'react';
+
 import { Chat } from '@/components/chat';
 import { Sidebar } from '@/components/Sidebar';
 import { ProjectBrief } from '@/components/ProjectBrief';
@@ -16,7 +18,9 @@ export default function StudioPage() {
     return (
         <div className="flex h-[calc(100vh-4rem)] bg-slate-50">
             {/* Sidebar */}
-            <Sidebar />
+            <Suspense fallback={<div className="w-64 bg-white border-r border-slate-200" />}>
+                <Sidebar />
+            </Suspense>
 
             {/* Main Content */}
             <main className="flex-1 flex flex-col p-3 overflow-hidden">
@@ -29,7 +33,9 @@ export default function StudioPage() {
                         <div className="mb-4">
                             <h1 className="text-xl font-bold text-slate-800 font-serif">VideoAgent Studio</h1>
                         </div>
-                        <Chat />
+                        <Suspense fallback={<div className="flex-1 bg-white rounded-xl border border-slate-200" />}>
+                            <Chat />
+                        </Suspense>
                     </div>
 
                     {/* Right Panel - Brief + Storyboard + Video */}

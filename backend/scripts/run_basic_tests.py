@@ -22,7 +22,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 REPO_ROOT = ROOT.parent
 
-from videoagent.agent import VideoAgent
+# from videoagent.agent import VideoAgent
 from videoagent.config import Config
 from videoagent.editor import VideoEditor
 from videoagent.library import VideoLibrary
@@ -414,15 +414,16 @@ class BasicIntegrationTests(unittest.TestCase):
 
     @unittest.skipUnless(RUN_E2E, "Set --run-e2e to enable end-to-end tests")
     def test_end_to_end_render(self) -> None:
-        agent = VideoAgent(self.config)
-        try:
-            result = agent.create_personalized_video(
-                "We struggle with travel expense compliance and slow reimbursements.",
-                output_filename="llm_personalized_video_test.mp4",
-            )
-        finally:
-            agent.cleanup()
-        self.assertTrue(result.success)
+        self.skipTest("VideoAgent class has been removed.")
+        # agent = VideoAgent(self.config)
+        # try:
+        #     result = agent.create_personalized_video(
+        #         "We struggle with travel expense compliance and slow reimbursements.",
+        #         output_filename="llm_personalized_video_test.mp4",
+        #     )
+        # finally:
+        #     agent.cleanup()
+        # self.assertTrue(result.success)
         self.assertIsNotNone(result.output_path)
         self.assertTrue(result.output_path.exists())
         self.assertGreater(result.output_path.stat().st_size, 0)
