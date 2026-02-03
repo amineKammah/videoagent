@@ -47,22 +47,23 @@ def _parse_timestamp(text: str) -> float:
 @dataclass
 class EventStore:
     base_dir: Path
+    user_id: Optional[str] = None
     _lock: Lock = field(default_factory=Lock)
 
-    def _events_path(self, session_id: str) -> Path:
-        return self.base_dir / f"{session_id}.events.jsonl"
+    def _events_path(self, session_id: str, user_id: str) -> Path:
+        return self.base_dir / user_id / session_id / "events.jsonl"
 
-    def append(self, session_id: str, event: dict) -> None:
-        path = self._events_path(session_id)
-        self.base_dir.mkdir(parents=True, exist_ok=True)
+    def append(self, session_id: str, event: dict, user_id: str) -> None:
+        path = self._events_path(session_id, user_id=user_id)
+        path.parent.mkdir(parents=True, exist_ok=True)
         payload = dict(event)
         payload.setdefault("ts", datetime.utcnow().isoformat() + "Z")
         with self._lock, path.open("a", encoding="utf-8") as handle:
             json.dump(payload, handle)
             handle.write("\n")
 
-    def read_since(self, session_id: str, cursor: Optional[int]) -> tuple[list[dict], int]:
-        path = self._events_path(session_id)
+    def read_since(self, session_id: str, cursor: Optional[int], user_id: str) -> tuple[list[dict], int]:
+        path = self._events_path(session_id, user_id=user_id)
         if not path.exists():
             return [], 0
         with self._lock, path.open("r", encoding="utf-8") as handle:
@@ -81,36 +82,38 @@ class EventStore:
                     continue
             return events, handle.tell()
 
-    def clear(self, session_id: str) -> None:
-        path = self._events_path(session_id)
+    def clear(self, session_id: str, user_id: str) -> None:
+        path = self._events_path(session_id, user_id=user_id)
         if path.exists():
             path.unlink()
+
 
 @dataclass
 class StoryboardStore:
     base_dir: Path
+    user_id: Optional[str] = None
     _lock: Lock = field(default_factory=Lock)
 
-    def _storyboard_path(self, session_id: str) -> Path:
-        return self.base_dir / f"{session_id}.storyboard.json"
+    def _storyboard_path(self, session_id: str, user_id: str) -> Path:
+        return self.base_dir / user_id / session_id / "storyboard.json"
 
-    def load(self, session_id: str) -> Optional[list[_StoryboardScene]]:
-        path = self._storyboard_path(session_id)
+    def load(self, session_id: str, user_id: str) -> Optional[list[_StoryboardScene]]:
+        path = self._storyboard_path(session_id, user_id=user_id)
         if not path.exists():
             return None
         with self._lock, path.open("r", encoding="utf-8") as handle:
             data = json.load(handle)
         return [_StoryboardScene.model_validate(item) for item in data]
 
-    def save(self, session_id: str, scenes: list[_StoryboardScene]) -> None:
-        path = self._storyboard_path(session_id)
-        self.base_dir.mkdir(parents=True, exist_ok=True)
+    def save(self, session_id: str, scenes: list[_StoryboardScene], user_id: str) -> None:
+        path = self._storyboard_path(session_id, user_id=user_id)
+        path.parent.mkdir(parents=True, exist_ok=True)
         payload = [scene.model_dump(mode="json") for scene in scenes]
         with self._lock, path.open("w", encoding="utf-8") as handle:
             json.dump(payload, handle, indent=2)
 
-    def clear(self, session_id: str) -> None:
-        path = self._storyboard_path(session_id)
+    def clear(self, session_id: str, user_id: str) -> None:
+        path = self._storyboard_path(session_id, user_id=user_id)
         if path.exists():
             path.unlink()
 
@@ -118,27 +121,28 @@ class StoryboardStore:
 @dataclass
 class BriefStore:
     base_dir: Path
+    user_id: Optional[str] = None
     _lock: Lock = field(default_factory=Lock)
 
-    def _brief_path(self, session_id: str) -> Path:
-        return self.base_dir / f"{session_id}.brief.json"
+    def _brief_path(self, session_id: str, user_id: str) -> Path:
+        return self.base_dir / user_id / session_id / "brief.json"
 
-    def load(self, session_id: str) -> Optional[VideoBrief]:
-        path = self._brief_path(session_id)
+    def load(self, session_id: str, user_id: str) -> Optional[VideoBrief]:
+        path = self._brief_path(session_id, user_id=user_id)
         if not path.exists():
             return None
         with self._lock, path.open("r", encoding="utf-8") as handle:
             data = json.load(handle)
         return VideoBrief.model_validate(data)
 
-    def save(self, session_id: str, brief: VideoBrief) -> None:
-        path = self._brief_path(session_id)
-        self.base_dir.mkdir(parents=True, exist_ok=True)
+    def save(self, session_id: str, brief: VideoBrief, user_id: str) -> None:
+        path = self._brief_path(session_id, user_id=user_id)
+        path.parent.mkdir(parents=True, exist_ok=True)
         with self._lock, path.open("w", encoding="utf-8") as handle:
             json.dump(brief.model_dump(mode="json"), handle, indent=2)
 
-    def clear(self, session_id: str) -> None:
-        path = self._brief_path(session_id)
+    def clear(self, session_id: str, user_id: str) -> None:
+        path = self._brief_path(session_id, user_id=user_id)
         if path.exists():
             path.unlink()
 
@@ -147,24 +151,25 @@ class BriefStore:
 class ChatStore:
     """Persist chat messages for a session."""
     base_dir: Path
+    user_id: Optional[str] = None
     _lock: Lock = field(default_factory=Lock)
 
-    def _chat_path(self, session_id: str) -> Path:
-        return self.base_dir / f"{session_id}.chat.jsonl"
+    def _chat_path(self, session_id: str, user_id: str) -> Path:
+        return self.base_dir / user_id / session_id / "chat.jsonl"
 
-    def append(self, session_id: str, message: dict) -> None:
+    def append(self, session_id: str, message: dict, user_id: str) -> None:
         """Append a message to the chat history."""
-        path = self._chat_path(session_id)
-        self.base_dir.mkdir(parents=True, exist_ok=True)
+        path = self._chat_path(session_id, user_id=user_id)
+        path.parent.mkdir(parents=True, exist_ok=True)
         payload = dict(message)
         payload.setdefault("timestamp", datetime.utcnow().isoformat() + "Z")
         with self._lock, path.open("a", encoding="utf-8") as handle:
             json.dump(payload, handle)
             handle.write("\n")
 
-    def load(self, session_id: str) -> list[dict]:
+    def load(self, session_id: str, user_id: str) -> list[dict]:
         """Load all messages for a session."""
-        path = self._chat_path(session_id)
+        path = self._chat_path(session_id, user_id=user_id)
         if not path.exists():
             return []
         messages = []

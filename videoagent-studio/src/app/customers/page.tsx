@@ -4,15 +4,19 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { api } from '@/lib/api';
 import { Customer } from '@/lib/types';
+import { useSessionStore } from '@/store/session';
 
 export default function CustomersPage() {
     const [customers, setCustomers] = useState<Customer[]>([]);
     const [loading, setLoading] = useState(true);
     const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
+    const user = useSessionStore(state => state.user);
 
     useEffect(() => {
-        loadCustomers();
-    }, []);
+        if (user) {
+            loadCustomers();
+        }
+    }, [user]);
 
     async function loadCustomers() {
         try {
@@ -86,29 +90,84 @@ function CustomerModal({ customer, onClose }: { customer: Customer; onClose: () 
         // Format prompt for LLM with ALL details
         let prompt = "Create a video for this customer with the following details:\n\n";
 
+
+
         Object.entries(customer).forEach(([key, value]) => {
-            // Skip internal IDs if preferred, or include them. 
-            // User said "literally all details", but raw IDs are rarely useful for the LLM's creative process.
-            // I'll skip 'id' and 'brand_id' to keep it clean but useful.
+            // Flatten recursively for the prompt as well to ensure AI gets good context
+            const flattenForPrompt = (data: any, prefix: string) => {
+                if (typeof data === 'object' && data !== null && !Array.isArray(data)) {
+                    Object.entries(data).forEach(([k, v]) => flattenForPrompt(v, prefix ? `${prefix} ${k}` : k));
+                } else {
+                    const label = prefix.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+                    let valStr = String(data);
+                    if (Array.isArray(data)) valStr = data.join(', ');
+                    prompt += `${label}: ${valStr}\n`;
+                }
+            };
+
             if (key === 'id' || key === 'brand_id') return;
 
-            // Format key for readability
-            const label = key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
-            prompt += `${label}: ${value}\n`;
+            flattenForPrompt(value, key);
         });
+
+
 
         const encodedPrompt = encodeURIComponent(prompt.trim());
 
         try {
             // Create a new session first
-            const session = await api.createSession();
-            router.push(`/studio?sessionId=${session.session_id}&initialMessage=${encodedPrompt}`);
+            const sessionId = await api.createSession();
+            router.push(`/studio?sessionId=${sessionId}&initialMessage=${encodedPrompt}`);
         } catch (error) {
             console.error("Failed to create session:", error);
             // Fallback to default behavior if session creation fails
             router.push(`/studio?initialMessage=${encodedPrompt}`);
         }
     };
+
+
+    // Recursive function to flatten nested objects for display
+    const flattenCustomerData = (data: any, prefix = ''): { key: string; value: any; isLong: boolean }[] => {
+        let items: { key: string; value: any; isLong: boolean }[] = [];
+
+        Object.entries(data).forEach(([k, v]) => {
+            if (k === 'id' || k === 'brand_id' || k === 'created_at' || k === 'name' || k === 'title' || k === 'company') return;
+            if (v === null || v === undefined) return;
+
+            // Combine prefix if needed, but for "flexible" view, usually the leaf key is most relevant
+            // unless we want "Enrichment - Auto Findable - Tech Stack".
+            // The user's screenshot just shows "Tech Stack". Let's try to just use the leaf key
+            // but fallback to prefix if it helps? 
+            // Actually, let's just use the key.
+            const currentKey = k;
+
+            if (typeof v === 'object' && !Array.isArray(v)) {
+                // Determine if this object is "renderable" as a block (like enrichment) or we should recurse
+                // Recurse to flatten
+                items = [...items, ...flattenCustomerData(v, prefix ? `${prefix} ${k}` : k)];
+            } else {
+                // It's a value (primitive or array)
+                const isLong = (typeof v === 'string' && v.length > 60) || Array.isArray(v);
+                items.push({
+                    key: camelCaseToTitle(currentKey),
+                    value: v,
+                    isLong
+                });
+            }
+        });
+
+        return items;
+    };
+
+    const camelCaseToTitle = (text: string) => {
+        return text
+            .replace(/_/g, ' ')
+            .replace(/([A-Z])/g, ' $1')
+            .replace(/\b\w/g, char => char.toUpperCase())
+            .trim();
+    };
+
+    const displayItems = flattenCustomerData(customer);
 
     return (
         <div className="fixed inset-0 z-50 overflow-y-auto" aria-labelledby="modal-title" role="dialog" aria-modal="true">
@@ -125,7 +184,7 @@ function CustomerModal({ customer, onClose }: { customer: Customer; onClose: () 
                 <span className="hidden sm:inline-block sm:h-screen sm:align-middle" aria-hidden="true">&#8203;</span>
 
                 {/* Modal Panel */}
-                <div className="relative inline-block transform overflow-hidden rounded-lg bg-white text-left align-bottom shadow-xl transition-all sm:my-8 sm:w-full sm:max-w-3xl sm:align-middle">
+                <div className="relative inline-block transform overflow-hidden rounded-lg bg-white text-left align-bottom shadow-xl transition-all sm:my-8 sm:w-full sm:max-w-4xl sm:align-middle">
 
                     {/* Header */}
                     <div className="bg-white px-4 pt-5 pb-4 sm:p-6 sm:pb-4 border-b border-gray-200">
@@ -150,36 +209,41 @@ function CustomerModal({ customer, onClose }: { customer: Customer; onClose: () 
                     </div>
 
                     {/* Content */}
-                    <div className="px-4 py-5 sm:p-6">
-                        <dl className="grid grid-cols-1 gap-x-6 gap-y-8 sm:grid-cols-2">
-                            {/* CTA - Spans full width */}
-                            <div className="sm:col-span-2">
-                                <button
-                                    onClick={handleGenerateVideo}
-                                    className="w-full inline-flex justify-center items-center px-4 py-3 border border-transparent shadow-sm text-sm font-medium rounded-lg text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-colors"
-                                >
-                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" viewBox="0 0 20 20" fill="currentColor">
-                                        <path d="M2 6a2 2 0 012-2h6a2 2 0 012 2v8a2 2 0 01-2 2H4a2 2 0 01-2-2V6zM14.553 7.106A1 1 0 0014 8v4a1 1 0 00.553.894l2 1A1 1 0 0018 13V7a1 1 0 00-1.447-.894l-2 1z" />
-                                    </svg>
-                                    Generate Video for {customer.name}
-                                </button>
-                            </div>
+                    <div className="px-4 py-5 sm:p-6 bg-gray-50/50">
+                        <div className="mb-8">
+                            <button
+                                onClick={handleGenerateVideo}
+                                className="w-full inline-flex justify-center items-center px-4 py-3 border border-transparent shadow-sm text-sm font-medium rounded-lg text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-colors"
+                            >
+                                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" viewBox="0 0 20 20" fill="currentColor">
+                                    <path d="M2 6a2 2 0 012-2h6a2 2 0 012 2v8a2 2 0 01-2 2H4a2 2 0 01-2-2V6zM14.553 7.106A1 1 0 0014 8v4a1 1 0 00.553.894l2 1A1 1 0 0018 13V7a1 1 0 00-1.447-.894l-2 1z" />
+                                </svg>
+                                Generate Video for {customer.name}
+                            </button>
+                        </div>
 
-                            {Object.entries(customer).map(([key, value]) => {
-                                if (key === 'id' || key === 'brand_id' || key === 'name' || key === 'title' || key === 'company') return null;
-                                // Make long text fields span full width
-                                const isLongText = typeof value === 'string' && value.length > 50;
-                                return (
-                                    <div key={key} className={isLongText ? "sm:col-span-2" : "sm:col-span-1"}>
-                                        <dt className="text-sm font-medium text-gray-500 capitalize">
-                                            {key.replace(/_/g, ' ')}
-                                        </dt>
-                                        <dd className="mt-1 text-sm text-gray-900 rounded-md bg-gray-50 p-3 border border-gray-100">
-                                            {value}
-                                        </dd>
-                                    </div>
-                                );
-                            })}
+                        <dl className="grid grid-cols-1 gap-x-6 gap-y-6 sm:grid-cols-2 lg:grid-cols-2">
+                            {/* Specific Top Styles for Main Info */}
+                            {displayItems.map((item, idx) => (
+                                <div key={`${item.key}-${idx}`} className={`${item.isLong ? 'sm:col-span-2' : 'sm:col-span-1'} bg-white p-4 rounded-lg border border-gray-100 shadow-sm`}>
+                                    <dt className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">
+                                        {item.key}
+                                    </dt>
+                                    <dd className="text-sm text-gray-900 leading-relaxed">
+                                        {Array.isArray(item.value) ? (
+                                            <div className="flex flex-wrap gap-2">
+                                                {item.value.map((v: any, i: number) => (
+                                                    <span key={i} className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-indigo-100 text-indigo-800">
+                                                        {String(v)}
+                                                    </span>
+                                                ))}
+                                            </div>
+                                        ) : (
+                                            String(item.value)
+                                        )}
+                                    </dd>
+                                </div>
+                            ))}
                         </dl>
                     </div>
                 </div>

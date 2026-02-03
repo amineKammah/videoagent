@@ -6,12 +6,14 @@ import { useSearchParams, useRouter } from 'next/navigation';
 import { api } from '@/lib/api';
 import { SessionListItem } from '@/lib/types';
 
+
 export function Sidebar() {
     const session = useSessionStore(state => state.session);
+    const user = useSessionStore(state => state.user);
     const apiHealthy = useSessionStore(state => state.apiHealthy);
     const createSession = useSessionStore(state => state.createSession);
     const loadSession = useSessionStore(state => state.loadSession);
-    const checkHealth = useSessionStore(state => state.checkHealth);
+
 
     const [sessionInput, setSessionInput] = useState('');
     const [isCreating, setIsCreating] = useState(false);
@@ -22,18 +24,16 @@ export function Sidebar() {
     const router = useRouter();
 
     // Check API health on mount
-    useEffect(() => {
-        checkHealth();
-        const interval = setInterval(checkHealth, 10000);
-        return () => clearInterval(interval);
-    }, [checkHealth]);
 
-    // Fetch sessions when API becomes healthy
+
+    // Fetch sessions when API becomes healthy or user changes
     useEffect(() => {
-        if (apiHealthy) {
+        if (apiHealthy && user) {
             fetchSessions();
+        } else {
+            setSessions([]);
         }
-    }, [apiHealthy]);
+    }, [apiHealthy, user]);
 
     const fetchSessions = async () => {
         try {
@@ -67,10 +67,9 @@ export function Sidebar() {
     const handleNewSession = async () => {
         setIsCreating(true);
         try {
-            await createSession();
+            const newSessionId = await createSession();
+            router.push(`/?sessionId=${newSessionId}`);
         } catch (error) {
-            console.error('Failed to create session:', error);
-        } finally {
             setIsCreating(false);
         }
     };
@@ -129,6 +128,11 @@ export function Sidebar() {
                     <p className="text-xs text-slate-500 mt-1">
                         AI-powered video creation
                     </p>
+                    {user && (
+                        <p className="text-[10px] text-slate-400 mt-0.5 truncate max-w-[150px]" title={user.email}>
+                            {user.email}
+                        </p>
+                    )}
                 </div>
                 <button
                     onClick={() => setIsCollapsed(true)}
@@ -216,9 +220,12 @@ export function Sidebar() {
                 </div>
             </div>
 
-            {/* Footer */}
-            <div className="p-4 border-t border-slate-200">
-                <p className="text-xs text-slate-400 text-center">
+            {/* Footer with Voice Settings */}
+            <div className="border-t border-slate-200">
+                <div className="p-2">
+                    {/* Voice settings moved to RightSidebar */}
+                </div>
+                <p className="text-xs text-slate-400 text-center pb-3">
                     VideoAgent Studio v0.1
                 </p>
             </div>

@@ -4,6 +4,7 @@ import { Suspense } from 'react';
 
 import { Chat } from '@/components/chat';
 import { Sidebar } from '@/components/Sidebar';
+import { RightSidebar } from '@/components/RightSidebar';
 import { ProjectBrief } from '@/components/ProjectBrief';
 import { Storyboard } from '@/components/Storyboard';
 import { VideoPlayer } from '@/components/VideoPlayer';
@@ -22,8 +23,10 @@ export default function StudioPage() {
                 <Sidebar />
             </Suspense>
 
+            <RightSidebar />
+
             {/* Main Content */}
-            <main className="flex-1 flex flex-col p-3 overflow-hidden">
+            <main className="flex-1 flex flex-col p-3 overflow-hidden mr-10">
 
 
                 {/* Content Grid */}

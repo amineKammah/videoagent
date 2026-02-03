@@ -7,7 +7,7 @@ import os
 from pathlib import Path
 from typing import Optional
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, Request, Header, Query
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -16,6 +16,17 @@ from videoagent.config import Config
 from videoagent.models import RenderResult, VideoBrief
 from videoagent.story import _StoryboardScene
 from videoagent.library import VideoLibrary
+from videoagent.db.crud import (
+    create_company,
+    get_company,
+    list_companies,
+    create_user,
+    get_user,
+    list_users,
+    update_user,
+)
+from videoagent.db.connection import get_db
+from sqlalchemy.orm import Session as DBSession
 from videoagent.annotations import (
     Annotation,
     AnnotationMetrics,
@@ -145,12 +156,15 @@ class ChatHistoryResponse(BaseModel):
 
 from contextlib import asynccontextmanager
 from videoagent.database import init_db, get_all_customers
+from videoagent.db import multitenancy_router, Base, engine
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup: Initialize fetching/database
     init_db()
     init_annotations_table()
+    # Create new multi-tenancy tables if they don't exist
+    Base.metadata.create_all(bind=engine)
     yield
     # Shutdown: Clean up if needed
 
@@ -162,6 +176,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Include multi-tenancy router
+app.include_router(multitenancy_router, prefix="/api/v1")
 
 agent_config = Config(
     video_library_path=Path("assets/normalized_videos"),
@@ -180,22 +197,85 @@ def health() -> HealthResponse:
     return HealthResponse(status="ok")
 
 
+
 @app.get("/customers")
-def list_customers():
-    return get_all_customers()
+def list_customers(
+    x_user_id: Optional[str] = Header(None, alias="X-User-Id"),
+    db: DBSession = Depends(get_db),
+):
+    """List customers for the current user."""
+    if not x_user_id:
+        return []
+        
+    from videoagent.db.crud import list_customer_profiles
+    
+    profiles = list_customer_profiles(db, created_by_user_id=x_user_id)
+    
+    results = []
+    for p in profiles:
+        # Map to legacy structure for frontend compatibility
+        data = {
+            "id": p.id,
+            "name": p.name,
+            "title": p.title,
+            "company": p.customer_company,
+            "industry": p.industry,
+            "created_at": p.created_at.isoformat() if p.created_at else "",
+        }
+        # Merge profile_data (contains brand_id, company_size, legacy fields)
+        if p.profile_data:
+            data.update(p.profile_data)
+        results.append(data)
+        
+    return results
+
+
+
+@app.get("/voices")
+def list_voices():
+    """Return available TTS voice options with sample audio URLs."""
+    from videoagent.voice_options import GEMINI_TTS_VOICES
+    return {"voices": GEMINI_TTS_VOICES}
 
 
 @app.get("/agent/sessions", response_model=SessionListResponse)
-def list_sessions() -> SessionListResponse:
-    sessions = agent_service.list_sessions()
+def list_sessions(
+    x_user_id: Optional[str] = Header(None, alias="X-User-Id"),
+    db: DBSession = Depends(get_db),
+) -> SessionListResponse:
+    if not x_user_id:
+        raise HTTPException(status_code=400, detail="X-User-Id header required")
+
+    from videoagent.db.crud import list_sessions as db_list_sessions
+    
+    # We can also filter by company if we resolve the user, but filtering by user_id implies company scope
+    sessions = db_list_sessions(db, user_id=x_user_id)
+    
     return SessionListResponse(
-        sessions=[SessionListItem(session_id=s["session_id"], created_at=s["created_at"]) for s in sessions]
+        sessions=[
+            SessionListItem(
+                session_id=s.id, 
+                created_at=s.created_at.isoformat() if s.created_at else ""
+            ) for s in sessions
+        ]
     )
 
 
 @app.post("/agent/sessions", response_model=AgentSessionResponse)
-def create_agent_session() -> AgentSessionResponse:
-    session_id = agent_service.create_session()
+def create_agent_session(
+    x_user_id: Optional[str] = Header(None, alias="X-User-Id"),
+    db: DBSession = Depends(get_db),
+) -> AgentSessionResponse:
+    if not x_user_id:
+        raise HTTPException(status_code=400, detail="X-User-Id header required")
+
+    user = get_user(db, x_user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    user_id = user.id
+    company_id = user.company_id
+
+    session_id = agent_service.create_session(user_id=user_id, company_id=company_id)
     return AgentSessionResponse(session_id=session_id)
 
 
@@ -245,6 +325,12 @@ def get_storyboard(session_id: str) -> AgentStoryboardResponse:
 @app.get("/agent/sessions/{session_id}/brief", response_model=Optional[VideoBrief])
 def get_video_brief(session_id: str) -> Optional[VideoBrief]:
     return agent_service.get_video_brief(session_id)
+
+
+@app.patch("/agent/sessions/{session_id}/brief", response_model=VideoBrief)
+def update_video_brief(session_id: str, brief: VideoBrief) -> VideoBrief:
+    agent_service.save_video_brief(session_id, brief)
+    return brief
 
 
 @app.patch("/agent/sessions/{session_id}/storyboard", response_model=AgentStoryboardResponse)
@@ -314,8 +400,50 @@ def agent_events(session_id: str, cursor: Optional[int] = Query(default=None)) -
     return AgentEventsResponse(session_id=session_id, events=events, next_cursor=next_cursor)
 
 
+@app.get("/agent/sessions/{session_id}/events/stream")
+async def stream_events(
+    session_id: str,
+    request: Request,
+    db: DBSession = Depends(get_db),
+):
+    """
+    SSE endpoint for real-time event streaming.
+    
+    Replaces polling with push-based event delivery.
+    Connect via EventSource in the browser.
+    """
+    from videoagent.sse import create_sse_response
+    
+    # Resolve session owner for file path
+    user_id, _ = agent_service._resolve_session_owner(session_id)
+    if not user_id:
+        raise HTTPException(status_code=404, detail="Session not found")
+    
+    return create_sse_response(
+        agent_service.event_store,
+        session_id,
+        user_id,
+        request,
+    )
+
+
 @app.get("/agent/library/videos/{video_id:path}", response_model=VideoMetadataResponse)
-def get_video_metadata(video_id: str) -> VideoMetadataResponse:
+def get_video_metadata(
+    video_id: str,
+    x_user_id: Optional[str] = Header(None, alias="X-User-Id"),
+    db: DBSession = Depends(get_db),
+) -> VideoMetadataResponse:
+    if not x_user_id:
+        raise HTTPException(status_code=400, detail="X-User-Id header required")
+
+    # Resolve User/Company Context
+    user = get_user(db, x_user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    user_id = user.id
+    company_id = user.company_id
+    
     # Handle generated videos (format: "generated:<session_id>:<filename>")
     if video_id.startswith("generated:"):
         parts = video_id.split(":", 2)
@@ -323,8 +451,10 @@ def get_video_metadata(video_id: str) -> VideoMetadataResponse:
             raise HTTPException(status_code=400, detail=f"Invalid generated video_id format: {video_id}")
         
         _, session_id, filename = parts
-        generated_path = agent_service.base_dir / session_id / "generated_videos" / filename
         
+        # Strictly use user-scoped path
+        generated_path = agent_service.base_dir / user_id / session_id / "generated_videos" / filename
+
         if not generated_path.exists():
             raise HTTPException(status_code=404, detail=f"Generated video not found: {video_id}")
         
@@ -333,7 +463,9 @@ def get_video_metadata(video_id: str) -> VideoMetadataResponse:
         try:
             meta = extract_video_metadata(generated_path)
         except Exception as e:
-            raise HTTPException(status_code=500, detail=f"Failed to extract video metadata: {e}")
+            # Fallback metadata if extraction fails (avoids 500 for just metadata read)
+            print(f"Metadata extraction failed: {e}")
+            meta = {}
         
         return VideoMetadataResponse(
             id=video_id,
@@ -345,8 +477,10 @@ def get_video_metadata(video_id: str) -> VideoMetadataResponse:
         )
     
     # Handle regular library videos
-    library = VideoLibrary(agent_config)
+    # Initialize library with company context
+    library = VideoLibrary(agent_config, company_id=company_id)
     video = library.get_video(video_id)
+    
     if not video:
         raise HTTPException(status_code=404, detail=f"Video not found: {video_id}")
     

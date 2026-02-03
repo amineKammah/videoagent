@@ -34,8 +34,9 @@ class VideoEditor:
     Handles all video editing operations.
     """
 
-    def __init__(self, config: Optional[Config] = None):
+    def __init__(self, config: Optional[Config] = None, company_id: Optional[str] = None):
         self.config = config or default_config
+        self.company_id = company_id
         self._temp_dir = None
 
     def _get_temp_dir(self) -> Path:
@@ -182,7 +183,7 @@ class VideoEditor:
                 output_path = self._get_temp_dir() / f"segment_{uuid.uuid4().hex[:8]}.mp4"
 
             if source_path is None and segment.source_video_id:
-                library = VideoLibrary(self.config)
+                library = VideoLibrary(self.config, company_id=self.company_id)
                 library.scan_library()
                 metadata = library.get_video(segment.source_video_id)
                 if metadata:

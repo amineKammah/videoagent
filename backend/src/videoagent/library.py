@@ -130,15 +130,75 @@ def load_transcript_segments(transcript_path: Path) -> list[TranscriptSegment]:
     return segments
 
 
+# ============================================================================
+# Company-Scoped Library Paths
+# ============================================================================
+
+def get_company_library_base(company_id: str, base_dir: Optional[Path] = None) -> Path:
+    """
+    Get the base directory for a company's assets.
+    
+    Structure: assets/companies/{company_id}/
+    """
+    base = base_dir or Path("assets/companies")
+    return base / company_id
+
+
+def get_company_video_path(company_id: str, base_dir: Optional[Path] = None) -> Path:
+    """Get the video library path for a company."""
+    return get_company_library_base(company_id, base_dir) / "videos"
+
+
+def get_company_transcript_path(company_id: str, base_dir: Optional[Path] = None) -> Path:
+    """Get the transcript library path for a company."""
+    return get_company_library_base(company_id, base_dir) / "transcripts"
+
+
+def ensure_company_directories(company_id: str, base_dir: Optional[Path] = None) -> dict[str, Path]:
+    """
+    Create directory structure for a company's assets.
+    
+    Returns dict with paths to videos, transcripts, and generated directories.
+    """
+    company_base = get_company_library_base(company_id, base_dir)
+    directories = {
+        "base": company_base,
+        "videos": company_base / "videos",
+        "transcripts": company_base / "transcripts", 
+        "generated": company_base / "generated",
+    }
+    
+    for path in directories.values():
+        path.mkdir(parents=True, exist_ok=True)
+    
+    return directories
+
+
 class VideoLibrary:
     """
     Manages the video library - indexing, searching, and metadata.
     """
 
-    def __init__(self, config: Optional[Config] = None):
+    def __init__(self, config: Optional[Config] = None, company_id: Optional[str] = None):
         self.config = config or default_config
+        self.company_id = company_id
         self.index = VideoLibraryIndex()
-        self._index_path = self.config.video_library_path / ".video_index_2.json"
+        
+        # Determine paths based on company_id
+        if company_id:
+            # Derive company base from config's video library path parent (e.g., assets/)
+            # This ensures company paths resolve to the same directory tree as global paths
+            assets_base = self.config.video_library_path.parent / "companies"
+            self._video_path = get_company_video_path(company_id, assets_base)
+            self._transcript_path = get_company_transcript_path(company_id, assets_base)
+            self._index_path = get_company_library_base(company_id, assets_base) / ".video_index_2.json"
+            # Ensure directories exist
+            ensure_company_directories(company_id, assets_base)
+        else:
+            # Default global paths (backward compatible)
+            self._video_path = self.config.video_library_path
+            self._transcript_path = self.config.transcript_library_path
+            self._index_path = self.config.video_library_path / ".video_index_2.json"
 
     def _load_index(self) -> None:
         """Load the index from disk if it exists."""
@@ -219,7 +279,7 @@ class VideoLibrary:
         if not force_reindex:
             self._load_index()
 
-        library_path = self.config.video_library_path
+        library_path = self._video_path
         if not library_path.exists():
             library_path.mkdir(parents=True, exist_ok=True)
             return []
@@ -241,9 +301,9 @@ class VideoLibrary:
                     meta = extract_video_metadata(path)
 
                     transcript_segments = []
-                    if self.config.transcript_library_path:
+                    if self._transcript_path:
                         transcript_path = (
-                            self.config.transcript_library_path / f"{path.stem}.json"
+                            self._transcript_path / f"{path.stem}.json"
                         )
                         if transcript_path.exists():
                             transcript_segments = load_transcript_segments(transcript_path)

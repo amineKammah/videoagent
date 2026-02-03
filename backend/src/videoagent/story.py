@@ -114,10 +114,11 @@ class PersonalizedStoryGenerator:
     Output is a list of StorySegments (video clips only) in storyboard order.
     """
 
-    def __init__(self, config: Optional[Config] = None):
+    def __init__(self, config: Optional[Config] = None, company_id: Optional[str] = None):
         self.config = config or default_config
+        self.company_id = company_id
         self.client = GeminiClient(self.config)
-        self.library = VideoLibrary(self.config)
+        self.library = VideoLibrary(self.config, company_id=company_id)
         self.voice_generator = VoiceOverGenerator(self.config)
 
     def _get_videos_transcripts(self, video_ids: Optional[list[str]] = None) -> str:

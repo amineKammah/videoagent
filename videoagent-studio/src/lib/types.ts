@@ -33,8 +33,43 @@ export interface Message {
     suggestedActions?: string[];
 }
 
+// ============================================================================
+// Multi-Tenancy Types
+// ============================================================================
+
+export interface Company {
+    id: string;
+    name: string;
+    video_library_path?: string;
+    is_test: boolean;
+    settings: Record<string, any>;
+    created_at: string;
+    updated_at: string;
+}
+
+export interface User {
+    id: string;
+    company_id: string;
+    email: string;
+    name: string;
+    role: 'admin' | 'editor' | 'viewer';
+    is_test: boolean;
+    settings: Record<string, any>;
+    created_at: string;
+    updated_at: string;
+}
+
+export interface VoiceOption {
+    id: string;
+    name: string;
+    gender: 'Male' | 'Female';
+    sample_url: string;
+}
+
 export interface Session {
     id: string;
+    companyId?: string;
+    userId?: string;
     createdAt: Date;
 }
 
@@ -125,7 +160,7 @@ export interface ChatHistoryResponse {
 }
 
 export interface Customer {
-    id: number;
+    id: string | number;
     brand_id: number;
     name: string;
     title: string;
@@ -224,3 +259,28 @@ export interface ComparisonResult {
         unique_annotations: number;
     };
 }
+
+// ============================================================================
+// Pronunciation Types
+// ============================================================================
+
+export interface Pronunciation {
+    id: string;
+    company_id: string;
+    created_by_user_id: string;
+    session_id?: string;
+    word: string;
+    phonetic_spelling: string;
+    always_included: boolean;
+    is_company_default: boolean;
+    created_at: string;
+    updated_at: string;
+}
+
+export interface CreatePronunciationRequest {
+    word: string;
+    phonetic_spelling: string;
+    session_id?: string;
+    always_included?: boolean;
+}
+

@@ -4,7 +4,7 @@ import { useState, useCallback, useEffect, useRef } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 
 import { useSessionStore } from '@/store/session';
-import { useEventPolling } from '@/hooks/useEventPolling';
+import { useEventStream } from '@/hooks/useEventStream';
 import { MessageList } from './MessageList';
 import { EventStream } from './EventStream';
 import { Message } from '@/lib/types';
@@ -28,8 +28,8 @@ export function Chat() {
     const router = useRouter();
 
 
-    // Start polling when processing
-    useEventPolling();
+    // Use SSE for real-time event streaming (replaces polling)
+    useEventStream();
 
     const handleSend = useCallback(async (manualText?: string) => {
         // If manualText is provided, use it. Otherwise use inputValue.

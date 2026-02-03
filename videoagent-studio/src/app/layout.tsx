@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
 import { Sora, Fraunces } from "next/font/google";
+import { Navbar } from "@/components/Navbar";
+import { AuthProvider } from "@/components/AuthProvider";
 import "./globals.css";
 
 const sora = Sora({
@@ -17,8 +19,6 @@ export const metadata: Metadata = {
   description: "AI-powered video creation studio",
 };
 
-import { Navbar } from "@/components/Navbar";
-
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -29,8 +29,10 @@ export default function RootLayout({
       <body
         className={`${sora.variable} ${fraunces.variable} font-sans antialiased`}
       >
-        <Navbar />
-        {children}
+        <AuthProvider>
+          <Navbar />
+          {children}
+        </AuthProvider>
       </body>
     </html>
   );

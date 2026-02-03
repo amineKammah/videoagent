@@ -23,6 +23,7 @@ from videoagent.gemini import GeminiClient
 from videoagent.library import VideoLibrary
 from videoagent.models import RenderResult, VoiceOver
 from videoagent.story import _StoryboardScene
+from videoagent.db import crud, connection, models
 from videoagent.voice import VoiceOverGenerator, estimate_speech_duration
 from videoagent.editor import VideoEditor
 
@@ -82,6 +83,7 @@ def _render_storyboard_scenes(
     session_id: str,
     base_dir: Path,
     output_filename: str,
+    company_id: Optional[str] = None,
 ) -> RenderResult:
     if not scenes:
         return RenderResult(
@@ -104,7 +106,7 @@ def _render_storyboard_scenes(
                 + ", ".join(missing_sources)
             ),
         )
-    library = VideoLibrary(config)
+    library = VideoLibrary(config, company_id=company_id)
     library.scan_library()
     video_paths: dict[str, Path] = {}
     for scene in scenes:
@@ -638,6 +640,8 @@ def _build_tools(
     brief_store: BriefStore,
     event_store: EventStore,
     session_id: str,
+    company_id: str,
+    user_id: str,
     auto_render_callback: Optional[Callable[[], None]] = None,
 ):
     def tool_error(name: str):
@@ -650,29 +654,31 @@ def _build_tools(
             if asyncio.iscoroutinefunction(fn):
                 @functools.wraps(fn)
                 async def wrapped(*args, **kwargs):
-                    event_store.append(session_id, {"type": "tool_start", "name": name})
+                    event_store.append(session_id, {"type": "tool_start", "name": name}, user_id=user_id)
                     try:
                         result = await fn(*args, **kwargs)
-                        event_store.append(session_id, {"type": "tool_end", "name": name, "status": "ok"})
+                        event_store.append(session_id, {"type": "tool_end", "name": name, "status": "ok"}, user_id=user_id)
                         return result
                     except Exception as exc:
                         event_store.append(
                             session_id,
                             {"type": "tool_end", "name": name, "status": "error", "error": str(exc)},
+                            user_id=user_id,
                         )
                         raise
                 return wrapped
             @functools.wraps(fn)
             def wrapped(*args, **kwargs):
-                event_store.append(session_id, {"type": "tool_start", "name": name})
+                event_store.append(session_id, {"type": "tool_start", "name": name}, user_id=user_id)
                 try:
                     result = fn(*args, **kwargs)
-                    event_store.append(session_id, {"type": "tool_end", "name": name, "status": "ok"})
+                    event_store.append(session_id, {"type": "tool_end", "name": name, "status": "ok"}, user_id=user_id)
                     return result
                 except Exception as exc:
                     event_store.append(
                         session_id,
                         {"type": "tool_end", "name": name, "status": "error", "error": str(exc)},
+                        user_id=user_id,
                     )
                     raise
             return wrapped
@@ -688,7 +694,7 @@ def _build_tools(
         payload: StoryboardUpdatePayload,
     ) -> str:
         """Replace the current storyboard scenes with the provided full list."""
-        old_scenes = storyboard_store.load(session_id) or []
+        old_scenes = storyboard_store.load(session_id, user_id=user_id) or []
         old_scene_map = {scene.scene_id: scene for scene in old_scenes}
         
         new_scenes: list[_StoryboardScene] = []
@@ -713,8 +719,8 @@ def _build_tools(
             )
             new_scenes.append(new_scene)
             
-        storyboard_store.save(session_id, new_scenes)
-        event_store.append(session_id, {"type": "storyboard_update"})
+        storyboard_store.save(session_id, new_scenes, user_id=user_id)
+        event_store.append(session_id, {"type": "storyboard_update"}, user_id=user_id)
         return "UI updated successfully"
 
     @function_tool(
@@ -726,7 +732,7 @@ def _build_tools(
         payload: StoryboardSceneUpdatePayload,
     ) -> str:
         """Replace a single storyboard scene by scene_id."""
-        scenes = storyboard_store.load(session_id) or []
+        scenes = storyboard_store.load(session_id, user_id=user_id) or []
         if not scenes:
             return "No storyboard scenes found. Create a storyboard before updating a scene."
         
@@ -754,8 +760,8 @@ def _build_tools(
         if not target_found:
             return f"Storyboard scene id not found: {payload.scene.scene_id}"
             
-        storyboard_store.save(session_id, updated_scenes)
-        event_store.append(session_id, {"type": "storyboard_update"})
+        storyboard_store.save(session_id, updated_scenes, user_id=user_id)
+        event_store.append(session_id, {"type": "storyboard_update"}, user_id=user_id)
         return "Storyboard scene updated successfully"
 
     @function_tool(
@@ -767,7 +773,7 @@ def _build_tools(
         payload: MatchedScenesUpdatePayload,
     ) -> str:
         """Update the matched_scene field for specific storyboard scenes."""
-        scenes = storyboard_store.load(session_id) or []
+        scenes = storyboard_store.load(session_id, user_id=user_id) or []
         if not scenes:
             return "No storyboard scenes found. Create a storyboard before updating matched scenes."
         
@@ -783,8 +789,8 @@ def _build_tools(
                 missing_ids.append(item.scene_id)
         
         if updated_count > 0:
-            storyboard_store.save(session_id, scenes)
-            event_store.append(session_id, {"type": "storyboard_update"})
+            storyboard_store.save(session_id, scenes, user_id=user_id)
+            event_store.append(session_id, {"type": "storyboard_update"}, user_id=user_id)
         
         msg = f"Updated matched details for {updated_count} scene(s)."
         if missing_ids:
@@ -795,16 +801,16 @@ def _build_tools(
     @log_tool("update_video_brief")
     def update_video_brief(payload: VideoBriefUpdatePayload) -> str:
         """Update/Replace the video brief details (objective, persona, key_messages)."""
-        brief_store.save(session_id, payload.brief)
-        event_store.append(session_id, {"type": "video_brief_update"})
+        brief_store.save(session_id, payload.brief, user_id=user_id)
+        event_store.append(session_id, {"type": "video_brief_update"}, user_id=user_id)
         return "Video brief updated successfully. UI will reflect changes."
 
     @function_tool(failure_error_function=tool_error("render_storyboard"), strict_mode=False)
     @log_tool("render_storyboard")
     def render_storyboard(output_filename: Optional[str] = None) -> str:
         """Render storyboard scenes to a video file."""
-        event_store.append(session_id, {"type": "video_render_start"})
-        scenes = storyboard_store.load(session_id) or []
+        event_store.append(session_id, {"type": "video_render_start"}, user_id=user_id)
+        scenes = storyboard_store.load(session_id, user_id=user_id) or []
         result = _render_storyboard_scenes(
             scenes,
             config,
@@ -826,10 +832,10 @@ def _build_tools(
     async def generate_voice_overs(segment_ids: list[str]) -> str:
         """Generate voice overs for selected storyboard scenes by id and persist them."""
         # Provide early feedback to UI
-        event_store.append(session_id, {"type": "video_render_start"})
+        event_store.append(session_id, {"type": "video_render_start"}, user_id=user_id)
         
         step_start = time.perf_counter()
-        scenes = storyboard_store.load(session_id) or []
+        scenes = storyboard_store.load(session_id, user_id=user_id) or []
         if not scenes:
             return "No storyboard scenes found. Create a storyboard before generating voice overs."
         scene_map = {scene.scene_id: scene for scene in scenes}
@@ -851,13 +857,30 @@ def _build_tools(
         ]
         if missing_script_ids:
             return "Missing script for storyboard scene id(s): " + ", ".join(missing_script_ids)
+        
+        # Determine voice to use
+        voice = config.tts_voice
+        
+        # Look up user preference from DB
+        if user_id:
+            try:
+                with connection.get_db_context() as db:
+                    user = crud.get_user(db, user_id)
+                    if user and user.settings and "tts_voice" in user.settings:
+                        voice = user.settings["tts_voice"]
+            except Exception as e:
+                print(f"[generate_voice_overs] Failed to look up user voice preference: {e}")
+        else:
+             print("[generate_voice_overs] No user_id provided in context, using default voice.")
+
         generator = VoiceOverGenerator(config)
         try:
-            voice_dir = (storyboard_store.base_dir / session_id / "voice_overs")
+            # Use the store's path resolution to get the correct session directory (including user_id)
+            session_dir = storyboard_store._storyboard_path(session_id, user_id=user_id).parent
+            voice_dir = session_dir / "voice_overs"
             voice_dir.mkdir(parents=True, exist_ok=True)
 
             semaphore = asyncio.Semaphore(8)
-
             async def _run(scene_id: str) -> VoiceOver:
                 job_start = time.perf_counter()
                 scene = scene_map[scene_id]
@@ -866,6 +889,7 @@ def _build_tools(
                 async with semaphore:
                     voice_over = await generator.generate_voice_over_async(
                         scene.script,
+                        voice=voice,
                         output_path=output_path,
                     )
                 print(
@@ -880,7 +904,7 @@ def _build_tools(
             for scene_id, voice_over in zip(segment_ids, results):
                 scene = scene_map[scene_id]
                 scene.voice_over = voice_over
-            storyboard_store.save(session_id, scenes)
+            storyboard_store.save(session_id, scenes, user_id=user_id)
             print(
                 "[generate_voice_overs] total time: "
                 f"{time.perf_counter() - step_start:.2f}s"
@@ -899,13 +923,13 @@ def _build_tools(
         Optional duration_seconds can guide clip length only when no voice over exists for the scene.
         (Refer to system prompt for full details on matching logic).
         """
-        scenes = storyboard_store.load(session_id) or []
+        scenes = storyboard_store.load(session_id, user_id=user_id) or []
         if not scenes:
             return "No storyboard scenes found. Create a storyboard before matching scenes."
         if not payload.requests:
             return "No scene match requests provided."
 
-        library = VideoLibrary(config)
+        library = VideoLibrary(config, company_id=company_id)
         library.scan_library()
 
         # 1. Validation and Job Building
@@ -962,7 +986,7 @@ def _build_tools(
         if errors:
             response_payload["errors"] = errors
         
-        event_store.append(session_id, {"type": "video_render_complete"})
+        event_store.append(session_id, {"type": "video_render_complete"}, user_id=user_id)
 
         return (
             f"{json.dumps(response_payload)}\n"
@@ -1002,7 +1026,7 @@ def _build_tools(
         scenes_context = json.dumps(scenes_payload, indent=2)
 
         t0 = time.perf_counter()
-        storyboard_path = storyboard_store._storyboard_path(session_id)
+        storyboard_path = storyboard_store._storyboard_path(session_id, user_id=user_id)
         storyboard_mtime = None
         try:
             if storyboard_path.exists():
@@ -1122,8 +1146,13 @@ Example:
         from google import genai
         from videoagent.library import extract_video_metadata
         
+        # Use store path resolution for correct directory
+        session_dir = storyboard_store._storyboard_path(session_id, user_id=user_id).parent
+        generated_dir = session_dir / "generated_videos"
+        generated_dir.mkdir(parents=True, exist_ok=True)
+        
         # Validate that the scene exists in the storyboard
-        scenes = storyboard_store.load(session_id) or []
+        scenes = storyboard_store.load(session_id, user_id=user_id) or []
         target_scene = None
         for scene in scenes:
             if scene.scene_id == scene_id:
@@ -1191,7 +1220,7 @@ Example:
             "negative_prompt": negative_prompt,
             "duration_seconds": duration_seconds,
             "voice_over_duration": voice_over_duration,
-        })
+        }, user_id=user_id)
         
         # Store generated videos in session-specific directory (NOT main library)
         # This prevents them from appearing in LLM context as source content
@@ -1242,7 +1271,8 @@ Example:
             if not operation.response or not operation.response.generated_videos:
                 event_store.append(
                     session_id,
-                    {"type": "video_generation_complete", "status": "error", "error": "No video generated"}
+                    {"type": "video_generation_complete", "status": "error", "error": "No video generated"},
+                    user_id=user_id,
                 )
                 return json.dumps({
                     "success": False,
@@ -1270,7 +1300,8 @@ Example:
                     "scene_id": scene_id,
                     "output": str(output_path),
                     "generation_time_seconds": generation_time,
-                }
+                },
+                user_id=user_id,
             )
             
             # Directly update the storyboard scene with the generated video
@@ -1288,7 +1319,7 @@ Example:
             target_scene.matched_scene = matched_scene
             
             # Save the updated storyboard
-            storyboard_store.save(session_id, scenes)
+            storyboard_store.save(session_id, scenes, user_id=user_id)
             
             # Emit storyboard update event for frontend
             event_store.append(
@@ -1296,7 +1327,8 @@ Example:
                 {
                     "type": "storyboard_update",
                     "scenes": [s.model_dump(mode="json") for s in scenes],
-                }
+                },
+                user_id=user_id,
             )
             
             return (
@@ -1309,7 +1341,8 @@ Example:
             print(f"[generate_scene] {error_msg}")
             event_store.append(
                 session_id,
-                {"type": "video_generation_complete", "status": "error", "error": str(exc)}
+                {"type": "video_generation_complete", "status": "error", "error": str(exc)},
+                user_id=user_id,
             )
             return json.dumps({
                 "success": False,

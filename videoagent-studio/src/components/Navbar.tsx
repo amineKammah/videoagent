@@ -1,6 +1,7 @@
 'use client';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { UserCompanySelector } from './UserCompanySelector';
 
 export function Navbar() {
     const pathname = usePathname();
@@ -36,6 +37,10 @@ export function Navbar() {
                                 );
                             })}
                         </div>
+                    </div>
+                    {/* Right side: User/Company Selector */}
+                    <div className="flex items-center">
+                        <UserCompanySelector />
                     </div>
                 </div>
             </div>

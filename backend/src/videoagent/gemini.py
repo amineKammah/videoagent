@@ -55,7 +55,6 @@ class GeminiClient:
                 api_key = os.getenv("VERTEX_API_KEY")
             else:
                 api_key = os.getenv("GEMINI_API_KEY")
-            print("DEBUGINFO\n\n\n\n", api_key, vertexai)
             return genai.Client(
                 vertexai=vertexai,
                 api_key=api_key,
@@ -217,6 +216,7 @@ class GeminiClient:
         poll_interval: float = 1.0,
     ) -> object:
         file_name = getattr(file_obj, "name", None) or getattr(file_obj, "id", None)
+        print(f"DEBUG: _wait_for_file_active file_name={file_name} file_obj={file_obj}")
         if not file_name:
             return file_obj
         deadline = time.monotonic() + timeout_seconds
@@ -230,10 +230,7 @@ class GeminiClient:
                     f"Uploaded file {file_name} failed with state {state}."
                 )
             time.sleep(poll_interval)
-            try:
-                current = self._get_content_client().files.get(name=file_name)
-            except Exception:
-                current = self._get_content_client().files.get(file_name)
+            current = self._get_content_client().files.get(name=file_name)
         raise RuntimeError(
             f"Uploaded file {file_name} did not become ACTIVE in time."
         )

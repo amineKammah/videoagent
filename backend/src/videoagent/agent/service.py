@@ -22,6 +22,7 @@ from agents import (
 from agents.extensions.models.litellm_model import LitellmModel
 
 from videoagent.config import Config, default_config
+from videoagent.db import crud, connection, models
 from videoagent.library import VideoLibrary
 from videoagent.models import RenderResult, VideoBrief
 from videoagent.story import PersonalizedStoryGenerator, _StoryboardScene
@@ -60,10 +61,16 @@ def _select_api_key(config: Config, model_name: str) -> Optional[str]:
 
 
 class VideoAgentService:
-    def __init__(self, config: Optional[Config] = None, base_dir: Optional[Path] = None):
+    def __init__(
+        self, 
+        config: Optional[Config] = None, 
+        base_dir: Optional[Path] = None, 
+    ):
         self.config = config or default_config
+        # user_id and company_id are resolved dynamically per session
         self.base_dir = base_dir or (Path.cwd() / "output" / "agent_sessions")
         self.base_dir.mkdir(parents=True, exist_ok=True)
+        # Stores are initialized without static user_id; methods must provide it
         self.storyboard_store = StoryboardStore(self.base_dir)
         self.brief_store = BriefStore(self.base_dir)
         self.event_store = EventStore(self.base_dir)
@@ -80,8 +87,20 @@ class VideoAgentService:
 
         self._base_instructions = AGENT_SYSTEM_PROMPT
 
+    def _resolve_session_owner(self, session_id: str) -> tuple[Optional[str], Optional[str]]:
+        """Resolve user_id and company_id for a session from the DB."""
+        try:
+            with connection.get_db_context() as db:
+                db_session = crud.get_session(db, session_id)
+                if db_session:
+                    return db_session.user_id, db_session.company_id
+        except Exception as e:
+            print(f"[_resolve_session_owner] Failed to lookup session {session_id}: {e}")
+        return None, None
+
     def get_video_brief(self, session_id: str) -> Optional[VideoBrief]:
-        return self.brief_store.load(session_id)
+        user_id, _ = self._resolve_session_owner(session_id)
+        return self.brief_store.load(session_id, user_id=user_id)
 
     def _configure_tracing(self) -> None:
         tracing_key = os.environ.get("OPENAI_API_KEY")
@@ -97,8 +116,9 @@ class VideoAgentService:
         )
 
     def _build_context_payload(self, session_id: str, video_transcripts: list[dict]) -> dict:
-        storyboard_scenes = self.storyboard_store.load(session_id)
-        video_brief = self.brief_store.load(session_id)
+        user_id, _ = self._resolve_session_owner(session_id)
+        storyboard_scenes = self.storyboard_store.load(session_id, user_id=user_id)
+        video_brief = self.brief_store.load(session_id, user_id=user_id)
         return {
             "video_transcripts": video_transcripts,
             "video_brief": video_brief.model_dump(mode="json") if video_brief else None,
@@ -110,12 +130,17 @@ class VideoAgentService:
 
     def _get_agent(self, session_id: str) -> Agent:
         with self._agent_lock:
+            # Look up session owner in DB first (needed for closure)
+            session_user_id, session_company_id = self._resolve_session_owner(session_id)
+            print(session_id, session_user_id, session_company_id)
+
             video_transcripts: Optional[list[dict]] = None
 
             def _dynamic_instructions(run_context, agent) -> str:
                 nonlocal video_transcripts
                 if video_transcripts is None:
-                    video_transcripts = self._build_video_transcripts()
+                    # Capture session_company_id from outer scope
+                    video_transcripts = self._build_video_transcripts(session_company_id)
                 payload = self._build_context_payload(session_id, video_transcripts)
                 return self._build_instructions(payload)
 
@@ -124,16 +149,18 @@ class VideoAgentService:
                 agent.instructions = _dynamic_instructions
                 return agent
 
-            model_name = _select_model_name(self.config)
-            self.model_name = model_name
-            api_key = _select_api_key(self.config, model_name)
-            model = LitellmModel(model=model_name, api_key=api_key)
+            self.model_name = _select_model_name(self.config)
+            model = LitellmModel(model=self.model_name, api_key= _select_api_key(self.config, self.model_name))
+            
+            # Tools need resolved IDs
             tools = _build_tools(
                 self.config,
                 self.storyboard_store,
                 self.brief_store,
                 self.event_store,
                 session_id,
+                company_id=session_company_id,
+                user_id=session_user_id,
             )
 
             agent = Agent(
@@ -145,8 +172,28 @@ class VideoAgentService:
             self._agents[session_id] = agent
             return agent
 
-    def create_session(self) -> str:
-        return uuid4().hex
+    def create_session(self, user_id: str, company_id: str, session_id: Optional[str] = None) -> str:
+        session_id = session_id or uuid4().hex
+        
+        # Persist to DB
+        try:
+            with connection.get_db_context() as db:
+                crud.create_session(
+                    db,
+                    session_id=session_id,
+                    company_id=company_id,
+                    user_id=user_id,
+                )
+        except Exception as e:
+            print(f"[create_session] Failed to persist session to DB: {e}")
+            raise
+
+        # Initialize stores for this session
+        # Ensure directories exist
+        # Pass user_id to ensure user-scoped paths
+        self.event_store.append(session_id, {"type": "session_created"}, user_id=user_id)
+        
+        return session_id
 
     def list_sessions(self) -> list[dict]:
         """List all available sessions with their creation timestamps."""
@@ -176,28 +223,50 @@ class VideoAgentService:
         return sorted(sessions, key=lambda x: x["created_at"], reverse=True)
 
     def get_storyboard(self, session_id: str) -> Optional[list[_StoryboardScene]]:
-        return self.storyboard_store.load(session_id)
+        user_id, _ = self._resolve_session_owner(session_id)
+        return self.storyboard_store.load(session_id, user_id=user_id)
+
+
+    def _mark_active(self, session_id: str) -> None:
+        """Mark session as active in DB."""
+        try:
+            with connection.get_db_context() as db:
+                crud.mark_session_active(db, session_id)
+        except Exception as e:
+            print(f"[_mark_active] Failed to mark session {session_id} active: {e}")
 
     def save_storyboard(self, session_id: str, scenes: list[_StoryboardScene]) -> None:
-        self.storyboard_store.save(session_id, scenes)
+        user_id, _ = self._resolve_session_owner(session_id)
+        self.storyboard_store.save(session_id, scenes, user_id=user_id)
+        self._mark_active(session_id)
 
     def save_video_brief(self, session_id: str, brief: VideoBrief) -> None:
-        self.brief_store.save(session_id, brief)
+        user_id, _ = self._resolve_session_owner(session_id)
+        self.brief_store.save(session_id, brief, user_id=user_id)
+        self._mark_active(session_id)
 
     def get_chat_history(self, session_id: str) -> list[dict]:
         """Get all chat messages for a session."""
-        return self.chat_store.load(session_id)
+        user_id, _ = self._resolve_session_owner(session_id)
+        return self.chat_store.load(session_id, user_id=user_id)
 
     def append_chat_message(self, session_id: str, role: str, content: str, suggested_actions: list[str] = None) -> None:
         """Append a chat message to the session history."""
+        user_id, _ = self._resolve_session_owner(session_id)
         self.chat_store.append(session_id, {
             "role": role,
             "content": content,
             "suggested_actions": suggested_actions or []
-        })
+        }, user_id=user_id)
+        
+        # Only user/assistant messages count as activity, but generally appending any message is activity
+        if role in ("user", "assistant"):
+            self._mark_active(session_id)
 
-    def _build_video_transcripts(self) -> list[dict]:
-        video_library = VideoLibrary(self.config)
+
+    def _build_video_transcripts(self, company_id: Optional[str]) -> list[dict]:
+        # Use dynamic company_id
+        video_library = VideoLibrary(self.config, company_id=company_id)
         video_library.scan_library()
 
         transcripts = []
@@ -212,13 +281,13 @@ class VideoAgentService:
             )
         return transcripts
 
-    def preupload_library_content(self) -> None:
+    def preupload_library_content(self, company_id: str | None = None) -> None:
         """Upload all videos used by the main agent's transcript context.
         
         Use this responsibly; unnecessary caching is expensive and slow.
         """
         gemini = GeminiClient(self.config)
-        video_library = VideoLibrary(self.config)
+        video_library = VideoLibrary(self.config, company_id=company_id)
         video_library.scan_library()
         
         for video in video_library.list_videos():
@@ -274,9 +343,14 @@ class VideoAgentService:
             group_id=session_id,
             session_input_callback=_merge_session_input,
         )
+        
+        # Resolve owner for event logging
+        user_id, _ = self._resolve_session_owner(session_id)
+        
         self.event_store.append(
             session_id,
             {"type": "run_start", "message": user_message},
+            user_id=user_id,
         )
         
         # Save user message to chat history
@@ -325,16 +399,19 @@ class VideoAgentService:
                 "suggested_actions": suggested_actions,
             }
         finally:
-            self.event_store.append(session_id, {"type": "run_end"})
+            uid, _ = self._resolve_session_owner(session_id)
+            self.event_store.append(session_id, {"type": "run_end"}, user_id=uid)
 
     def get_events(self, session_id: str, cursor: Optional[int]) -> tuple[list[dict], int]:
-        return self.event_store.read_since(session_id, cursor)
+        user_id, _ = self._resolve_session_owner(session_id)
+        return self.event_store.read_since(session_id, cursor, user_id=user_id)
 
     def render_segments(self, session_id: str, output_filename: str = "output.mp4") -> RenderResult:
         return self.render_storyboard(session_id, output_filename)
 
     def render_storyboard(self, session_id: str, output_filename: str = "output.mp4") -> RenderResult:
-        scenes = self.storyboard_store.load(session_id) or []
+        user_id, _ = self._resolve_session_owner(session_id)
+        scenes = self.storyboard_store.load(session_id, user_id=user_id) or []
         result = _render_storyboard_scenes(
             scenes,
             self.config,
@@ -350,9 +427,10 @@ class VideoAgentService:
 
     def generate_storyboard(self, session_id: str, brief: str) -> list[_StoryboardScene]:
         """Calls the generator directly for a text-only draft, bypassing TTS and Video matching."""
+        user_id, _ = self._resolve_session_owner(session_id)
         generator = PersonalizedStoryGenerator(self.config)
         scenes = generator.plan_storyboard(brief)
-        self.storyboard_store.save(session_id, scenes)
+        self.storyboard_store.save(session_id, scenes, user_id=user_id)
         # if brief:
         #     self.brief_store.save(session_id, brief) # Cannot save raw string to BriefStore
         return scenes

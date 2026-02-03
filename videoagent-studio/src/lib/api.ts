@@ -15,8 +15,17 @@ import {
     AnnotationMetrics,
     ComparisonResult,
     SessionStatus,
+    Company,
+    User,
+    VoiceOption,
+    Pronunciation,
+    CreatePronunciationRequest,
 } from './types';
 
+export const ApiUtils = {
+    currentUserId: null as string | null,
+    currentCompanyId: null as string | null
+};
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
@@ -34,8 +43,25 @@ async function fetchWithTimeout(
     const timeoutId = setTimeout(() => controller.abort(), timeout);
 
     try {
+        const headers = new Headers(options.headers);
+
+        if (ApiUtils.currentUserId) {
+            headers.set('X-User-Id', ApiUtils.currentUserId);
+            // console.log('[API] Injected X-User-Id:', ApiUtils.currentUserId);
+        } else {
+            console.warn('[API] Missing X-User-Id! Request may fail.', url);
+        }
+
+        if (ApiUtils.currentCompanyId) {
+            headers.set('X-Company-ID', ApiUtils.currentCompanyId);
+            // console.log('[API] Injected X-Company-ID:', ApiUtils.currentCompanyId);
+        } else {
+            console.warn('[API] Missing X-Company-ID! Request may fail.', url);
+        }
+
         const response = await fetch(url, {
             ...options,
+            headers,
             signal: controller.signal,
         });
         return response;
@@ -65,13 +91,17 @@ export const api = {
         return handleResponse<SessionListResponse>(response);
     },
 
-    createSession: async (): Promise<SessionResponse> => {
+    createSession: async (): Promise<string> => {
+        const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+        // X-User-Id is now injected automatically by fetchWithTimeout
+
         const response = await fetchWithTimeout(`${API_BASE}/agent/sessions`, {
             method: 'POST',
+            headers,
         });
-        return handleResponse<SessionResponse>(response);
+        const data = await handleResponse<{ session_id: string }>(response);
+        return data.session_id;
     },
-
     // Chat - send message to LLM (long timeout)
     sendMessage: async (sessionId: string, message: string): Promise<ChatResponse> => {
         const response = await fetchWithTimeout(
@@ -111,6 +141,15 @@ export const api = {
     getVideoBrief: async (sessionId: string): Promise<VideoBrief | null> => {
         const response = await fetchWithTimeout(`${API_BASE}/agent/sessions/${sessionId}/brief`);
         return handleResponse<VideoBrief | null>(response);
+    },
+
+    updateVideoBrief: async (sessionId: string, brief: VideoBrief): Promise<VideoBrief> => {
+        const response = await fetchWithTimeout(`${API_BASE}/agent/sessions/${sessionId}/brief`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(brief),
+        });
+        return handleResponse<VideoBrief>(response);
     },
 
     updateStoryboard: async (sessionId: string, scenes: StoryboardScene[]): Promise<void> => {
@@ -262,5 +301,137 @@ export const api = {
             body: JSON.stringify({ annotation_ids: annotationIds, resolved_by: resolvedBy }),
         });
         return handleResponse(response);
+    },
+
+    // ========================================================================
+    // Multi-Tenancy - Companies
+    // ========================================================================
+
+    listCompanies: async (includeTest: boolean = true): Promise<Company[]> => {
+        const url = new URL(`${API_BASE}/api/v1/companies`);
+        url.searchParams.set('include_test', includeTest.toString());
+        const response = await fetchWithTimeout(url.toString());
+        return handleResponse<Company[]>(response);
+    },
+
+    createCompany: async (name: string, isTest: boolean = true, settings?: Record<string, any>): Promise<Company> => {
+        const response = await fetchWithTimeout(`${API_BASE}/api/v1/companies`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name, is_test: isTest, settings }),
+        });
+        return handleResponse<Company>(response);
+    },
+
+    getCompany: async (companyId: string): Promise<Company> => {
+        const response = await fetchWithTimeout(`${API_BASE}/api/v1/companies/${companyId}`);
+        return handleResponse<Company>(response);
+    },
+
+    updateCompany: async (companyId: string, updates: Partial<Company>): Promise<Company> => {
+        const response = await fetchWithTimeout(`${API_BASE}/api/v1/companies/${companyId}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(updates),
+        });
+        return handleResponse<Company>(response);
+    },
+
+    deleteCompany: async (companyId: string): Promise<void> => {
+        await fetchWithTimeout(`${API_BASE}/api/v1/companies/${companyId}`, { method: 'DELETE' });
+    },
+
+    // ========================================================================
+    // Multi-Tenancy - Users
+    // ========================================================================
+
+    listUsers: async (companyId: string, includeTest: boolean = true): Promise<User[]> => {
+        const url = new URL(`${API_BASE}/api/v1/companies/${companyId}/users`);
+        url.searchParams.set('include_test', includeTest.toString());
+        const response = await fetchWithTimeout(url.toString());
+        return handleResponse<User[]>(response);
+    },
+
+    createUser: async (companyId: string, email: string, name: string, role: string = 'editor', isTest: boolean = true): Promise<User> => {
+        const response = await fetchWithTimeout(`${API_BASE}/api/v1/companies/${companyId}/users`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email, name, role, is_test: isTest }),
+        });
+        return handleResponse<User>(response);
+    },
+
+    getUser: async (userId: string): Promise<User> => {
+        const response = await fetchWithTimeout(`${API_BASE}/api/v1/users/${userId}`);
+        return handleResponse<User>(response);
+    },
+
+    updateUser: async (userId: string, updates: Partial<User>): Promise<User> => {
+        const response = await fetchWithTimeout(`${API_BASE}/api/v1/users/${userId}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(updates),
+        });
+        return handleResponse<User>(response);
+    },
+
+    deleteUser: async (userId: string): Promise<void> => {
+        await fetchWithTimeout(`${API_BASE}/api/v1/users/${userId}`, { method: 'DELETE' });
+    },
+
+    // ========================================================================
+    // Voice Options
+    // ========================================================================
+
+    getVoices: async (): Promise<VoiceOption[]> => {
+        const response = await fetchWithTimeout(`${API_BASE}/voices`);
+        const data = await handleResponse<{ voices: VoiceOption[] }>(response);
+        return data.voices;
+    },
+
+    updateUserSettings: async (userId: string, settings: Record<string, any>): Promise<User> => {
+        const response = await fetchWithTimeout(`${API_BASE}/api/v1/users/${userId}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ settings }),
+        });
+        return handleResponse<User>(response);
+    },
+
+    // ========================================================================
+    // Pronunciations
+    // ========================================================================
+
+    listPronunciations: async (sessionId: string): Promise<Pronunciation[]> => {
+        const url = new URL(`${API_BASE}/api/v1/pronunciations`);
+        url.searchParams.set('session_id', sessionId);
+        const response = await fetchWithTimeout(url.toString());
+        return handleResponse<Pronunciation[]>(response);
+    },
+
+    createPronunciation: async (request: CreatePronunciationRequest): Promise<Pronunciation> => {
+        const response = await fetchWithTimeout(`${API_BASE}/api/v1/pronunciations`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(request),
+        });
+        return handleResponse<Pronunciation>(response);
+    },
+
+    deletePronunciation: async (id: string): Promise<void> => {
+        await fetchWithTimeout(`${API_BASE}/api/v1/pronunciations/${id}`, {
+            method: 'DELETE',
+        });
+    },
+
+    generatePronunciation: async (audioShort: Blob, filename: string): Promise<{ phonetic_spelling: string; english_spelling: string }> => {
+        const formData = new FormData();
+        formData.append('file', audioShort, filename);
+
+        const response = await fetchWithTimeout(`${API_BASE}/api/v1/pronunciations/generate`, {
+            method: 'POST',
+            body: formData,
+        });
+        return handleResponse<{ phonetic_spelling: string; english_spelling: string }>(response);
     },
 };

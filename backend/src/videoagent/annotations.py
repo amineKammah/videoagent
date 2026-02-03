@@ -41,6 +41,7 @@ class SessionStatusInfo(BaseModel):
 class Annotation(BaseModel):
     """A single annotation on a video at a specific timestamp."""
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    company_id: Optional[str] = None  # For multi-tenancy
     session_id: str
     scene_id: str
     timestamp: float  # Relative time within scene (seconds)
@@ -59,6 +60,7 @@ class Annotation(BaseModel):
 
 class CreateAnnotationRequest(BaseModel):
     """Request to create a new annotation."""
+    company_id: Optional[str] = None  # For multi-tenancy
     session_id: str
     scene_id: str
     timestamp: float
@@ -137,6 +139,7 @@ def init_annotations_table():
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS annotations (
             id TEXT PRIMARY KEY,
+            company_id TEXT,
             session_id TEXT NOT NULL,
             scene_id TEXT NOT NULL,
             timestamp REAL NOT NULL,
@@ -193,9 +196,14 @@ def _row_to_annotation(row: sqlite3.Row) -> Annotation:
     rejected = False
     if "rejected" in row.keys():
          rejected = bool(row["rejected"])
+    
+    company_id = None
+    if "company_id" in row.keys():
+        company_id = row["company_id"]
          
     return Annotation(
         id=row["id"],
+        company_id=company_id,
         session_id=row["session_id"],
         scene_id=row["scene_id"],
         timestamp=row["timestamp"],
@@ -216,6 +224,7 @@ def create_annotation(request: CreateAnnotationRequest) -> Annotation:
     """Create a new annotation in the database."""
     now = datetime.utcnow()
     annotation = Annotation(
+        company_id=request.company_id,
         session_id=request.session_id,
         scene_id=request.scene_id,
         timestamp=request.timestamp,
@@ -234,12 +243,13 @@ def create_annotation(request: CreateAnnotationRequest) -> Annotation:
     
     cursor.execute("""
         INSERT INTO annotations (
-            id, session_id, scene_id, timestamp, global_timestamp,
+            id, company_id, session_id, scene_id, timestamp, global_timestamp,
             annotator_id, annotator_name, category, description, severity,
             created_at, updated_at, resolved, resolved_by, rejected
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     """, (
         annotation.id,
+        annotation.company_id,
         annotation.session_id,
         annotation.scene_id,
         annotation.timestamp,

@@ -223,8 +223,13 @@ export const VideoPlayer = forwardRef<VideoPlayerRef, VideoPlayerProps>(function
     };
 
     // Fetch Metadata
+    const user = useSessionStore(state => state.user);
+
     useEffect(() => {
         const fetchMetadata = async () => {
+            // Wait for user to be loaded (and thus ApiUtils.currentUserId set)
+            if (!user) return;
+
             const idsToFetch = new Set<string>();
             scenes.forEach(scene => {
                 if (scene.matched_scene?.source_video_id && !metadata[scene.matched_scene.source_video_id]) {
@@ -258,7 +263,7 @@ export const VideoPlayer = forwardRef<VideoPlayerRef, VideoPlayerProps>(function
         if (hasMatchedScenes) {
             fetchMetadata();
         }
-    }, [scenes, metadata, hasMatchedScenes]);
+    }, [scenes, metadata, hasMatchedScenes, user]);
 
     // Playback Logic
     const playSegment = useCallback(async (sceneIndex: number, shouldPlay: boolean = true, reason: string = "unknown") => {
