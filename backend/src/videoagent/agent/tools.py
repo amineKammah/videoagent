@@ -1224,8 +1224,7 @@ Example:
         
         # Store generated videos in session-specific directory (NOT main library)
         # This prevents them from appearing in LLM context as source content
-        generated_dir = storyboard_store.base_dir / session_id / "generated_videos"
-        generated_dir.mkdir(parents=True, exist_ok=True)
+        # generated_dir is already defined above including user_id scope
         
         # Generate unique filename
         unique_id = uuid4().hex[:8]
@@ -1311,7 +1310,7 @@ Example:
                 source_video_id=video_id,
                 start_time=0.0,
                 end_time=duration,
-                description=f"AI-generated: {prompt[:150]}{'...' if len(prompt) > 150 else ''}",
+                description=f"AI-generated: {prompt}",
                 keep_original_audio=False,
             )
             

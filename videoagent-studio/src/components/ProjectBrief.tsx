@@ -6,7 +6,7 @@ import { api } from '@/lib/api';
 import { VideoBrief } from '@/lib/types';
 
 export function ProjectBrief() {
-    const { videoBrief, setVideoBrief, session } = useSessionStore();
+    const { videoBrief, setVideoBrief, session, sendMessage } = useSessionStore();
     const [isCollapsed, setIsCollapsed] = useState(false);
     const [isEditing, setIsEditing] = useState(false);
     const [editForm, setEditForm] = useState<VideoBrief | null>(null);
@@ -18,13 +18,38 @@ export function ProjectBrief() {
         }
     }, [isEditing, videoBrief]);
 
-    const handleSave = async () => {
-        if (!session || !editForm) return;
+    const getBriefChanges = (original: VideoBrief, updated: VideoBrief): string[] => {
+        const changes: string[] = [];
+        if (original.video_objective !== updated.video_objective) {
+            changes.push(`Changed objective from "${original.video_objective}" to "${updated.video_objective}"`);
+        }
+        if (original.persona !== updated.persona) {
+            changes.push(`Changed persona from "${original.persona}" to "${updated.persona}"`);
+        }
+        if (JSON.stringify(original.key_messages) !== JSON.stringify(updated.key_messages)) {
+            changes.push(`Updated key messages.`);
+        }
+        return changes;
+    };
+
+    const handleSave = async (notifyAgent: boolean = false) => {
+        if (!session || !editForm || !videoBrief) return;
         setIsSaving(true);
         try {
             const updated = await api.updateVideoBrief(session.id, editForm);
             setVideoBrief(updated);
+
+            // Close the edit mode immediately so the user can continue
             setIsEditing(false);
+
+            if (notifyAgent) {
+                const changes = getBriefChanges(videoBrief, editForm);
+                if (changes.length > 0) {
+                    const message = `I updated the Video Brief:\n- ${changes.join('\n- ')}`;
+                    // Fire and forget, don't await the message sending
+                    sendMessage(message).catch(err => console.error('Failed to notify agent:', err));
+                }
+            }
         } catch (error) {
             console.error('Failed to save brief:', error);
             // Optionally show error toast
@@ -137,9 +162,17 @@ export function ProjectBrief() {
                                     Cancel
                                 </button>
                                 <button
-                                    onClick={handleSave}
+                                    onClick={() => handleSave(false)}
+                                    className="px-4 py-2 text-sm text-white bg-slate-600 hover:bg-slate-700 rounded-lg transition-colors shadow-sm disabled:opacity-50 flex items-center gap-2"
+                                    disabled={isSaving}
+                                >
+                                    Save
+                                </button>
+                                <button
+                                    onClick={() => handleSave(true)}
                                     className="px-4 py-2 text-sm text-white bg-teal-600 hover:bg-teal-700 rounded-lg transition-colors shadow-sm disabled:opacity-50 flex items-center gap-2"
                                     disabled={isSaving}
+                                    title="Save changes and tell the agent about them"
                                 >
                                     {isSaving && (
                                         <svg className="animate-spin h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
@@ -147,7 +180,7 @@ export function ProjectBrief() {
                                             <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                                         </svg>
                                     )}
-                                    Save Changes
+                                    Save & Notify Agent
                                 </button>
                             </div>
                         </div>

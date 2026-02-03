@@ -12,6 +12,7 @@ license = {text = "MIT"}
 authors = [{name = "VideoAgent"}]
 dependencies = [
   "google-genai>=1.0.0",
+  "google-cloud-storage>=2.14.0",
   "pydantic>=2.0.0",
   "moviepy>=1.0.3",
   "python-dotenv>=1.0.0",
