@@ -566,9 +566,7 @@ export const VideoPlayer = forwardRef<VideoPlayerRef, VideoPlayerProps>(function
                         playSegment(currentSceneIndex + 1, true, "checkTime-auto");
                     } else {
                         console.log(`[checkTime] Last scene ended. Resetting playback.`);
-                        setIsPlaying(false);
-                        setCurrentSceneIndex(0); // Reset to start
-                        isTransitioningRef.current = false;
+                        playSegment(0, false, "playlist-end");
                     }
                 }
             }
@@ -594,8 +592,7 @@ export const VideoPlayer = forwardRef<VideoPlayerRef, VideoPlayerProps>(function
                 if (currentSceneIndex < scenes.length - 1) {
                     playSegment(currentSceneIndex + 1, true);
                 } else {
-                    setIsPlaying(false);
-                    setCurrentSceneIndex(0);
+                    playSegment(0, false, "playlist-end");
                 }
             }
         };
@@ -628,9 +625,7 @@ export const VideoPlayer = forwardRef<VideoPlayerRef, VideoPlayerProps>(function
                     if (currentSceneIndex < scenes.length - 1) {
                         playSegment(currentSceneIndex + 1, true);
                     } else {
-                        setIsPlaying(false);
-                        setCurrentSceneIndex(0);
-                        isTransitioningRef.current = false;
+                        playSegment(0, false, "playlist-end");
                     }
                 }
             }
