@@ -30,6 +30,7 @@ dependencies = [
 [project.optional-dependencies]
 dev = [
   "ruff>=0.6.9",
+  "pytest>=8.0.0",
 ]
 
 [tool.setuptools]

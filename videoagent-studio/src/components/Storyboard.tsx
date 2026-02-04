@@ -195,6 +195,8 @@ function SceneModal({ scenes, currentIndex, onClose, onNavigate }: SceneModalPro
                     // Fire and forget, don't await the message sending
                     sendMessage(message).catch(err => console.error('Failed to notify agent:', err));
                 }
+                // Close the modal completely when notifying
+                onClose();
             }
         } catch (error) {
             console.error('Failed to update storyboard:', error);

@@ -60,8 +60,6 @@ export default function AnnotationsPage() {
     // Dialog state
     const [showAnnotationDialog, setShowAnnotationDialog] = useState(false);
     const [editingAnnotation, setEditingAnnotation] = useState<Annotation | null>(null);
-    const [showAnnotatorSettings, setShowAnnotatorSettings] = useState(false);
-    const [annotatorNameInput, setAnnotatorNameInput] = useState('');
 
     // Load sessions and stats on mount
     useEffect(() => {
@@ -130,14 +128,10 @@ export default function AnnotationsPage() {
         if (session?.id) {
             loadAnnotations(session.id);
 
-            // If we are in compare mode, we need to load comparison data for the new session
             if (viewMode === 'compare') {
                 handleViewModeChange('compare');
             }
 
-            if (!currentAnnotatorId) {
-                setShowAnnotatorSettings(true);
-            }
             setCurrentTime(0);
             setIsPlaying(false);
         }
@@ -148,11 +142,6 @@ export default function AnnotationsPage() {
     };
 
     const handleAddAnnotation = () => {
-        if (!currentAnnotatorId) {
-            setShowAnnotatorSettings(true);
-            return;
-        }
-
         // Pause video using exposed ref
         if (playerRef.current) {
             playerRef.current.pause();
@@ -264,14 +253,6 @@ export default function AnnotationsPage() {
             loadAnnotations(session.id);
         } catch (e) {
             console.error("Failed to delete (reject) annotation", e);
-        }
-    };
-
-    const handleSetAnnotator = () => {
-        if (annotatorNameInput.trim()) {
-            const id = crypto.randomUUID().slice(0, 8);
-            setAnnotator(id, annotatorNameInput.trim());
-            setShowAnnotatorSettings(false);
         }
     };
 
@@ -389,17 +370,7 @@ export default function AnnotationsPage() {
                             </>
                         )}
                     </div>
-                    <div className="flex items-center gap-4">
-                        <button
-                            onClick={() => setShowAnnotatorSettings(true)}
-                            className="flex items-center gap-2 text-sm text-slate-600 hover:text-slate-800"
-                        >
-                            <span className="w-8 h-8 bg-teal-100 rounded-full flex items-center justify-center text-teal-700 font-medium">
-                                {currentAnnotatorName?.charAt(0)?.toUpperCase() || '?'}
-                            </span>
-                            {currentAnnotatorName || 'Set Name'}
-                        </button>
-                    </div>
+                    {/* Removed Set Name button */}
                 </div>
             </header>
 
@@ -619,48 +590,6 @@ export default function AnnotationsPage() {
                 } : undefined}
                 isEditing={!!editingAnnotation}
             />
-
-            {/* Annotator Settings Modal */}
-            {
-                showAnnotatorSettings && (
-                    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-                        <div className="bg-white rounded-xl shadow-2xl p-6 w-full max-w-md">
-                            <h3 className="text-lg font-semibold text-slate-800 mb-4">
-                                👤 Set Your Name
-                            </h3>
-                            <p className="text-sm text-slate-600 mb-4">
-                                Enter your name to identify your annotations.
-                            </p>
-                            <input
-                                type="text"
-                                value={annotatorNameInput}
-                                onChange={(e) => setAnnotatorNameInput(e.target.value)}
-                                placeholder="Your name..."
-                                className="w-full border border-slate-300 rounded-lg px-4 py-2 mb-4 focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none"
-                                autoFocus
-                                onKeyDown={(e) => e.key === 'Enter' && handleSetAnnotator()}
-                            />
-                            <div className="flex justify-end gap-2">
-                                {currentAnnotatorId && (
-                                    <button
-                                        onClick={() => setShowAnnotatorSettings(false)}
-                                        className="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded"
-                                    >
-                                        Cancel
-                                    </button>
-                                )}
-                                <button
-                                    onClick={handleSetAnnotator}
-                                    disabled={!annotatorNameInput.trim()}
-                                    className="px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white rounded font-medium disabled:opacity-50"
-                                >
-                                    Continue
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                )
-            }
 
             {/* Annotation Metrics Modal */}
             {

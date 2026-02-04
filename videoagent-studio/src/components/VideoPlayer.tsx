@@ -12,6 +12,23 @@ interface FeedbackNote {
     feedback: string;
 }
 
+interface PendingFeedbackContext {
+    sceneId?: string;
+    sceneNumber: number;
+    relativeTimestamp: number;
+    sceneDescription?: string;
+    globalDuration: number;
+}
+
+interface PendingFeedbackItem {
+    id: string;
+    sceneNumber: number;
+    relativeTime: number;
+    feedback: string;
+    timestamp: number;
+    context: PendingFeedbackContext;
+}
+
 export interface VideoPlayerRef {
     seekTo: (time: number) => void;
     play: () => void;
@@ -27,6 +44,36 @@ interface VideoPlayerProps {
     hideTimeline?: boolean;
     className?: string;
 }
+
+type VideoMetadataWithSignedUrl = VideoMetadata & { url?: string | null };
+type VoiceOverWithAudioUrl = { audio_path?: string | null; audio_url?: string | null };
+
+const DIRECT_MEDIA_SCHEMES = /^(https?:|blob:|data:)/i;
+
+export const isDirectMediaUrl = (value?: string | null): value is string => {
+    if (!value) return false;
+    return DIRECT_MEDIA_SCHEMES.test(value.trim());
+};
+
+export const resolveMediaSource = (value?: string | null): string | null => {
+    if (!value) return null;
+    const normalized = value.trim();
+    if (!normalized) return null;
+    if (normalized.startsWith('gs://')) return null;
+    if (isDirectMediaUrl(normalized)) return normalized;
+    return null;
+};
+
+export const resolveMetadataVideoSource = (meta?: VideoMetadata | null): string | null => {
+    if (!meta) return null;
+    const withSignedUrl = meta as VideoMetadataWithSignedUrl;
+    return resolveMediaSource(withSignedUrl.url ?? meta.path);
+};
+
+export const resolveSceneAudioSource = (scene?: StoryboardScene | null): string | null => {
+    const voiceOver = (scene?.voice_over as VoiceOverWithAudioUrl | null | undefined) ?? null;
+    return resolveMediaSource(voiceOver?.audio_url ?? voiceOver?.audio_path ?? null);
+};
 
 export const VideoPlayer = forwardRef<VideoPlayerRef, VideoPlayerProps>(function VideoPlayer({
     onTimeUpdate,
@@ -68,7 +115,7 @@ export const VideoPlayer = forwardRef<VideoPlayerRef, VideoPlayerProps>(function
             // We can use handleSeek but it expects an event. 
             // Ideally we refactor handleSeek to separate logic. 
             // Or construct a fake event.
-            handleSeek({ target: { value: time.toString() } } as any);
+            handleSeek({ target: { value: time.toString() } } as React.ChangeEvent<HTMLInputElement>);
         },
         play: () => {
             if (!isPlaying) togglePlay();
@@ -91,20 +138,14 @@ export const VideoPlayer = forwardRef<VideoPlayerRef, VideoPlayerProps>(function
     const [showFeedbackDialog, setShowFeedbackDialog] = useState(false);
     const [feedbackText, setFeedbackText] = useState('');
     const [feedbackTimestamp, setFeedbackTimestamp] = useState<number | null>(null);
-    const [pendingFeedback, setPendingFeedback] = useState<{
-        id: string;
-        sceneNumber: number;
-        relativeTime: number;
-        feedback: string;
-        timestamp: number;
-        context: any;
-    }[]>([]);
+    const [pendingFeedback, setPendingFeedback] = useState<PendingFeedbackItem[]>([]);
 
     const sendMessage = useSessionStore(state => state.sendMessage);
 
     // Export State
     const [isExporting, setIsExporting] = useState(false);
     const [exportError, setExportError] = useState<string | null>(null);
+    const [downloadUrl, setDownloadUrl] = useState<string | null>(null);
 
     const submitFeedback = () => {
         const sceneStartTime = segmentStarts[currentSceneIndex];
@@ -164,28 +205,62 @@ export const VideoPlayer = forwardRef<VideoPlayerRef, VideoPlayerProps>(function
         try {
             // Call the render API
             const result = await api.renderVideo(session.id);
+            console.log("Render Result:", result);
 
             if (result.render_result.success && result.render_result.output_path) {
-                // Fetch the rendered video and trigger download
-                const videoUrl = `/api/video?path=${encodeURIComponent(result.render_result.output_path)}`;
-                const response = await fetch(videoUrl);
-                const blob = await response.blob();
+                const rawPath = String(result.render_result.output_path);
+                const videoUrl = resolveMediaSource(rawPath);
+                console.log("Exporting URL:", videoUrl, "Raw:", rawPath);
 
-                // Create download link
-                const url = window.URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = `exported-video-${new Date().toISOString().slice(0, 10)}.mp4`;
-                document.body.appendChild(a);
-                a.click();
-                document.body.removeChild(a);
-                window.URL.revokeObjectURL(url);
+                if (videoUrl) {
+                    setDownloadUrl(videoUrl);
+                } else {
+                    const msg = `Render succeeded but output path is not a valid URL: ${rawPath}`;
+                    alert(msg);
+                    throw new Error(msg);
+                }
+
+                try {
+                    const response = await fetch(videoUrl);
+                    if (!response.ok) {
+                        throw new Error(`Download fetch failed (${response.status})`);
+                    }
+                    const blob = await response.blob();
+
+                    // Create download link
+                    const blobUrl = window.URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = blobUrl;
+                    a.download = `exported-video-${new Date().toISOString().slice(0, 10)}.mp4`;
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                    window.URL.revokeObjectURL(blobUrl);
+                } catch (downloadError) {
+                    console.warn("Direct download failed, trying fallback", downloadError);
+                    // Some cross-origin signed URLs block JS fetch; fallback to direct open.
+                    if (isDirectMediaUrl(videoUrl)) {
+                        const a = document.createElement('a');
+                        a.href = videoUrl;
+                        a.target = '_blank';
+                        a.rel = 'noopener noreferrer';
+                        document.body.appendChild(a);
+                        a.click();
+                        document.body.removeChild(a);
+                    } else {
+                        throw downloadError;
+                    }
+                }
             } else {
-                setExportError(result.render_result.error_message || 'Failed to render video');
+                const msg = result.render_result.error_message || 'Failed to render video';
+                setExportError(msg);
+                alert(msg);
             }
         } catch (e) {
             console.error("Export failed", e);
-            setExportError(e instanceof Error ? e.message : 'Export failed');
+            const msg = e instanceof Error ? e.message : 'Export failed';
+            setExportError(msg);
+            alert(`Export Error: ${msg}`);
         } finally {
             setIsExporting(false);
         }
@@ -222,6 +297,25 @@ export const VideoPlayer = forwardRef<VideoPlayerRef, VideoPlayerProps>(function
         return `${m}:${s.toString().padStart(2, '0')}`;
     };
 
+    const [failedIds, setFailedIds] = useState<Set<string>>(new Set());
+    const sourceRetryRef = useRef<Record<string, number>>({});
+
+    const refreshMetadataForVideo = useCallback(async (videoId: string) => {
+        try {
+            const latest = await api.getVideoMetadata(videoId);
+            setMetadata(prev => ({ ...prev, [videoId]: latest }));
+            setFailedIds(prev => {
+                if (!prev.has(videoId)) return prev;
+                const next = new Set(prev);
+                next.delete(videoId);
+                return next;
+            });
+            setError(null);
+        } catch (err) {
+            console.error(`Failed to refresh metadata for ${videoId}`, err);
+        }
+    }, []);
+
     // Fetch Metadata
     const user = useSessionStore(state => state.user);
 
@@ -232,8 +326,9 @@ export const VideoPlayer = forwardRef<VideoPlayerRef, VideoPlayerProps>(function
 
             const idsToFetch = new Set<string>();
             scenes.forEach(scene => {
-                if (scene.matched_scene?.source_video_id && !metadata[scene.matched_scene.source_video_id]) {
-                    idsToFetch.add(scene.matched_scene.source_video_id);
+                const videoId = scene.matched_scene?.source_video_id;
+                if (videoId && !metadata[videoId] && !failedIds.has(videoId)) {
+                    idsToFetch.add(videoId);
                 }
             });
 
@@ -242,17 +337,26 @@ export const VideoPlayer = forwardRef<VideoPlayerRef, VideoPlayerProps>(function
             setMetadataLoading(true);
             try {
                 const newMetadata = { ...metadata };
+                const newFailedIds = new Set(failedIds);
+                let hasUpdates = false;
+                let hasFailures = false;
+
                 await Promise.all(
                     Array.from(idsToFetch).map(async (id) => {
                         try {
                             const meta = await api.getVideoMetadata(id);
                             newMetadata[id] = meta;
+                            hasUpdates = true;
                         } catch (e) {
                             console.error(`Failed to fetch metadata for ${id}`, e);
+                            newFailedIds.add(id);
+                            hasFailures = true;
                         }
                     })
                 );
-                setMetadata(newMetadata);
+
+                if (hasUpdates) setMetadata(newMetadata);
+                if (hasFailures) setFailedIds(newFailedIds);
             } catch (err) {
                 console.error('Metadata fetch error', err);
             } finally {
@@ -263,7 +367,7 @@ export const VideoPlayer = forwardRef<VideoPlayerRef, VideoPlayerProps>(function
         if (hasMatchedScenes) {
             fetchMetadata();
         }
-    }, [scenes, metadata, hasMatchedScenes, user]);
+    }, [scenes, metadata, hasMatchedScenes, user, failedIds]);
 
     // Playback Logic
     const playSegment = useCallback(async (sceneIndex: number, shouldPlay: boolean = true, reason: string = "unknown") => {
@@ -290,17 +394,27 @@ export const VideoPlayer = forwardRef<VideoPlayerRef, VideoPlayerProps>(function
             setCurrentSceneIndex(sceneIndex);
 
             // Load Video
-            if (meta.path && videoRef.current.getAttribute('src') !== `/api/video?path=${encodeURIComponent(meta.path)}`) {
-                videoRef.current.src = `/api/video?path=${encodeURIComponent(meta.path)}`;
+            const videoSrc = resolveMetadataVideoSource(meta);
+            if (!videoSrc) {
+                setError('Video source is unavailable. Refreshing metadata may be required.');
+                return;
+            }
+            if (videoRef.current.getAttribute('src') !== videoSrc) {
+                videoRef.current.src = videoSrc;
                 videoRef.current.load();
             }
+            sourceRetryRef.current[scene.matched_scene.source_video_id] = 0;
+            setError(null);
 
             // Set Start Time
-            videoRef.current.currentTime = scene.matched_scene.start_time;
+            // Only reset start time if we are not just toggling play on the same scene
+            if (reason !== "toggle-play" || sceneIndex !== currentSceneIndex) {
+                videoRef.current.currentTime = scene.matched_scene.start_time;
+            }
 
             // Handle Voice Over
-            if (scene.use_voice_over && scene.voice_over && scene.voice_over.audio_path && audioRef.current) {
-                const audioSrc = `/api/video?path=${encodeURIComponent(scene.voice_over.audio_path)}`;
+            const audioSrc = resolveSceneAudioSource(scene);
+            if (scene.use_voice_over && audioSrc && audioRef.current) {
                 if (audioRef.current.getAttribute('src') !== audioSrc) {
                     audioRef.current.src = audioSrc;
                     audioRef.current.load();
@@ -308,7 +422,7 @@ export const VideoPlayer = forwardRef<VideoPlayerRef, VideoPlayerProps>(function
 
                 // Calculate Playback Rate
                 const videoDuration = scene.matched_scene.end_time - scene.matched_scene.start_time;
-                const audioDuration = scene.voice_over.duration;
+                const audioDuration = scene.voice_over?.duration ?? 0;
 
                 let rate = 1.0;
                 // Only speed up if audio is longer than video
@@ -325,7 +439,10 @@ export const VideoPlayer = forwardRef<VideoPlayerRef, VideoPlayerProps>(function
 
                 if (shouldPlay) {
                     try {
+                        console.log("Audio attempting play...");
+                        // Important: Ensure we are not blocked by browsers
                         await audioRef.current.play();
+                        console.log("Audio playing");
                     } catch (e) {
                         console.error("Audio play failed", e);
                     }
@@ -343,7 +460,7 @@ export const VideoPlayer = forwardRef<VideoPlayerRef, VideoPlayerProps>(function
             // Mute video if playing voice over
             // Play/Pause Video
             if (videoRef.current) {
-                videoRef.current.muted = !!(scene.use_voice_over && scene.voice_over && scene.voice_over.audio_path);
+                videoRef.current.muted = !!(scene.use_voice_over && audioSrc);
                 try {
                     if (shouldPlay) {
                         await videoRef.current.play();
@@ -363,7 +480,7 @@ export const VideoPlayer = forwardRef<VideoPlayerRef, VideoPlayerProps>(function
             isTransitioningRef.current = false;
         }
 
-    }, [scenes, metadata]);
+    }, [scenes, metadata, currentSceneIndex]);
 
     // React to Scene Source Changes (e.g. LLM updates or initial load)
     useEffect(() => {
@@ -374,7 +491,8 @@ export const VideoPlayer = forwardRef<VideoPlayerRef, VideoPlayerProps>(function
         if (!meta) return;
 
         if (videoRef.current) {
-            const expectedSrc = `/api/video?path=${encodeURIComponent(meta.path)}`;
+            const expectedSrc = resolveMetadataVideoSource(meta);
+            if (!expectedSrc) return;
             const currentSrc = videoRef.current.getAttribute('src');
 
             // If source changed, reload. preserve playing state.
@@ -715,15 +833,46 @@ export const VideoPlayer = forwardRef<VideoPlayerRef, VideoPlayerProps>(function
             <div className="w-full max-w-5xl mx-auto aspect-video relative bg-black flex flex-col overflow-hidden">
 
                 {/* Main Player */}
-                <div className="w-full h-full relative flex items-center justify-center">
+                <div
+                    className="w-full h-full relative flex items-center justify-center cursor-pointer"
+                    onClick={togglePlay}
+                >
                     <video
                         ref={videoRef}
                         className="w-full h-full object-contain"
                         playsInline
+                        onError={(e) => {
+                            console.error("Video Playback Error", e);
+                            const videoId = scenes[currentSceneIndex]?.matched_scene?.source_video_id;
+                            if (videoId) {
+                                const retries = sourceRetryRef.current[videoId] ?? 0;
+                                if (retries < 1) {
+                                    sourceRetryRef.current[videoId] = retries + 1;
+                                    setError("Refreshing secure video URL...");
+                                    void refreshMetadataForVideo(videoId);
+                                    return;
+                                }
+                            }
+                            setError("Failed to load video file. It may be missing or inaccessible.");
+                        }}
                     />
 
+                    {error && (
+                        <div className="absolute inset-0 bg-black/80 flex items-center justify-center text-white z-30">
+                            <div className="text-center p-4">
+                                <svg className="w-12 h-12 mx-auto text-red-500 mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                                </svg>
+                                <p className="font-semibold">{error}</p>
+                            </div>
+                        </div>
+                    )}
+
                     {/* Custom Controls Overlay */}
-                    <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent p-4 flex flex-col gap-2 z-20 group">
+                    <div
+                        className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent p-4 flex flex-col gap-2 z-20 group cursor-auto"
+                        onClick={(e) => e.stopPropagation()}
+                    >
                         {/* Scrubber */}
                         <input
                             type="range"
@@ -774,6 +923,22 @@ export const VideoPlayer = forwardRef<VideoPlayerRef, VideoPlayerProps>(function
                             </div>
 
                             <div className="flex items-center gap-2">
+                                {/* Download Ready Button */}
+                                {downloadUrl && (
+                                    <a
+                                        href={downloadUrl}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="text-teal-400 hover:text-teal-300 flex items-center gap-1 animate-pulse"
+                                        title="Download Ready Video"
+                                        onClick={(e) => e.stopPropagation()}
+                                    >
+                                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                                        </svg>
+                                    </a>
+                                )}
+
                                 {/* Export Button */}
                                 <button
                                     onClick={handleExport}
@@ -788,7 +953,7 @@ export const VideoPlayer = forwardRef<VideoPlayerRef, VideoPlayerProps>(function
                                         </svg>
                                     ) : (
                                         <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
                                         </svg>
                                     )}
                                 </button>
@@ -802,7 +967,10 @@ export const VideoPlayer = forwardRef<VideoPlayerRef, VideoPlayerProps>(function
                     </div>
 
                     {/* Primary Action Button (Floating Bottom Left) */}
-                    <div className="absolute bottom-20 left-4 z-30">
+                    <div
+                        className="absolute bottom-20 left-4 z-30"
+                        onClick={(e) => e.stopPropagation()}
+                    >
                         {primaryAction ? primaryAction : (
                             <button
                                 onClick={handleReportIssue}
@@ -816,7 +984,17 @@ export const VideoPlayer = forwardRef<VideoPlayerRef, VideoPlayerProps>(function
                         )}
                     </div>
                     {/* Hidden Audio for VO */}
-                    <audio ref={audioRef} className="hidden" />
+                    <audio
+                        ref={audioRef}
+                        className="hidden"
+                        onError={(e) => {
+                            console.error("Audio Playback Error", e);
+                            setPlaybackState('video');
+                            if (videoRef.current) {
+                                videoRef.current.muted = false;
+                            }
+                        }}
+                    />
 
                     {/* Overlays */}
                     {metadataLoading && (
@@ -930,6 +1108,14 @@ export const VideoPlayer = forwardRef<VideoPlayerRef, VideoPlayerProps>(function
                     </div>
                 </div>
             )}
+
+            {/* Hidden Audio Player for Voice Overs */}
+            <audio
+                ref={audioRef}
+                className="hidden"
+                preload="auto"
+                playsInline
+            />
         </div>
     );
 }); // End forwardRef

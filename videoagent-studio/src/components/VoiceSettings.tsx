@@ -42,6 +42,25 @@ export function VoiceSettings({ userId, currentVoice, onVoiceChange, direction =
         return () => document.removeEventListener('mousedown', handleClickOutside);
     }, []);
 
+    // Stop audio when dropdown closes
+    useEffect(() => {
+        if (!isOpen) {
+            if (audioRef.current) {
+                audioRef.current.pause();
+            }
+            setPlayingVoice(null);
+        }
+    }, [isOpen]);
+
+    // Cleanup audio on unmount
+    useEffect(() => {
+        return () => {
+            if (audioRef.current) {
+                audioRef.current.pause();
+            }
+        };
+    }, []);
+
     const loadVoices = async () => {
         try {
             const voiceList = await api.getVoices();
@@ -144,8 +163,8 @@ export function VoiceSettings({ userId, currentVoice, onVoiceChange, direction =
             {/* Dropdown */}
             {isOpen && (
                 <div className={`absolute left-0 right-0 bg-white border border-slate-200 rounded-lg shadow-xl max-h-72 overflow-y-auto z-50 ${direction === 'up'
-                        ? 'bottom-full mb-1'
-                        : 'top-full mt-1'
+                    ? 'bottom-full mb-1'
+                    : 'top-full mt-1'
                     }`}>
                     <div className="p-2 border-b border-slate-100 sticky top-0 bg-white">
                         <span className="text-xs font-medium text-slate-500 uppercase tracking-wider">

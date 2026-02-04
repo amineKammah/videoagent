@@ -10,6 +10,7 @@ export function RightSidebar() {
     const [activeTab, setActiveTab] = useState<'voice' | 'pronunciations'>('voice');
     const user = useSessionStore(state => state.user);
     const session = useSessionStore(state => state.session);
+    const isProcessing = useSessionStore(state => state.isProcessing);
 
     return (
         <aside
@@ -128,6 +129,20 @@ export function RightSidebar() {
                                     This voice will be used to generate voice-overs for your project.
                                 </p>
                             </div>
+
+                            <button
+                                onClick={() => {
+                                    useSessionStore.getState().sendMessage("Regenerate all voice overs");
+                                    setIsExpanded(false);
+                                }}
+                                className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-teal-50 text-teal-700 rounded-xl hover:bg-teal-100 transition-colors text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                                disabled={isProcessing}
+                            >
+                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
+                                    <path fillRule="evenodd" d="M15.312 11.424a5.5 5.5 0 01-9.201 2.466l-.312-.311h2.433a.75.75 0 000-1.5H3.989a.75.75 0 00-.75.75v4.242a.75.75 0 001.5 0v-2.43l.31.31a7 7 0 0011.712-3.138.75.75 0 00-1.449-.39zm1.23-3.723a.75.75 0 000 1.5h2.433l-2.433-2.43a.75.75 0 000-1.5v-4.24a.75.75 0 00-1.5 0v2.433l-.311-.311a7 7 0 00-11.712 3.138.75.75 0 001.449.39 5.5 5.5 0 019.201-2.466l.312.311h-2.433z" clipRule="evenodd" />
+                                </svg>
+                                Regenerate Voice Overs
+                            </button>
                         </div>
                     ) : (
                         <PronunciationPanel sessionId={session?.id} />

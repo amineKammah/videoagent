@@ -22,6 +22,7 @@ from videoagent.config import Config
 from videoagent.gemini import GeminiClient
 from videoagent.library import VideoLibrary
 from videoagent.models import RenderResult, VoiceOver
+from videoagent.storage import get_storage_client
 from videoagent.story import _StoryboardScene
 from videoagent.db import crud, connection, models
 from videoagent.voice import VoiceOverGenerator, estimate_speech_duration
@@ -61,12 +62,25 @@ def _voice_over_path_for_id(
     return base_dir / session_id / "voice_overs" / f"vo_{audio_id}.wav"
 
 
+def _company_scope(company_id: Optional[str]) -> str:
+    return company_id or "global"
+
+
+def _voice_over_blob_key(company_id: Optional[str], session_id: str, filename: str) -> str:
+    return f"companies/{_company_scope(company_id)}/generated/voiceovers/{session_id}/{filename}"
+
+
+def _generated_scene_blob_key(company_id: Optional[str], session_id: str, filename: str) -> str:
+    return f"companies/{_company_scope(company_id)}/generated/scenes/{session_id}/{filename}"
+
+
 def _build_storyboard_voice_over_paths(
     scenes: list[_StoryboardScene],
     session_id: str,
     base_dir: Path,
 ) -> dict[str, Path]:
     paths: dict[str, Path] = {}
+    storage_client = None
     for scene in scenes:
         voice_over = scene.voice_over
         if not voice_over or not voice_over.audio_id:
@@ -74,7 +88,24 @@ def _build_storyboard_voice_over_paths(
         candidate = _voice_over_path_for_id(session_id, base_dir, voice_over.audio_id)
         if candidate.exists():
             paths[scene.scene_id] = candidate
+            continue
+        if voice_over.audio_path and voice_over.audio_path.startswith("gs://"):
+            if storage_client is None:
+                try:
+                    storage_client = get_storage_client()
+                except Exception:
+                    storage_client = None
+            if storage_client:
+                try:
+                    storage_client.download_to_filename(voice_over.audio_path, candidate)
+                    paths[scene.scene_id] = candidate
+                except Exception:
+                    continue
     return paths
+
+SCENE_MATCH_SYSTEM_INSTRUCTION = (
+    "You are an expert video editor helping find the best clip for a scene."
+)
 
 
 def _render_storyboard_scenes(
@@ -108,6 +139,9 @@ def _render_storyboard_scenes(
         )
     library = VideoLibrary(config, company_id=company_id)
     library.scan_library()
+    storage_client = get_storage_client(config)
+    render_sources_dir = config.output_dir / "render_sources" / session_id
+    render_sources_dir.mkdir(parents=True, exist_ok=True)
     video_paths: dict[str, Path] = {}
     for scene in scenes:
         matched_scene = scene.matched_scene
@@ -127,11 +161,23 @@ def _render_storyboard_scenes(
                 if generated_path.exists():
                     video_paths[video_id] = generated_path
                     continue
-                else:
-                    return RenderResult(
-                        success=False,
-                        error_message=f"Generated video not found: {video_id}",
-                    )
+                if company_id:
+                    gcs_key = _generated_scene_blob_key(company_id, gen_session_id, filename)
+                    if storage_client.exists(gcs_key):
+                        cached_generated = render_sources_dir / f"{gen_session_id}_{filename}"
+                        try:
+                            storage_client.download_to_filename(gcs_key, cached_generated)
+                            video_paths[video_id] = cached_generated
+                            continue
+                        except Exception as exc:
+                            return RenderResult(
+                                success=False,
+                                error_message=f"Failed to download generated video {video_id} from GCS: {exc}",
+                            )
+                return RenderResult(
+                    success=False,
+                    error_message=f"Generated video not found: {video_id}",
+                )
             else:
                 return RenderResult(
                     success=False,
@@ -147,7 +193,19 @@ def _render_storyboard_scenes(
                     "Video id(s) not found: " + video_id
                 ),
             )
-        video_paths[video_id] = metadata.path
+        source_ref = metadata.path
+        if isinstance(source_ref, str) and source_ref.startswith("gs://"):
+            local_source = render_sources_dir / f"{video_id}_{metadata.filename}"
+            try:
+                storage_client.download_to_filename(source_ref, local_source)
+            except Exception as exc:
+                return RenderResult(
+                    success=False,
+                    error_message=f"Failed to download source video {video_id} from GCS: {exc}",
+                )
+            video_paths[video_id] = local_source
+        else:
+            video_paths[video_id] = Path(str(source_ref))
     editor = VideoEditor(config)
     try:
         voice_over_paths = _build_storyboard_voice_over_paths(
@@ -206,6 +264,34 @@ def _resolve_render_target(
     if latest:
         return latest
     return config.output_dir / f"{session_id}_final.mp4"
+
+
+def _format_transcript_for_prompt(metadata, max_segments: int = 30, max_chars: int = 3000) -> str:
+    segments = getattr(metadata, "transcript_segments", None) or []
+    if not segments:
+        return "(none)"
+
+    lines: list[str] = []
+    total_chars = 0
+    for segment in segments[:max_segments]:
+        text = str(getattr(segment, "text", "")).strip()
+        if not text:
+            continue
+        start_time = float(getattr(segment, "start_time", 0.0) or 0.0)
+        minutes = int(start_time // 60)
+        seconds = start_time - (minutes * 60)
+        line = f"[{minutes:02d}:{seconds:06.3f}] {text}"
+        projected = total_chars + len(line) + 1
+        if projected > max_chars:
+            break
+        lines.append(line)
+        total_chars = projected
+
+    if not lines:
+        return "(none)"
+    if len(segments) > len(lines):
+        lines.append("... (truncated)")
+    return "\n".join(lines)
 
 
 def _validate_and_build_jobs(
@@ -302,10 +388,10 @@ def _validate_and_build_jobs(
                 "'bad lip reading' or broken dubbing.\n\n"
                 "### YOUR TASK:\n"
                 "- Take you time to understand the attached video.\n"
-                "- Understand the scene context and its transcript. Identify a clip that matches the scene context and its transcript.\n"
+                "- Understand the scene context and its script. Identify a clip that matches the scene context and its scipt.\n"
                 "- Try to identify scenes that closely match the visuals described in note included from the main agent."
-                "- If the clip partly matches the transcript, you must communicate this in the description to the main agent. \n"
-                "For example, the transcript talks about reducing the processing time and great customer support but the clip only "
+                "- If the clip partly matches the script, you must communicate this in the description to the main agent. \n"
+                "For example, the script talks about reducing the processing time and great customer support but the clip only "
                 "reprensent reduced processing time, in your description, you must communicate that the clip only represents reduced processing time but does not represent great customer support.\n"
             )
         else:
@@ -314,8 +400,7 @@ def _validate_and_build_jobs(
                 "### VISUAL REQUIREMENT: TALKING HEADS REQUIRED\n"
                 "We are keeping the original audio from the video file.\n"
                 "1. You MUST select clips where the person is speaking to the camera.\n"
-                "2. The lip movements MUST match the transcript provided below.\n"
-                "3. Do not select B-roll or wide shots where the speaker is not visible.\n\n"
+                "2. Do not select B-roll or wide shots where the speaker is not visible.\n\n"
                 "AUDIO REQUIREMENT:\n"
                 "You are acting as a high-precision Video Editor.\n"
                 "No Lead-ins: The start_timestamp MUST begin exactly on the first meaningful word. "
@@ -333,8 +418,6 @@ def _validate_and_build_jobs(
                 f"- Source: {duration_source}\n"
                 "- Duration tolerance: +/- 1s\n"
             )
-
-        transcript_text = "(none)"
 
         warnings_by_scene_id.setdefault(request.scene_id, [])
         if (
@@ -358,7 +441,7 @@ def _validate_and_build_jobs(
                     "audio_mode_header": audio_mode_header,
                     "visual_constraints": visual_constraints,
                     "duration_section": duration_section,
-                    "transcript_text": transcript_text,
+                    "transcript_text": _format_transcript_for_prompt(metadata),
                 })
 
     return jobs, errors, warnings_by_scene_id
@@ -380,6 +463,7 @@ def _upload_job_videos(
 
     for video_id in unique_video_ids:
         metadata = video_id_to_metadata[video_id]
+        print(metadata)
         try:
             # Note: client.get_or_upload_file handles caching logic internally if implemented,
             # or we rely on it being idempotent enough.
@@ -396,6 +480,10 @@ def _build_prompt(job: dict) -> str:
         f"Scene title: {scene.title}\n"
         f"Scene purpose: {scene.purpose}\n"
     )
+    if scene.script:
+        scene_text += f"Scene script: {scene.script}\n"
+        scene_text += "This script will be spoken using a voice over. Find the video clip that best matches the script."
+
     notes_text = f"\nNOTES:\n{job['notes']}\n" if job["notes"] else ""
     metadata = job["metadata"]
     return f"""You are an expert video asset manager. This request evaluates a candidate video for a specific scene in a personalized video. The agent cannot see the video, so your descriptions must be vivid.
@@ -404,9 +492,7 @@ SCENE CONTEXT:
 {scene_text}
 
 SCENE DETAILS:
-- Scene id: {job['scene_id']}
 - {job['audio_mode_header']}
-- Existing transcript (if any): {job['transcript_text']}
 {notes_text}{job['duration_section']}
 
 {job['visual_constraints']}
@@ -465,20 +551,7 @@ async def _analyze_single_job(
             }
 
         prompt = _build_prompt(job)
-        parts = []
-        file_uri = getattr(uploaded_file, "uri", None)
-        if file_uri:
-            parts.append(
-                types.Part(
-                    file_data=types.FileData(file_uri=file_uri),
-                    video_metadata=types.VideoMetadata(fps=2),
-                )
-            )
-            parts.append(types.Part(text=prompt))
-            contents = types.Content(parts=parts)
-        else:
-            contents = [uploaded_file, prompt]
-
+        contents = types.Content(role="user", parts=[uploaded_file, types.Part(text=prompt)])
         llm_start = time.perf_counter()
         try:
             response = await client.client.aio.models.generate_content(
@@ -817,6 +890,7 @@ def _build_tools(
             session_id,
             storyboard_store.base_dir,
             output_filename or "output.mp4",
+            company_id=company_id,
         )
         if result.success:
             event_store.append(
@@ -874,6 +948,7 @@ def _build_tools(
              print("[generate_voice_overs] No user_id provided in context, using default voice.")
 
         generator = VoiceOverGenerator(config)
+        storage_client = get_storage_client(config)
         try:
             # Use the store's path resolution to get the correct session directory (including user_id)
             session_dir = storyboard_store._storyboard_path(session_id, user_id=user_id).parent
@@ -898,6 +973,15 @@ def _build_tools(
                 )
                 if voice_over.audio_id != audio_id:
                     voice_over.audio_id = audio_id
+                gcs_key = _voice_over_blob_key(company_id, session_id, output_path.name)
+                await asyncio.to_thread(
+                    storage_client.upload_from_filename,
+                    gcs_key,
+                    output_path,
+                    "audio/wav",
+                )
+                voice_over.audio_path = storage_client.to_gs_uri(gcs_key)
+                voice_over.audio_url = None
                 return voice_over
 
             results = await asyncio.gather(*[_run(scene_id) for scene_id in segment_ids])
@@ -1004,125 +1088,126 @@ def _build_tools(
         """Estimate speech duration for a script."""
         return estimate_speech_duration(text, words_per_minute)
 
-    @function_tool(failure_error_function=tool_error("review_final_render"), strict_mode=False)
-    @log_tool("review_final_render")
-    async def review_final_render(output_path: Optional[str] = None) -> str:
-        """Render (if needed) and review the final video, returning QA notes."""
-        step_start = time.perf_counter()
-        print("[review] start review_final_render")
-        t0 = time.perf_counter()
-        scenes = storyboard_store.load(session_id) or []
-        print(f"[review] load storyboard in {time.perf_counter() - t0:.2f}s")
-        if not scenes:
-            print(f"[review] finish review_final_render in {time.perf_counter() - step_start:.2f}s")
-            return "No storyboard scenes found. Create a storyboard before rendering."
-        scenes_payload = [
-            scene.model_dump(
-                mode="json",
-                exclude_none=True,
-            )
-            for scene in scenes
-        ]
-        scenes_context = json.dumps(scenes_payload, indent=2)
+#     @function_tool(failure_error_function=tool_error("review_final_render"), strict_mode=False)
+#     @log_tool("review_final_render")
+#     async def review_final_render(output_path: Optional[str] = None) -> str:
+#         """Render (if needed) and review the final video, returning QA notes."""
+#         step_start = time.perf_counter()
+#         print("[review] start review_final_render")
+#         t0 = time.perf_counter()
+#         scenes = storyboard_store.load(session_id) or []
+#         print(f"[review] load storyboard in {time.perf_counter() - t0:.2f}s")
+#         if not scenes:
+#             print(f"[review] finish review_final_render in {time.perf_counter() - step_start:.2f}s")
+#             return "No storyboard scenes found. Create a storyboard before rendering."
+#         scenes_payload = [
+#             scene.model_dump(
+#                 mode="json",
+#                 exclude_none=True,
+#             )
+#             for scene in scenes
+#         ]
+#         scenes_context = json.dumps(scenes_payload, indent=2)
 
-        t0 = time.perf_counter()
-        storyboard_path = storyboard_store._storyboard_path(session_id, user_id=user_id)
-        storyboard_mtime = None
-        try:
-            if storyboard_path.exists():
-                storyboard_mtime = storyboard_path.stat().st_mtime
-        except OSError:
-            storyboard_mtime = None
-        print(f"[review] check storyboard mtime in {time.perf_counter() - t0:.2f}s")
+#         t0 = time.perf_counter()
+#         storyboard_path = storyboard_store._storyboard_path(session_id, user_id=user_id)
+#         storyboard_mtime = None
+#         try:
+#             if storyboard_path.exists():
+#                 storyboard_mtime = storyboard_path.stat().st_mtime
+#         except OSError:
+#             storyboard_mtime = None
+#         print(f"[review] check storyboard mtime in {time.perf_counter() - t0:.2f}s")
 
-        t0 = time.perf_counter()
-        render_path = _resolve_render_target(config, session_id, output_path)
-        needs_render = True
-        if render_path and render_path.exists() and storyboard_mtime is not None:
-            try:
-                needs_render = storyboard_mtime > render_path.stat().st_mtime
-            except OSError:
-                needs_render = True
-        elif render_path and render_path.exists():
-            needs_render = False
-        print(f"[review] resolve render target in {time.perf_counter() - t0:.2f}s")
+#         t0 = time.perf_counter()
+#         render_path = _resolve_render_target(config, session_id, output_path)
+#         needs_render = True
+#         if render_path and render_path.exists() and storyboard_mtime is not None:
+#             try:
+#                 needs_render = storyboard_mtime > render_path.stat().st_mtime
+#             except OSError:
+#                 needs_render = True
+#         elif render_path and render_path.exists():
+#             needs_render = False
+#         print(f"[review] resolve render target in {time.perf_counter() - t0:.2f}s")
 
-        if needs_render:
-            t0 = time.perf_counter()
-            result = _render_storyboard_scenes(
-                scenes,
-                config,
-                session_id,
-                storyboard_store.base_dir,
-                render_path.name,
-            )
-            print(f"[review] render storyboard in {time.perf_counter() - t0:.2f}s")
-            if not result.success:
-                print(f"[review] finish review_final_render in {time.perf_counter() - step_start:.2f}s")
-                return f"Render failed: {result.error_message or 'unknown error'}"
-            render_path = result.output_path or render_path
+#         if needs_render:
+#             t0 = time.perf_counter()
+#             result = _render_storyboard_scenes(
+#                 scenes,
+#                 config,
+#                 session_id,
+#                 storyboard_store.base_dir,
+#                 render_path.name,
+#                 company_id=company_id,
+#             )
+#             print(f"[review] render storyboard in {time.perf_counter() - t0:.2f}s")
+#             if not result.success:
+#                 print(f"[review] finish review_final_render in {time.perf_counter() - step_start:.2f}s")
+#                 return f"Render failed: {result.error_message or 'unknown error'}"
+#             render_path = result.output_path or render_path
 
-        t0 = time.perf_counter()
-        client = GeminiClient(config)
-        uploaded = client.get_or_upload_file(render_path)
-        print(f"[review] upload render in {time.perf_counter() - t0:.2f}s")
-        review_prompt = f"""
-You are an expert Video Editor and Quality Assurance specialist.
-Your task is to watch the attached video and identify technical, visual, and narrative issues.
-Use the storyboard JSON to understand the intended sequence, narration, and clip sources.
+#         t0 = time.perf_counter()
+#         client = GeminiClient(config)
+#         uploaded = client.get_or_upload_file(render_path)
+#         print(f"[review] upload render in {time.perf_counter() - t0:.2f}s")
+#         review_prompt = f"""
+# You are an expert Video Editor and Quality Assurance specialist.
+# Your task is to watch the attached video and identify technical, visual, and narrative issues.
+# Use the storyboard JSON to understand the intended sequence, narration, and clip sources.
 
-STORYBOARD SCENES (read-only JSON):
-{scenes_context}
+# STORYBOARD SCENES (read-only JSON):
+# {scenes_context}
 
-You are looking for ANY flaws that lower the quality of the video, including but not limited to:
-- Video is static for a long time, which reduces the video attractiveness.
-- Audio/Visual Mismatch: A narrator is speaking (Voice Over), but the visual shows a person talking to camera with unsynchronized lips (Bad Lip Reading).
-- Repetitive Footage: The same source video clip is used more than once in the same video.
-- Unwanted Text: Burnt-in subtitles, watermarks, or text overlays from the source footage that clash with the video.
-- Visual Flow: Jump cuts, black frames between clips, or abrupt transitions.
-- Narrative Match: The visual B-roll contradicts or doesn't fit what is being said in the Voice Over.
-- Language match: One of the scenes are not in the same language.
+# You are looking for ANY flaws that lower the quality of the video, including but not limited to:
+# - Video is static for a long time, which reduces the video attractiveness.
+# - Audio/Visual Mismatch: A narrator is speaking (Voice Over), but the visual shows a person talking to camera with unsynchronized lips (Bad Lip Reading).
+# - Repetitive Footage: The same source video clip is used more than once in the same video.
+# - Unwanted Text: Burnt-in subtitles, watermarks, or text overlays from the source footage that clash with the video.
+# - Visual Flow: Jump cuts, black frames between clips, or abrupt transitions.
+# - Narrative Match: The visual B-roll contradicts or doesn't fit what is being said in the Voice Over.
+# - Language match: One of the scenes are not in the same language.
 
-Take your time to match the scenes to the video frames and the voice, and make sure everything is aligned perfectly.
+# Take your time to match the scenes to the video frames and the voice, and make sure everything is aligned perfectly.
 
-OUTPUT FORMAT
-Return a bulleted list of issues in natural language.
-Start every line with the timestamp where the issue occurs.
-If the video is perfect, just say "No issues found."
+# OUTPUT FORMAT
+# Return a bulleted list of issues in natural language.
+# Start every line with the timestamp where the issue occurs.
+# If the video is perfect, just say "No issues found."
 
-Example:
-- [00:12] The narrator is talking about "silence" but the video shows a loud construction site, which feels conflicting.
-- [00:34] There are burnt-in Chinese subtitles at the bottom of the screen that shouldn't be there.
-- [00:45] The clip of the man typing on the laptop is a duplicate; it was already used previously at 00:05.
-- [01:05] The clip cuts to black for a split second before the next scene starts.
-"""
-        from google.genai import types
+# Example:
+# - [00:12] The narrator is talking about "silence" but the video shows a loud construction site, which feels conflicting.
+# - [00:34] There are burnt-in Chinese subtitles at the bottom of the screen that shouldn't be there.
+# - [00:45] The clip of the man typing on the laptop is a duplicate; it was already used previously at 00:05.
+# - [01:05] The clip cuts to black for a split second before the next scene starts.
+# """
+#         from google.genai import types
 
-        file_uri = getattr(uploaded, "uri", None)
-        if file_uri:
-            contents = types.Content(
-                parts=[
-                    types.Part(
-                        file_data=types.FileData(file_uri=file_uri),
-                        video_metadata=types.VideoMetadata(fps=10),
-                    ),
-                    types.Part(text=review_prompt),
-                ]
-            )
-        else:
-            contents = [uploaded, review_prompt]
-        response = await client.client.aio.models.generate_content(
-            model=config.gemini_model,
-            contents=contents,
-            config={
-                "max_output_tokens": 3_000,
-            },
-        )
-        review_text = response.text.strip() if response.text else ""
-        if not review_text:
-            review_text = "No issues found."
-        print(f"[review] finish review_final_render in {time.perf_counter() - step_start:.2f}s")
-        return review_text
+#         file_uri = getattr(uploaded, "uri", None)
+#         if file_uri:
+#             contents = types.Content(
+#                 parts=[
+#                     types.Part(
+#                         file_data=types.FileData(file_uri=file_uri),
+#                         video_metadata=types.VideoMetadata(fps=10),
+#                     ),
+#                     types.Part(text=review_prompt),
+#                 ]
+#             )
+#         else:
+#             contents = [uploaded, review_prompt]
+#         response = await client.client.aio.models.generate_content(
+#             model=config.gemini_model,
+#             contents=contents,
+#             config={
+#                 "max_output_tokens": 3_000,
+#             },
+#         )
+#         review_text = response.text.strip() if response.text else ""
+#         if not review_text:
+#             review_text = "No issues found."
+#         print(f"[review] finish review_final_render in {time.perf_counter() - step_start:.2f}s")
+#         return review_text
 
     @function_tool(failure_error_function=tool_error("generate_scene"), strict_mode=False)
     @log_tool("generate_scene")
@@ -1144,7 +1229,6 @@ Example:
             Success message. The scene is automatically updated with the generated video.
         """
         from google import genai
-        from videoagent.library import extract_video_metadata
         
         # Use store path resolution for correct directory
         session_dir = storyboard_store._storyboard_path(session_id, user_id=user_id).parent
@@ -1235,18 +1319,25 @@ Example:
         # Use a special video_id format for generated videos: "generated:<session_id>:<filename>"
         # This allows the API to find and serve these videos separately from the main library
         video_id = f"generated:{session_id}:{output_filename}"
+        storage_client = get_storage_client(config)
         
         try:
             # Initialize the Genai client
-            client = genai.Client()
+            client = genai.Client(vertexai=True)
             
+            # Use the GCS URI directly for output
+            gcs_key = _generated_scene_blob_key(company_id, session_id, output_filename)
+            gcs_uri = storage_client.to_gs_uri(gcs_key)
+
             print(f"[generate_scene] Starting video generation ({duration_seconds}s) for prompt: {prompt[:100]}...")
+            print(f"[generate_scene] Outputting directly to: {gcs_uri}")
             step_start = time.perf_counter()
             
             # Build generation config
-            gen_config = {"duration_seconds": duration_seconds}
+            from google.genai.types import GenerateVideosConfig
+            gen_config = GenerateVideosConfig(duration_seconds=duration_seconds, output_gcs_uri=gcs_uri)
             if negative_prompt:
-                gen_config["negative_prompt"] = negative_prompt
+                gen_config.negative_prompt = negative_prompt
             
             # Start video generation with specified duration and negative prompt
             operation = client.models.generate_videos(
@@ -1266,7 +1357,7 @@ Example:
             generation_time = time.perf_counter() - step_start
             print(f"[generate_scene] Video generation completed in {generation_time:.2f}s")
             
-            # Download and save the generated video
+            # Verify success (the video should be in GCS now)
             if not operation.response or not operation.response.generated_videos:
                 event_store.append(
                     session_id,
@@ -1278,17 +1369,39 @@ Example:
                     "error": "Video generation failed: No video was generated by the model.",
                 })
             
-            generated_video = operation.response.generated_videos[0]
-            client.files.download(file=generated_video.video)
-            generated_video.video.save(str(output_path))
+            # Post-process: Vertex AI output_gcs_uri often creates a directory containing samples
+            # We need to flatten this so the file exists at gcs_key
+            if not storage_client.exists(gcs_key):
+                print(f"[generate_scene] Target file {gcs_key} not found. Checking for nested samples...")
+                candidates = list(storage_client.list_files(gcs_key + "/", recursive=True))
+                sample_path = next((p for p in candidates if p.endswith(".mp4")), None)
+                
+                if sample_path:
+                    print(f"[generate_scene] Found nested sample: {sample_path}. Moving to target...")
+                    # Use internal bucket for rewrite
+                    source_blob = storage_client.bucket.blob(sample_path)
+                    dest_blob = storage_client.bucket.blob(gcs_key)
+                    dest_blob.rewrite(source_blob)
+                    print(f"[generate_scene] Move complete.")
+                else:
+                    print(f"[generate_scene] Warning: No generated video file found at {gcs_key} or nested.")
             
-            print(f"[generate_scene] Generated video saved to {output_path}")
+            # We skip downloading/uploading. Metadata is constructed manually since we trust the request params
+            # and Veo defaults (1080p, 24fps).
+            duration = float(duration_seconds)
+            resolution = (1920, 1080)
+            fps = 24.0
             
-            # Extract video metadata
-            video_metadata = extract_video_metadata(output_path)
-            duration = video_metadata.get("duration", 0.0)
-            resolution = video_metadata.get("resolution", (1920, 1080))
-            fps = video_metadata.get("fps", 24.0)
+            storage_client.write_json(
+                f"{gcs_key}.metadata.json",
+                {
+                    "video_id": video_id,
+                    "duration": duration,
+                    "resolution": list(resolution),
+                    "fps": fps,
+                    "scene_id": scene_id,
+                },
+            )
             
             event_store.append(
                 session_id,
@@ -1297,7 +1410,8 @@ Example:
                     "status": "ok",
                     "video_id": video_id,
                     "scene_id": scene_id,
-                    "output": str(output_path),
+                    "output": gcs_uri,
+                    "gcs_path": gcs_uri,
                     "generation_time_seconds": generation_time,
                 },
                 user_id=user_id,

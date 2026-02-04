@@ -26,7 +26,6 @@ from videoagent.models import (
     VideoSegment,
     VoiceOver,
 )
-from videoagent.story import PersonalizedStoryGenerator, generate_personalized_video
 from videoagent.voice import VoiceOverGenerator, estimate_speech_duration, generate_voice_over
 
 __version__ = "0.1.0"
@@ -67,10 +66,6 @@ __all__ = [
     "VoiceOverGenerator",
     "generate_voice_over",
     "estimate_speech_duration",
-
-    # Story
-    "PersonalizedStoryGenerator",
-    "generate_personalized_video",
 
 
 ]

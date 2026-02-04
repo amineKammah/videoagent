@@ -26,12 +26,16 @@ class Config:
 
     # Gemini LLM settings
     gemini_api_key: Optional[str] = None
-    gemini_model: str = "models/gemini-3-flash-preview"
+    gemini_model: str = "gemini-3-flash-preview"
     gemini_tts_model: str = "gemini-2.5-flash-tts"
     agent_model: str = "gemini/gemini-3-flash-preview"
 
     # TTS settings
     tts_voice: str = "Kore"  # Kore, Charon, Fenrir, Aoede, Puck, etc.
+
+    # GCP settings for Transcoder API
+    gcp_project_id: Optional[str] = None
+    gcp_location: str = "europe-west2"
 
     # Intro analysis settings
     intro_duration_seconds: float = 5.0

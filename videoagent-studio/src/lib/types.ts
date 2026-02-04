@@ -22,7 +22,7 @@ export interface AgentEvent {
     error?: string;
     message?: string;
     output?: string;
-    input?: any;
+    input?: unknown;
 }
 
 export interface Message {
@@ -42,7 +42,7 @@ export interface Company {
     name: string;
     video_library_path?: string;
     is_test: boolean;
-    settings: Record<string, any>;
+    settings: Record<string, unknown>;
     created_at: string;
     updated_at: string;
 }
@@ -54,7 +54,7 @@ export interface User {
     name: string;
     role: 'admin' | 'editor' | 'viewer';
     is_test: boolean;
-    settings: Record<string, any>;
+    settings: Record<string, unknown>;
     created_at: string;
     updated_at: string;
 }
@@ -95,13 +95,15 @@ export interface MatchedScene {
 
 export interface VoiceOver {
     script: string;
-    audio_path: string;
-    duration: number;
+    audio_path?: string;
+    audio_url?: string;
+    duration?: number;
 }
 
 export interface VideoMetadata {
     id: string;
     path: string;
+    url?: string;
     filename: string;
     duration: number;
     resolution: [number, number];
@@ -168,7 +170,7 @@ export interface Customer {
     industry: string;
     company_size: string;
     created_at: string;
-    [key: string]: any;
+    [key: string]: unknown;
 }
 
 // ============================================================================
@@ -283,4 +285,3 @@ export interface CreatePronunciationRequest {
     session_id?: string;
     always_included?: boolean;
 }
-

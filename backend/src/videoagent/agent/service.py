@@ -25,6 +25,7 @@ from videoagent.config import Config, default_config
 from videoagent.db import crud, connection, models
 from videoagent.library import VideoLibrary
 from videoagent.models import RenderResult, VideoBrief
+from videoagent.storage import get_storage_client
 from videoagent.story import PersonalizedStoryGenerator, _StoryboardScene
 
 from .storage import (
@@ -115,8 +116,14 @@ class VideoAgentService:
             f"{context_block}"
         )
 
-    def _build_context_payload(self, session_id: str, video_transcripts: list[dict]) -> dict:
-        user_id, _ = self._resolve_session_owner(session_id)
+    def _build_context_payload(
+        self,
+        session_id: str,
+        video_transcripts: Optional[list[dict]] = None,
+    ) -> dict:
+        user_id, company_id = self._resolve_session_owner(session_id)
+        if not video_transcripts:
+            video_transcripts = self._build_video_transcripts(company_id)
         storyboard_scenes = self.storyboard_store.load(session_id, user_id=user_id)
         video_brief = self.brief_store.load(session_id, user_id=user_id)
         return {
@@ -138,10 +145,8 @@ class VideoAgentService:
 
             def _dynamic_instructions(run_context, agent) -> str:
                 nonlocal video_transcripts
-                if video_transcripts is None:
-                    # Capture session_company_id from outer scope
-                    video_transcripts = self._build_video_transcripts(session_company_id)
                 payload = self._build_context_payload(session_id, video_transcripts)
+                video_transcripts = payload.get("video_transcripts") or []
                 return self._build_instructions(payload)
 
             agent = self._agents.get(session_id)
@@ -281,19 +286,6 @@ class VideoAgentService:
             )
         return transcripts
 
-    def preupload_library_content(self, company_id: str | None = None) -> None:
-        """Upload all videos used by the main agent's transcript context.
-        
-        Use this responsibly; unnecessary caching is expensive and slow.
-        """
-        gemini = GeminiClient(self.config)
-        video_library = VideoLibrary(self.config, company_id=company_id)
-        video_library.scan_library()
-        
-        for video in video_library.list_videos():
-            print(f"Pre-caching {video.filename}...")
-            gemini.get_or_upload_file(video.path)
-
     def run_turn(self, session_id: str, user_message: str) -> dict:
         agent = self._get_agent(session_id)
 
@@ -410,7 +402,7 @@ class VideoAgentService:
         return self.render_storyboard(session_id, output_filename)
 
     def render_storyboard(self, session_id: str, output_filename: str = "output.mp4") -> RenderResult:
-        user_id, _ = self._resolve_session_owner(session_id)
+        user_id, company_id = self._resolve_session_owner(session_id)
         scenes = self.storyboard_store.load(session_id, user_id=user_id) or []
         result = _render_storyboard_scenes(
             scenes,
@@ -418,9 +410,23 @@ class VideoAgentService:
             session_id,
             self.storyboard_store.base_dir,
             output_filename,
+            company_id=company_id,
         )
         if not result.success:
             raise ValueError(result.error_message or "Storyboard render failed.")
+
+        if result.output_path:
+            local_output_path = Path(result.output_path)
+            storage = get_storage_client(self.config)
+            company_scope = company_id or "global"
+            render_key = (
+                f"companies/{company_scope}/generated/renders/"
+                f"{session_id}/{local_output_path.name}"
+            )
+            storage.upload_from_filename(render_key, local_output_path, content_type="video/mp4")
+            result.output_path = storage.get_url(render_key)
+
+        print(f"[render_storyboard] Final output path: {result.output_path}")
         return result
 
 

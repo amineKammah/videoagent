@@ -10,7 +10,7 @@ import sqlite3
 import tempfile
 import time
 from pathlib import Path
-from typing import Optional, TypeVar
+from typing import Optional, TypeVar, Union
 
 from pydantic import BaseModel
 
@@ -28,6 +28,7 @@ class GeminiClient:
 
     def __init__(self, config: Optional[Config] = None):
         self.config = config or default_config
+        self.use_vertexai = False
         self._content_client = None
         self._tts_client = None
         self._cache_db_path = self._default_cache_db_path()
@@ -51,6 +52,7 @@ class GeminiClient:
         try:
             from google import genai
             self._load_dotenv()
+            self.use_vertexai = vertexai
             if vertexai:
                 api_key = os.getenv("VERTEX_API_KEY")
             else:
@@ -173,7 +175,7 @@ class GeminiClient:
 
     def _get_content_client(self):
         if self._content_client is None:
-            self._content_client = self._create_client()
+            self._content_client = self._create_client(vertexai=True)
         return self._content_client
 
     def _get_tts_client(self):
@@ -263,18 +265,16 @@ class GeminiClient:
         """Public wrapper for file uploads."""
         return self._upload_file(file_path)
 
-    def get_or_upload_file(self, file_path: Path) -> object:
+    def get_or_upload_file(self, file_path: str) -> object:
         """Return cached Gemini file if possible, otherwise upload and cache it."""
-        file_hash = self._compute_file_hash(file_path)
-        cached = self._load_cached_file(file_path, file_hash)
-        if cached is not None:
-            self._touch_cached_file(file_path, file_hash)
-            return cached
-        uploaded = self._upload_file(file_path)
-        file_name = getattr(uploaded, "name", None) or getattr(uploaded, "id", None)
-        if file_name:
-            self._store_cached_file(file_path, file_name, file_hash)
-        return uploaded
+        normalized = file_path.strip()
+        if not normalized:
+            raise ValueError("File path is empty.")
+        elif not normalized.startswith("gs://"):
+            raise ValueError("File path must start with gs://")
+        from google.genai import types
+
+        return types.Part(file_data=types.FileData(file_uri=normalized, mime_type=f"video/{normalized.split('.')[-1]}"))
 
     def generate_content(
         self,

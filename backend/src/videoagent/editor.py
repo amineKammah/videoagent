@@ -699,7 +699,7 @@ class VideoEditor:
 
             return RenderResult(
                 success=True,
-                output_path=final_video,
+                output_path=str(final_video),
                 duration=float(info["format"]["duration"]),
                 file_size=int(info["format"]["size"]),
                 timing_adjustments=timing_adjustments
@@ -832,7 +832,7 @@ class VideoEditor:
 
             return RenderResult(
                 success=True,
-                output_path=final_video,
+                output_path=str(final_video),
                 duration=float(info["format"]["duration"]),
                 file_size=int(info["format"]["size"]),
             )

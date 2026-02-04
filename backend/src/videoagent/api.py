@@ -16,6 +16,7 @@ from videoagent.config import Config
 from videoagent.models import RenderResult, VideoBrief
 from videoagent.story import _StoryboardScene
 from videoagent.library import VideoLibrary
+from videoagent.storage import get_storage_client
 from videoagent.db.crud import (
     create_company,
     get_company,
@@ -119,6 +120,7 @@ class AgentDebugResponse(BaseModel):
 class VideoMetadataResponse(BaseModel):
     id: str
     path: str
+    url: Optional[str] = None
     filename: str
     duration: float
     resolution: tuple[int, int]
@@ -163,6 +165,8 @@ async def lifespan(app: FastAPI):
     # Startup: Initialize fetching/database
     init_db()
     init_annotations_table()
+    # Validate storage config early (global GCS mode).
+    get_storage_client(agent_config)
     # Create new multi-tenancy tables if they don't exist
     Base.metadata.create_all(bind=engine)
     yield
@@ -190,6 +194,38 @@ agent_service = VideoAgentService(
     config=agent_config,
     base_dir=DEFAULT_OUTPUT_DIR / "agent_sessions",
 )
+
+
+def _generated_scene_blob_key(company_id: Optional[str], session_id: str, filename: str) -> str:
+    company_scope = company_id or "global"
+    return f"companies/{company_scope}/generated/scenes/{session_id}/{filename}"
+
+
+def _sign_if_gcs(path: Optional[str]) -> Optional[str]:
+    if not path:
+        return None
+    if path.startswith("http://") or path.startswith("https://"):
+        return path
+    if not path.startswith("gs://"):
+        return None
+    try:
+        storage = get_storage_client(agent_config)
+        return storage.get_url(path)
+    except Exception as exc:
+        print(f"Failed to sign URL for {path}: {exc}")
+        return None
+
+
+def _hydrate_scene_media_urls(scenes: Optional[list[_StoryboardScene]]) -> Optional[list[_StoryboardScene]]:
+    if scenes is None:
+        return None
+    hydrated: list[_StoryboardScene] = []
+    for scene in scenes:
+        scene_copy = scene.model_copy(deep=True)
+        if scene_copy.voice_over and scene_copy.voice_over.audio_path:
+            scene_copy.voice_over.audio_url = _sign_if_gcs(scene_copy.voice_over.audio_path)
+        hydrated.append(scene_copy)
+    return hydrated
 
 
 @app.get("/health", response_model=HealthResponse)
@@ -295,7 +331,7 @@ def agent_chat(request: AgentChatRequest) -> AgentChatResponse:
         message = result.get("response", "")
         suggested_actions = result.get("suggested_actions", [])
 
-    scenes = agent_service.get_storyboard(request.session_id)
+    scenes = _hydrate_scene_media_urls(agent_service.get_storyboard(request.session_id))
     video_brief = agent_service.get_video_brief(request.session_id)
     return AgentChatResponse(
         session_id=request.session_id,
@@ -311,14 +347,17 @@ def draft_storyboard(request: AgentStoryboardRequest) -> AgentStoryboardResponse
     """Directly trigger the storyboard generation without the Agent loop or TTS."""
     try:
         scenes = agent_service.generate_storyboard(request.session_id, request.brief)
-        return AgentStoryboardResponse(session_id=request.session_id, scenes=scenes)
+        return AgentStoryboardResponse(
+            session_id=request.session_id,
+            scenes=_hydrate_scene_media_urls(scenes) or [],
+        )
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc))
 
 
 @app.get("/agent/sessions/{session_id}/storyboard", response_model=AgentStoryboardResponse)
 def get_storyboard(session_id: str) -> AgentStoryboardResponse:
-    scenes = agent_service.get_storyboard(session_id) or []
+    scenes = _hydrate_scene_media_urls(agent_service.get_storyboard(session_id)) or []
     return AgentStoryboardResponse(session_id=session_id, scenes=scenes)
 
 
@@ -336,7 +375,8 @@ def update_video_brief(session_id: str, brief: VideoBrief) -> VideoBrief:
 @app.patch("/agent/sessions/{session_id}/storyboard", response_model=AgentStoryboardResponse)
 def update_storyboard(session_id: str, request: AgentStoryboardUpdateRequest) -> AgentStoryboardResponse:
     agent_service.save_storyboard(session_id, request.scenes)
-    return AgentStoryboardResponse(session_id=session_id, scenes=request.scenes)
+    scenes = _hydrate_scene_media_urls(request.scenes) or []
+    return AgentStoryboardResponse(session_id=session_id, scenes=scenes)
 
 
 @app.post("/agent/sessions/{session_id}/render", response_model=AgentRenderResponse)
@@ -344,7 +384,8 @@ def render_agent_plan(session_id: str) -> AgentRenderResponse:
     try:
         result = agent_service.render_storyboard(session_id)
     except ValueError as exc:
-        raise HTTPException(status_code=404, detail=str(exc))
+        print(f"Render failed for session {session_id}: {exc}")
+        raise HTTPException(status_code=500, detail=str(exc))
     return AgentRenderResponse(session_id=session_id, render_result=result)
 
 
@@ -436,12 +477,13 @@ def get_video_metadata(
     if not x_user_id:
         raise HTTPException(status_code=400, detail="X-User-Id header required")
 
+    storage = get_storage_client(agent_config)
+
     # Resolve User/Company Context
     user = get_user(db, x_user_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     
-    user_id = user.id
     company_id = user.company_id
     
     # Handle generated videos (format: "generated:<session_id>:<filename>")
@@ -451,29 +493,33 @@ def get_video_metadata(
             raise HTTPException(status_code=400, detail=f"Invalid generated video_id format: {video_id}")
         
         _, session_id, filename = parts
-        
-        # Strictly use user-scoped path
-        generated_path = agent_service.base_dir / user_id / session_id / "generated_videos" / filename
 
-        if not generated_path.exists():
+        gcs_key = _generated_scene_blob_key(company_id, session_id, filename)
+        if not storage.exists(gcs_key):
             raise HTTPException(status_code=404, detail=f"Generated video not found: {video_id}")
-        
-        # Extract metadata from the generated video
-        from videoagent.library import extract_video_metadata
-        try:
-            meta = extract_video_metadata(generated_path)
-        except Exception as e:
-            # Fallback metadata if extraction fails (avoids 500 for just metadata read)
-            print(f"Metadata extraction failed: {e}")
-            meta = {}
+
+        sidecar = {}
+        sidecar_key = f"{gcs_key}.metadata.json"
+        if storage.exists(sidecar_key):
+            try:
+                sidecar = storage.read_json(sidecar_key)
+            except Exception as exc:
+                print(f"Failed to read generated video sidecar for {video_id}: {exc}")
+
+        resolution_raw = sidecar.get("resolution", [1920, 1080])
+        if isinstance(resolution_raw, list) and len(resolution_raw) == 2:
+            resolution = (int(resolution_raw[0]), int(resolution_raw[1]))
+        else:
+            resolution = (1920, 1080)
         
         return VideoMetadataResponse(
             id=video_id,
-            path=str(generated_path.absolute()),
+            path=storage.to_gs_uri(gcs_key),
+            url=storage.get_url(gcs_key),
             filename=filename,
-            duration=meta.get("duration", 0.0),
-            resolution=meta.get("resolution", (1920, 1080)),
-            fps=meta.get("fps", 24.0),
+            duration=float(sidecar.get("duration", 0.0)),
+            resolution=resolution,
+            fps=float(sidecar.get("fps", 24.0)),
         )
     
     # Handle regular library videos
@@ -486,7 +532,8 @@ def get_video_metadata(
     
     return VideoMetadataResponse(
         id=video.id,
-        path=str(video.path.absolute()),
+        path=video.path,
+        url=_sign_if_gcs(video.path),
         filename=video.filename,
         duration=video.duration,
         resolution=video.resolution,
@@ -585,8 +632,26 @@ def list_annotations(
 
 
 @app.post("/annotations", response_model=AnnotationResponse)
-def create_annotation(request: CreateAnnotationRequest) -> AnnotationResponse:
+def create_annotation(
+    request: CreateAnnotationRequest,
+    x_user_id: Optional[str] = Header(None, alias="X-User-Id"),
+    db: DBSession = Depends(get_db),
+) -> AnnotationResponse:
     """Create a new annotation."""
+    if not x_user_id:
+        raise HTTPException(status_code=400, detail="X-User-Id header required")
+
+    user = get_user(db, x_user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    if not user.company_id:
+        raise HTTPException(status_code=400, detail="User must belong to a company to create annotations")
+
+    request.company_id = user.company_id
+    request.annotator_id = user.id
+    request.annotator_name = user.name
+            
     annotation = db_create_annotation(request)
     return _annotation_to_response(annotation)
 

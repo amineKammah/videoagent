@@ -47,12 +47,13 @@ class VideoMetadata(VideoAgentModel):
     This is indexed and stored for quick searching.
     """
     id: str
-    path: Path
+    path: str
     filename: str
     duration: float  # in seconds
     resolution: tuple[int, int]  # (width, height)
     fps: float
     file_size: int  # in bytes
+    url: Optional[str] = None
 
     transcript_segments: list[TranscriptSegment] = Field(default_factory=list)
 
@@ -121,6 +122,7 @@ class VoiceOver(VideoAgentModel):
     script: str
     audio_id: Optional[str] = None
     audio_path: Optional[str] = None
+    audio_url: Optional[str] = None
     duration: Optional[float] = None
 
     id: str = Field(default_factory=lambda: str(uuid.uuid4())[:8])
@@ -209,7 +211,7 @@ class RenderResult(VideoAgentModel):
     Result of rendering story segments to a video file.
     """
     success: bool
-    output_path: Optional[Path] = None
+    output_path: Optional[str] = None
     duration: Optional[float] = None
     file_size: Optional[int] = None
     error_message: Optional[str] = None
