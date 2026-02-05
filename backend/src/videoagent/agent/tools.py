@@ -378,21 +378,11 @@ def _validate_and_build_jobs(
         if scene.use_voice_over:
             audio_mode_header = "AUDIO MODE: REPLACE WITH VOICE OVER"
             visual_constraints = (
-                "### STRICT VISUAL CONSTRAINT: NO TALKING (B-ROLL ONLY)\n"
-                "The original audio will be muted and replaced by a distinct voice-over track. "
-                "You should completely ignore the current video voice.\n"
-                "You must strictly AVOID clips where a person is speaking to the camera.\n"
-                "You must strictly AVOID clips where there is visible subtitles embedded in the video. "
-                "These won't match the voice over.\n"
-                "**CRITICAL:** If you select a clip where a person is talking, it will look like a "
-                "'bad lip reading' or broken dubbing.\n\n"
-                "### YOUR TASK:\n"
-                "- Take you time to understand the attached video.\n"
-                "- Understand the scene context and its script. Identify a clip that matches the scene context and its scipt.\n"
-                "- Try to identify scenes that closely match the visuals described in note included from the main agent."
-                "- If the clip partly matches the script, you must communicate this in the description to the main agent. \n"
-                "For example, the script talks about reducing the processing time and great customer support but the clip only "
-                "reprensent reduced processing time, in your description, you must communicate that the clip only represents reduced processing time but does not represent great customer support.\n"
+                "### 2. STRICT VISUAL RULES (CRITICAL)\n"
+                "Since this is a background for a voice-over:\n"
+                "- [ ] **NO TALKING HEADS**: Do NOT select clips where people are speaking to the camera. It will look like bad dubbing.\n"
+                "- [ ] **NO SUBTITLES**: Do NOT select clips with burnt-in subtitles.\n"
+                "- [ ] **VISUALS ONLY**: Focus purely on the visual action, environment, and emotion. Ignore the original audio.\n"
             )
         else:
             audio_mode_header = "AUDIO MODE: KEEP ORIGINAL AUDIO"
@@ -413,10 +403,7 @@ def _validate_and_build_jobs(
         duration_section = ""
         if target_duration:
             duration_section = (
-                "\nDURATION TARGET:\n"
-                f"- Target duration (seconds): {target_duration}\n"
-                f"- Source: {duration_source}\n"
-                "- Duration tolerance: +/- 1s\n"
+                f"Duration Target: {target_duration}s (Tolerance: +/- 1s)\n"
             )
 
         warnings_by_scene_id.setdefault(request.scene_id, [])
@@ -476,40 +463,45 @@ def _upload_job_videos(
 
 def _build_prompt(job: dict) -> str:
     scene = job["scene"]
-    scene_text = (
-        f"Scene title: {scene.title}\n"
-        f"Scene purpose: {scene.purpose}\n"
-    )
     if scene.script:
-        scene_text += f"Scene script: {scene.script}\n"
-        scene_text += "This script will be spoken using a voice over. Find the video clip that best matches the script."
+        scene_text = f'Voice-Over Script: "{scene.script}"'
+    else:
+        scene_text = "Voice-Over Script: (None)"
 
     notes_text = f"\nNOTES:\n{job['notes']}\n" if job["notes"] else ""
     metadata = job["metadata"]
-    return f"""You are an expert video asset manager. This request evaluates a candidate video for a specific scene in a personalized video. The agent cannot see the video, so your descriptions must be vivid.
+    return f"""You are an expert Video Editor. Your task is to find a background video clip that perfectly fits a voice-over script.
 
-SCENE CONTEXT:
+### THE GOAL
+We are creating a scene where a distinct voice-over describes a concept. We need a matching video background (B-roll).
+The original audio of the video will be COMPLETELY REMOVED and ignored.
+
+### 1. ANALYZE THE CONTEXT
+Scene Title: {scene.title}
+Scene Purpose: {scene.purpose}
 {scene_text}
-
-SCENE DETAILS:
-- {job['audio_mode_header']}
-{notes_text}{job['duration_section']}
+Agent Notes: {job['notes']}
 
 {job['visual_constraints']}
+### 3. YOUR MISSION
+Evaluated the single video provided below.
+1. Find a continuous clip that matches the **Voice-Over Script** AND **Agent Notes**.
+2. {job['duration_section']}
+3. If the clip is good visually but only matches PART of the script (e.g. matches the first half but not the second), you must explicitly describe this limitation in the `description` field.
 
-VIDEO TO EVALUATE (SINGLE VIDEO):
-- {metadata.id}: {metadata.filename} ({metadata.duration:.1f}s)
+### VIDEO TO EVALUATE:
+- ID: {metadata.id}
+- Filename: {metadata.filename}
+- Total Duration: {metadata.duration:.1f}s
 
-WHAT TO RETURN:
-- Return 0, 1 or 2 candidate clip from the single video above.
-- If this video does not fulfill the requirements, return an empty candidates list and include a notes field explaining why.
-- For each candidate include start_timestamp, end_timestamp, description, rationale.
-- Use MM:SS.sss format for start_timestamp and end_timestamp (milliseconds required).
-- **RATIONALE REQUIREMENT:** In your rationale, explicitly state how the clip fits the visual constraints (e.g., "Confirmed: Subject is listening, lips are not moving" or "Confirmed: Subject is speaking to camera").
-- Use only the video_id value listed above; copy it exactly.
+### OUTPUT INSTRUCTIONS
+- Return up to 3 candidate clips.
+- Output a detailed visual description of what is happening in each candidate. This is crucial for the main agent to understand the visual content of the clip.
+- Return EXACTLY the `video_id` provided above.
+- **Rationale**: You must confirm you checked the visual rules. E.g., "Confirmed: Subject is working silently, no talking."
 
-EXAMPLE OUTPUT:
-{{"candidates":[{{"video_id":"abcd1234","start_timestamp":"02:15.000","end_timestamp":"02:24.250","description":"Executive smiling and nodding while looking at a colleague.","rationale":"Perfect B-roll match; subject is engaged but not speaking, fitting the voice-over requirement."}}]}}
+Example Output:
+{{"candidates":[{{"video_id":"{metadata.id}","start_timestamp":"00:12.500","end_timestamp":"00:30.000","description":"...","rationale":"Confirmed: No talking..."}}]}}
 """
 
 def _print_prompt_log(job: dict, llm_response_time: Optional[float], usage: Optional[object] = None) -> None:
@@ -551,16 +543,17 @@ async def _analyze_single_job(
             }
 
         prompt = _build_prompt(job)
+        print(prompt)
         contents = types.Content(role="user", parts=[uploaded_file, types.Part(text=prompt)])
         llm_start = time.perf_counter()
         try:
             response = await client.client.aio.models.generate_content(
-                model=client.config.gemini_model,
+                model="gemini-3-pro-preview",
                 contents=contents,
                 config={
                     "response_mime_type": "application/json",
                     "response_json_schema": SceneMatchResponse.model_json_schema(),
-                    "thinking_config": types.ThinkingConfig(thinking_budget=4096)
+                    "thinking_config": types.ThinkingConfig(thinking_budget=1024)
                 },
             )
         except Exception as exc:
@@ -707,6 +700,75 @@ def _process_analysis_results(
     return results_by_scene_id, notes_by_scene_id
 
 
+def _check_scene_warnings(scenes: list[_StoryboardScene]) -> str:
+    """Check for time overlaps and duration mismatches."""
+    from collections import defaultdict
+    video_ranges = defaultdict(list)
+    warnings = []
+    
+    # 1. Overlap Check & 2. Duration Check
+    for scene in scenes:
+        # Duration Check
+        if scene.use_voice_over and scene.voice_over and scene.voice_over.duration:
+            if scene.matched_scene and scene.matched_scene.start_time is not None and scene.matched_scene.end_time is not None:
+                scene_duration = float(scene.matched_scene.end_time) - float(scene.matched_scene.start_time)
+                vo_duration = scene.voice_over.duration
+                
+                # Check for > 10% difference
+                if vo_duration > 0:
+                    diff_ratio = abs(scene_duration - vo_duration) / vo_duration
+                    if diff_ratio > 0.10:
+                        warnings.append(
+                            f"Warning: Scene '{scene.title}' ({scene.scene_id}) duration ({scene_duration:.1f}s) "
+                            f"mismatches voice over duration ({vo_duration:.1f}s) by {diff_ratio*100:.0f}%."
+                        )
+
+        # Collect ranges for overlap check
+        if not scene.matched_scene or not scene.matched_scene.source_video_id:
+            continue
+        ms = scene.matched_scene
+        if ms.start_time is None or ms.end_time is None:
+            continue
+        
+        video_ranges[ms.source_video_id].append({
+            "scene_id": scene.scene_id,
+            "start": float(ms.start_time),
+            "end": float(ms.end_time),
+            "title": scene.title
+        })
+        
+    processed = set()
+    
+    for vid, items in video_ranges.items():
+        # sort by start time
+        items.sort(key=lambda x: x["start"])
+        for i in range(len(items)):
+            for j in range(i + 1, len(items)):
+                s1 = items[i]
+                s2 = items[j]
+                
+                # Check overlap: max(start1, start2) < min(end1, end2)
+                overlap_start = max(s1["start"], s2["start"])
+                overlap_end = min(s1["end"], s2["end"])
+                
+                if overlap_start < overlap_end:
+                    overlap_duration = overlap_end - overlap_start
+                    # Define "significant" as > 0.5s to avoid float precision noise at boundaries
+                    if overlap_duration > 0.5:
+                        pair_key = tuple(sorted((s1["scene_id"], s2["scene_id"])))
+                        if pair_key not in processed:
+                            warnings.append(
+                                f"Warning: Scenes '{s1['title']}' ({s1['scene_id']}) and "
+                                f"'{s2['title']}' ({s2['scene_id']}) overlap by {overlap_duration:.1f}s "
+                                f"on video {vid}."
+                            )
+                            processed.add(pair_key)
+                            
+    if warnings:
+        return "\n" + "\n".join(warnings)
+    return ""
+
+
 def _build_tools(
     config: Config,
     storyboard_store: StoryboardStore,
@@ -794,7 +856,9 @@ def _build_tools(
             
         storyboard_store.save(session_id, new_scenes, user_id=user_id)
         event_store.append(session_id, {"type": "storyboard_update"}, user_id=user_id)
-        return "UI updated successfully"
+        
+        warnings = _check_scene_warnings(new_scenes)
+        return "UI updated successfully" + warnings
 
     @function_tool(
         failure_error_function=tool_error("update_storyboard_scene"),
@@ -835,7 +899,9 @@ def _build_tools(
             
         storyboard_store.save(session_id, updated_scenes, user_id=user_id)
         event_store.append(session_id, {"type": "storyboard_update"}, user_id=user_id)
-        return "Storyboard scene updated successfully"
+        
+        warnings = _check_scene_warnings(updated_scenes)
+        return "Storyboard scene updated successfully" + warnings
 
     @function_tool(
         failure_error_function=tool_error("update_matched_scenes"),
@@ -868,7 +934,9 @@ def _build_tools(
         msg = f"Updated matched details for {updated_count} scene(s)."
         if missing_ids:
             msg += f" Warning: Scene IDs not found: {', '.join(missing_ids)}"
-        return msg
+            
+        warnings = _check_scene_warnings(scenes)
+        return msg + warnings
 
     @function_tool(failure_error_function=tool_error("update_video_brief"), strict_mode=True)
     @log_tool("update_video_brief")
