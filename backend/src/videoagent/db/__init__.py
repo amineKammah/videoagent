@@ -1,5 +1,17 @@
 # VideoAgent Database Module
-from .models import Base, Company, User, Session, CustomerProfile, Annotation, SessionAnnotatorStatus
+from .models import (
+    Annotation,
+    Base,
+    Company,
+    CustomerProfile,
+    Session,
+    SessionAnnotatorStatus,
+    SessionBrief,
+    SessionChatMessage,
+    SessionEvent,
+    SessionStoryboard,
+    User,
+)
 from .connection import engine, SessionLocal, get_db, get_db_context
 from . import crud
 from . import schemas
@@ -11,6 +23,10 @@ __all__ = [
     "Company",
     "User", 
     "Session",
+    "SessionEvent",
+    "SessionStoryboard",
+    "SessionBrief",
+    "SessionChatMessage",
     "CustomerProfile",
     "Annotation",
     "SessionAnnotatorStatus",

@@ -3,6 +3,7 @@ FastAPI service for VideoAgent orchestration.
 """
 from __future__ import annotations
 
+import asyncio
 import os
 from pathlib import Path
 from typing import Optional
@@ -316,10 +317,10 @@ def create_agent_session(
 
 
 @app.post("/agent/chat", response_model=AgentChatResponse)
-def agent_chat(request: AgentChatRequest) -> AgentChatResponse:
+async def agent_chat(request: AgentChatRequest) -> AgentChatResponse:
     try:
         # run_turn returns a string (the agent's message)
-        result = agent_service.run_turn(request.session_id, request.message)
+        result = await asyncio.to_thread(agent_service.run_turn, request.session_id, request.message)
     except Exception as exc:
         raise HTTPException(status_code=400, detail=str(exc))
 
@@ -445,6 +446,7 @@ def agent_events(session_id: str, cursor: Optional[int] = Query(default=None)) -
 async def stream_events(
     session_id: str,
     request: Request,
+    cursor: Optional[int] = Query(default=None),
     db: DBSession = Depends(get_db),
 ):
     """
@@ -465,6 +467,7 @@ async def stream_events(
         session_id,
         user_id,
         request,
+        start_cursor=cursor,
     )
 
 

@@ -89,7 +89,10 @@ describe('VideoPlayer media behavior', () => {
 
     vi.spyOn(HTMLMediaElement.prototype, 'play').mockImplementation(async () => undefined);
     vi.spyOn(HTMLMediaElement.prototype, 'pause').mockImplementation(() => undefined);
-    vi.spyOn(HTMLMediaElement.prototype, 'load').mockImplementation(() => undefined);
+    vi.spyOn(HTMLMediaElement.prototype, 'load').mockImplementation(function (this: HTMLMediaElement) {
+      this.dispatchEvent(new Event('loadeddata'));
+      this.dispatchEvent(new Event('canplay'));
+    });
     vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => undefined);
   });
 
@@ -201,6 +204,62 @@ describe('VideoPlayer media behavior', () => {
     expect(audio).not.toBeNull();
     expect(video?.muted).toBe(true);
     expect(audio?.getAttribute('src')).toBe('https://signed.example/voice-over.wav');
+  });
+
+  it('keeps loading state until both video and voice-over are ready', async () => {
+    storeState = {
+      ...storeState,
+      scenes: [
+        {
+          ...baseScene,
+          use_voice_over: true,
+          voice_over: {
+            script: 'VO',
+            audio_url: 'https://signed.example/voice-over.wav',
+            duration: 3,
+          },
+        },
+      ],
+    };
+
+    vi.mocked(HTMLMediaElement.prototype.load).mockImplementation(function (this: HTMLMediaElement) {
+      if (this instanceof HTMLVideoElement) {
+        this.dispatchEvent(new Event('loadeddata'));
+        this.dispatchEvent(new Event('canplay'));
+      }
+    });
+
+    const playerRef = createRef<VideoPlayerRef>();
+    const { container } = render(<VideoPlayer ref={playerRef} />);
+
+    await waitFor(() => {
+      expect(apiMock.getVideoMetadata).toHaveBeenCalledTimes(1);
+    });
+
+    await act(async () => {
+      playerRef.current?.play();
+    });
+
+    expect(screen.getByText('Loading assets...')).toBeInTheDocument();
+
+    const playMock = vi.mocked(HTMLMediaElement.prototype.play);
+    expect(playMock).not.toHaveBeenCalled();
+
+    const audio = container.querySelector('audio') as HTMLAudioElement | null;
+    expect(audio).not.toBeNull();
+
+    act(() => {
+      audio?.dispatchEvent(new Event('loadeddata'));
+      audio?.dispatchEvent(new Event('canplay'));
+    });
+
+    await waitFor(() => {
+      expect(playMock).toHaveBeenCalled();
+    });
+
+    await waitFor(() => {
+      expect(screen.queryByText('Loading assets...')).not.toBeInTheDocument();
+    });
   });
 
   it('falls back to direct signed URL open when export fetch fails', async () => {

@@ -3,6 +3,7 @@
 import { useEffect, useRef, useCallback } from 'react';
 import { useSessionStore } from '@/store/session';
 import { api } from '@/lib/api';
+import { Message } from '@/lib/types';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 const RECONNECT_DELAY = 3000; // 3 seconds
@@ -12,16 +13,38 @@ const RECONNECT_DELAY = 3000; // 3 seconds
  * Replaces the 400ms polling mechanism with push-based updates.
  */
 export function useEventStream() {
-    const session = useSessionStore(state => state.session);
+    const sessionId = useSessionStore(state => state.session?.id);
     const isProcessing = useSessionStore(state => state.isProcessing);
+    const eventsCursor = useSessionStore(state => state.eventsCursor);
     const addEvent = useSessionStore(state => state.addEvent);
+    const setMessages = useSessionStore(state => state.setMessages);
+    const setEventsCursor = useSessionStore(state => state.setEventsCursor);
     const setScenes = useSessionStore(state => state.setScenes);
+    const setProcessing = useSessionStore(state => state.setProcessing);
     const setVideoGenerating = useSessionStore(state => state.setVideoGenerating);
     const setVideoPath = useSessionStore(state => state.setVideoPath);
     const setVideoBrief = useSessionStore(state => state.setVideoBrief);
 
     const eventSourceRef = useRef<EventSource | null>(null);
     const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+    const connectRef = useRef<(() => void) | null>(null);
+
+    const refreshChatHistory = useCallback(async () => {
+        if (!sessionId) return;
+        try {
+            const chatHistory = await api.getChatHistory(sessionId);
+            const messages: Message[] = (chatHistory.messages || []).map((m, idx) => ({
+                id: `restored-${idx}`,
+                role: m.role as 'user' | 'assistant',
+                content: m.content,
+                timestamp: new Date(m.timestamp),
+                suggestedActions: m.suggested_actions,
+            }));
+            setMessages(messages);
+        } catch (err) {
+            console.error('Failed to refresh chat history on run_end:', err);
+        }
+    }, [sessionId, setMessages]);
 
     const handleEvent = useCallback(async (event: MessageEvent) => {
         try {
@@ -30,6 +53,15 @@ export function useEventStream() {
             // Skip connection events
             if (data.type === 'connected') {
                 console.log('[SSE] Connected, cursor:', data.cursor);
+                if (typeof data.cursor === 'number') {
+                    setEventsCursor(data.cursor);
+                }
+                return;
+            }
+            if (data.type === 'cursor') {
+                if (typeof data.cursor === 'number') {
+                    setEventsCursor(data.cursor);
+                }
                 return;
             }
 
@@ -37,18 +69,18 @@ export function useEventStream() {
             addEvent(data);
 
             // Handle special event types for real-time updates
-            if (data.type === 'storyboard_update' && session?.id) {
+            if (data.type === 'storyboard_update' && sessionId) {
                 try {
-                    const storyboard = await api.getStoryboard(session.id);
+                    const storyboard = await api.getStoryboard(sessionId);
                     if (storyboard.scenes?.length > 0) {
                         setScenes(storyboard.scenes);
                     }
                 } catch (err) {
                     console.error('Failed to fetch storyboard on update:', err);
                 }
-            } else if (data.type === 'video_brief_update' && session?.id) {
+            } else if (data.type === 'video_brief_update' && sessionId) {
                 try {
-                    const brief = await api.getVideoBrief(session.id);
+                    const brief = await api.getVideoBrief(sessionId);
                     if (brief) {
                         setVideoBrief(brief);
                     }
@@ -60,6 +92,8 @@ export function useEventStream() {
                 setVideoPath(null);
             } else if (data.type === 'run_end') {
                 setVideoGenerating(false);
+                await refreshChatHistory();
+                setProcessing(false);
             } else if (data.type === 'video_render_complete' || data.type === 'auto_render_end') {
                 setVideoGenerating(false);
                 if (data.output) {
@@ -69,18 +103,22 @@ export function useEventStream() {
         } catch (err) {
             console.error('[SSE] Failed to parse event:', err);
         }
-    }, [session?.id, addEvent, setScenes, setVideoGenerating, setVideoPath, setVideoBrief]);
+    }, [sessionId, addEvent, refreshChatHistory, setEventsCursor, setProcessing, setScenes, setVideoGenerating, setVideoPath, setVideoBrief]);
 
     const connect = useCallback(() => {
-        if (!session?.id || !isProcessing) return;
+        if (!sessionId || !isProcessing) return;
 
         // Close existing connection
         if (eventSourceRef.current) {
             eventSourceRef.current.close();
         }
 
-        const url = `${API_BASE}/agent/sessions/${session.id}/events/stream`;
-        console.log('[SSE] Connecting to:', url);
+        const streamUrl = new URL(`${API_BASE}/agent/sessions/${sessionId}/events/stream`);
+        if (typeof eventsCursor === 'number') {
+            streamUrl.searchParams.set('cursor', String(eventsCursor));
+        }
+        const url = streamUrl.toString();
+        console.log('[SSE] Connecting to:', url, '(cursor:', eventsCursor, ')');
 
         const eventSource = new EventSource(url);
         eventSourceRef.current = eventSource;
@@ -93,21 +131,26 @@ export function useEventStream() {
             eventSourceRef.current = null;
 
             // Reconnect after delay if still processing
-            if (isProcessing && session?.id) {
-                console.log(`[SSE] Reconnecting in ${RECONNECT_DELAY}ms...`);
-                reconnectTimeoutRef.current = setTimeout(() => {
-                    connect();
-                }, RECONNECT_DELAY);
-            }
+            reconnectTimeoutRef.current = setTimeout(() => {
+                const state = useSessionStore.getState();
+                if (state.isProcessing && state.session?.id === sessionId) {
+                    console.log(`[SSE] Reconnecting in ${RECONNECT_DELAY}ms...`);
+                    connectRef.current?.();
+                }
+            }, RECONNECT_DELAY);
         };
 
         eventSource.onopen = () => {
             console.log('[SSE] Connection opened');
         };
-    }, [session?.id, isProcessing, handleEvent]);
+    }, [sessionId, isProcessing, eventsCursor, handleEvent]);
 
     useEffect(() => {
-        if (isProcessing && session?.id) {
+        connectRef.current = connect;
+    }, [connect]);
+
+    useEffect(() => {
+        if (isProcessing && sessionId) {
             connect();
         } else {
             // Close connection when not processing
@@ -132,5 +175,5 @@ export function useEventStream() {
                 reconnectTimeoutRef.current = null;
             }
         };
-    }, [isProcessing, session?.id, connect]);
+    }, [isProcessing, sessionId, connect]);
 }

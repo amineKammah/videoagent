@@ -13,13 +13,10 @@ from pathlib import Path
 from typing import Callable, Optional
 from uuid import uuid4
 
-from pydantic import ValidationError
-from google.genai import types
-
-from agents import function_tool, custom_span
+from agents import function_tool
 
 from videoagent.config import Config
-from videoagent.gemini import GeminiClient
+from videoagent.gcp import build_vertex_client_kwargs
 from videoagent.library import VideoLibrary
 from videoagent.models import RenderResult, VoiceOver
 from videoagent.storage import get_storage_client
@@ -35,13 +32,12 @@ from .schemas import (
     MatchedScenesUpdatePayload,
     VideoBriefUpdatePayload,
     SceneMatchBatchRequest,
-    SceneMatchResponse,
 )
+from .scene_matcher import SceneMatcher
 from .storage import (
     EventStore,
     StoryboardStore,
     BriefStore,
-    _parse_timestamp,
 )
 
 
@@ -102,11 +98,6 @@ def _build_storyboard_voice_over_paths(
                 except Exception:
                     continue
     return paths
-
-SCENE_MATCH_SYSTEM_INSTRUCTION = (
-    "You are an expert video editor helping find the best clip for a scene."
-)
-
 
 def _render_storyboard_scenes(
     scenes: list[_StoryboardScene],
@@ -265,441 +256,6 @@ def _resolve_render_target(
         return latest
     return config.output_dir / f"{session_id}_final.mp4"
 
-
-def _format_transcript_for_prompt(metadata, max_segments: int = 30, max_chars: int = 3000) -> str:
-    segments = getattr(metadata, "transcript_segments", None) or []
-    if not segments:
-        return "(none)"
-
-    lines: list[str] = []
-    total_chars = 0
-    for segment in segments[:max_segments]:
-        text = str(getattr(segment, "text", "")).strip()
-        if not text:
-            continue
-        start_time = float(getattr(segment, "start_time", 0.0) or 0.0)
-        minutes = int(start_time // 60)
-        seconds = start_time - (minutes * 60)
-        line = f"[{minutes:02d}:{seconds:06.3f}] {text}"
-        projected = total_chars + len(line) + 1
-        if projected > max_chars:
-            break
-        lines.append(line)
-        total_chars = projected
-
-    if not lines:
-        return "(none)"
-    if len(segments) > len(lines):
-        lines.append("... (truncated)")
-    return "\n".join(lines)
-
-
-def _validate_and_build_jobs(
-    requests: list[SceneMatchBatchRequest],
-    scenes: list[_StoryboardScene],
-    video_library: VideoLibrary,
-) -> tuple[list[dict], list[dict], dict[str, list[str]]]:
-    """Validate request and build jobs. Returns (jobs, errors, warnings)."""
-    scene_map = {scene.scene_id: scene for scene in scenes}
-    
-    # Pre-fetch all candidate videos
-    all_candidate_ids = {
-        video_id
-        for request in requests
-        for video_id in request.candidate_video_ids
-    }
-    video_map = {
-        video_id: video_library.get_video(video_id)
-        for video_id in all_candidate_ids
-    }
-
-    jobs: list[dict] = []
-    errors: list[dict] = []
-    warnings_by_scene_id: dict[str, list[str]] = {}
-
-    for request in requests:
-        scene = scene_map.get(request.scene_id)
-        if not scene:
-            errors.append({
-                "scene_id": request.scene_id,
-                "error": f"Storyboard scene id not found: {request.scene_id}",
-            })
-            continue
-        if not request.candidate_video_ids:
-            errors.append({
-                "scene_id": request.scene_id,
-                "error": "No candidate videos provided.",
-            })
-            continue
-        if len(request.candidate_video_ids) > 5:
-            errors.append({
-                "scene_id": request.scene_id,
-                "error": "Provide up to 5 candidate video ids.",
-            })
-            continue
-
-        invalid_ids = [
-            video_id for video_id in request.candidate_video_ids
-            if not video_map.get(video_id)
-        ]
-        if invalid_ids:
-            errors.append({
-                "scene_id": request.scene_id,
-                "error": "Video id(s) not found: " + ", ".join(invalid_ids),
-            })
-            continue
-
-        if scene.use_voice_over:
-            voice_over = scene.voice_over
-            if (
-                not (voice_over and voice_over.duration)
-                and request.duration_seconds is None
-            ):
-                errors.append({
-                    "scene_id": request.scene_id,
-                    "error": (
-                        "Voice over duration missing for this scene. "
-                        "Generate voice overs first for scenes that need them, "
-                        "or provide duration_seconds."
-                    ),
-                })
-                continue
-
-        target_duration = None
-        duration_source = None
-        voice_over = scene.voice_over
-        if voice_over and voice_over.duration:
-            target_duration = voice_over.duration
-            duration_source = "voice_over"
-        elif request.duration_seconds is not None:
-            target_duration = request.duration_seconds
-            duration_source = "duration_seconds"
-
-        if scene.use_voice_over:
-            audio_mode_header = "AUDIO MODE: REPLACE WITH VOICE OVER"
-            visual_constraints = (
-                "### 2. STRICT VISUAL RULES (CRITICAL)\n"
-                "Since this is a background for a voice-over:\n"
-                "- [ ] **NO TALKING HEADS**: Do NOT select clips where people are speaking to the camera. It will look like bad dubbing.\n"
-                "- [ ] **NO SUBTITLES**: Do NOT select clips with burnt-in subtitles.\n"
-                "- [ ] **VISUALS ONLY**: Focus purely on the visual action, environment, and emotion. Ignore the original audio.\n"
-            )
-        else:
-            audio_mode_header = "AUDIO MODE: KEEP ORIGINAL AUDIO"
-            visual_constraints = (
-                "### VISUAL REQUIREMENT: TALKING HEADS REQUIRED\n"
-                "We are keeping the original audio from the video file.\n"
-                "1. You MUST select clips where the person is speaking to the camera.\n"
-                "2. Do not select B-roll or wide shots where the speaker is not visible.\n\n"
-                "AUDIO REQUIREMENT:\n"
-                "You are acting as a high-precision Video Editor.\n"
-                "No Lead-ins: The start_timestamp MUST begin exactly on the first meaningful word. "
-                "Do not include filler words (\"Um\", \"So\", \"Well\"), silence, or breath intakes "
-                "before the sentence starts.\n"
-                "Hard Stop: The end_timestamp MUST cut immediately after the last syllable of the "
-                "final word. Do not include trailing silence, laughter, or reaction pauses."
-            )
-        
-        duration_section = ""
-        if target_duration:
-            duration_section = (
-                f"Duration Target: {target_duration}s (Tolerance: +/- 1s)\n"
-            )
-
-        warnings_by_scene_id.setdefault(request.scene_id, [])
-        if (
-            request.duration_seconds is not None
-            and not (voice_over and voice_over.duration)
-        ):
-            warnings_by_scene_id[request.scene_id].append(
-                "duration_seconds was provided without a voice over; "
-                "used it as the target duration for matching."
-            )
-
-        for video_id in request.candidate_video_ids:
-            metadata = video_map.get(video_id)
-            if metadata:
-                jobs.append({
-                    "scene_id": request.scene_id,
-                    "scene": scene,
-                    "video_id": video_id,
-                    "metadata": metadata,
-                    "notes": request.notes,
-                    "audio_mode_header": audio_mode_header,
-                    "visual_constraints": visual_constraints,
-                    "duration_section": duration_section,
-                    "transcript_text": _format_transcript_for_prompt(metadata),
-                })
-
-    return jobs, errors, warnings_by_scene_id
-
-
-def _upload_job_videos(
-    client: GeminiClient,
-    jobs: list[dict],
-) -> tuple[dict[str, object], dict[str, str]]:
-    """Upload videos for the jobs. Returns (uploaded_files_map, failed_uploads_map)."""
-    uploaded_files: dict[str, object] = {}
-    failed_uploads: dict[str, str] = {}
-    
-    unique_video_ids = {job["video_id"] for job in jobs}
-    # Map video_id to path from jobs (we need metadata)
-    video_id_to_metadata = {}
-    for job in jobs:
-        video_id_to_metadata[job["video_id"]] = job["metadata"]
-
-    for video_id in unique_video_ids:
-        metadata = video_id_to_metadata[video_id]
-        print(metadata)
-        try:
-            # Note: client.get_or_upload_file handles caching logic internally if implemented,
-            # or we rely on it being idempotent enough.
-            uploaded_files[video_id] = client.get_or_upload_file(metadata.path)
-        except Exception as exc:
-            failed_uploads[video_id] = str(exc)
-            
-    return uploaded_files, failed_uploads
-
-
-def _build_prompt(job: dict) -> str:
-    scene = job["scene"]
-    if scene.script:
-        scene_text = f'Voice-Over Script: "{scene.script}"'
-    else:
-        scene_text = "Voice-Over Script: (None)"
-
-    notes_text = f"\nNOTES:\n{job['notes']}\n" if job["notes"] else ""
-    metadata = job["metadata"]
-    return f"""You are an expert Video Editor. Your task is to find a background video clip that perfectly fits a voice-over script.
-
-### THE GOAL
-We are creating a scene where a distinct voice-over describes a concept. We need a matching video background (B-roll).
-The original audio of the video will be COMPLETELY REMOVED and ignored.
-
-### 1. ANALYZE THE CONTEXT
-Scene Title: {scene.title}
-Scene Purpose: {scene.purpose}
-{scene_text}
-Agent Notes: {job['notes']}
-
-{job['visual_constraints']}
-### 3. YOUR MISSION
-Evaluated the single video provided below.
-1. Find a continuous clip that matches the **Voice-Over Script** AND **Agent Notes**.
-2. {job['duration_section']}
-3. If the clip is good visually but only matches PART of the script (e.g. matches the first half but not the second), you must explicitly describe this limitation in the `description` field.
-
-### VIDEO TO EVALUATE:
-- ID: {metadata.id}
-- Filename: {metadata.filename}
-- Total Duration: {metadata.duration:.1f}s
-
-### OUTPUT INSTRUCTIONS
-- Return up to 3 candidate clips.
-- Output a detailed visual description of what is happening in each candidate. This is crucial for the main agent to understand the visual content of the clip.
-- Return EXACTLY the `video_id` provided above.
-- **Rationale**: You must confirm you checked the visual rules. E.g., "Confirmed: Subject is working silently, no talking."
-
-Example Output:
-{{"candidates":[{{"video_id":"{metadata.id}","start_timestamp":"00:12.500","end_timestamp":"00:30.000","description":"...","rationale":"Confirmed: No talking..."}}]}}
-"""
-
-def _print_prompt_log(job: dict, llm_response_time: Optional[float], usage: Optional[object] = None) -> None:
-    vid = job["video_id"]
-    sid = job["scene_id"]
-    dur = f"{llm_response_time:.2f}s" if llm_response_time is not None else "N/A"
-    tokens = ""
-    if usage:
-        prompt_tok = getattr(usage, "prompt_token_count", "?")
-        cand_tok = getattr(usage, "candidates_token_count", "?")
-        tokens = f" (in: {prompt_tok}, out: {cand_tok})"
-    print(f"[Analysis] {sid}:{vid} finished in {dur}{tokens}")
-
-
-async def _analyze_single_job(
-    client: GeminiClient,
-    job: dict,
-    uploaded_file: Optional[object],
-) -> dict:
-    """Run analysis for a single job."""
-    video_id = job["video_id"]
-    scene_id = job["scene_id"]
-    video_metadata = job["metadata"]
-
-    span_data = {
-        "scene_id": scene_id,
-        "video_id": video_id,
-        "video_duration_seconds": video_metadata.duration,
-        "video_filename": video_metadata.filename,
-    }
-
-    with custom_span("analyze_video_content", data=span_data):
-        if not uploaded_file:
-            _print_prompt_log(job, None)
-            return {
-                "scene_id": scene_id,
-                "video_id": video_id,
-                "error": "Video file was not uploaded.",
-            }
-
-        prompt = _build_prompt(job)
-        print(prompt)
-        contents = types.Content(role="user", parts=[uploaded_file, types.Part(text=prompt)])
-        llm_start = time.perf_counter()
-        try:
-            response = await client.client.aio.models.generate_content(
-                model="gemini-3-pro-preview",
-                contents=contents,
-                config={
-                    "response_mime_type": "application/json",
-                    "response_json_schema": SceneMatchResponse.model_json_schema(),
-                    "thinking_config": types.ThinkingConfig(thinking_budget=1024)
-                },
-            )
-        except Exception as exc:
-            _print_prompt_log(job, time.perf_counter() - llm_start, None)
-            return {
-                "scene_id": scene_id,
-                "video_id": video_id,
-                "error": f"LLM generation failed: {exc}",
-            }
-
-        llm_response_time = time.perf_counter() - llm_start
-        if not response.text:
-            _print_prompt_log(job, llm_response_time, response.usage_metadata)
-            return {
-                "scene_id": scene_id,
-                "video_id": video_id,
-                "error": "Model returned an empty response.",
-            }
-
-        try:
-            selection = SceneMatchResponse.model_validate_json(response.text)
-        except ValidationError as exc:
-            _print_prompt_log(job, llm_response_time, response.usage_metadata)
-            return {
-                "scene_id": scene_id,
-                "video_id": video_id,
-                "error": f"Model response validation error: {exc}",
-            }
-
-        invalid_selected = [
-            c.video_id for c in selection.candidates if c.video_id != video_id
-        ]
-        if invalid_selected:
-            _print_prompt_log(job, llm_response_time, response.usage_metadata)
-            return {
-                "scene_id": scene_id,
-                "video_id": video_id,
-                "error": f"Model selected bad video_id(s): {', '.join(invalid_selected)}",
-            }
-
-        try:
-            normalized_candidates = _normalize_candidates(
-                selection, video_id, video_metadata.duration
-            )
-        except ValueError as exc:
-            _print_prompt_log(job, llm_response_time, response.usage_metadata)
-            return {
-                "scene_id": scene_id,
-                "video_id": video_id,
-                "error": str(exc),
-            }
-
-        _print_prompt_log(job, llm_response_time, response.usage_metadata)
-        return {
-            "scene_id": scene_id,
-            "video_id": video_id,
-            "candidates": normalized_candidates,
-            "notes": selection.notes,
-        }
-
-
-async def _execute_analysis_jobs(
-    client: GeminiClient,
-    jobs: list[dict],
-    uploaded_files: dict[str, object],
-) -> list[dict]:
-    """Execute analysis in parallel with trace logging."""
-    tasks = [
-        _analyze_single_job(client, job, uploaded_files.get(job["video_id"]))
-        for job in jobs
-    ]
-    return await asyncio.gather(*tasks)
-
-
-def _normalize_candidates(
-    selection: SceneMatchResponse,
-    video_id: str,
-    duration: Optional[float],
-) -> list[dict]:
-    normalized_candidates: list[dict] = []
-    for candidate in selection.candidates:
-        try:
-            start_seconds = _parse_timestamp(candidate.start_timestamp)
-            end_seconds = _parse_timestamp(candidate.end_timestamp)
-        except ValueError as exc:
-            raise ValueError(
-                f"Detailed timestamp error: {exc}. "
-                "Expected format MM:SS.sss (e.g. 02:23.456)"
-            ) from exc
-        
-        if start_seconds >= end_seconds:
-             raise ValueError(
-                f"Start time {start_seconds} must be less than end time {end_seconds}"
-            )
-        if duration and start_seconds > duration:
-            pass
-
-        normalized_candidates.append({
-            "video_id": video_id,
-            "start_timestamp": candidate.start_timestamp,
-            "end_timestamp": candidate.end_timestamp,
-            "start_seconds": start_seconds,
-            "end_seconds": end_seconds,
-            "description": candidate.description,
-        })
-    return normalized_candidates
-
-
-def _process_analysis_results(
-    jobs: list[dict],
-    analysis_results: list[dict],
-    errors: list[dict],
-) -> tuple[dict[str, dict], dict[str, list[str]]]:
-    """Process results into structured output."""
-    results_by_scene_id: dict[str, dict] = {}
-    notes_by_scene_id: dict[str, list[str]] = {}
-    
-    # Initialize containers
-    for job in jobs:
-        results_by_scene_id.setdefault(
-            job["scene_id"],
-            {"scene_id": job["scene_id"], "candidates": []},
-        )
-        notes_by_scene_id.setdefault(job["scene_id"], [])
-
-    for result in analysis_results:
-        scene_id = result.get("scene_id")
-        video_id = result.get("video_id")
-        
-        if result.get("error"):
-            errors.append({
-                "scene_id": scene_id,
-                "video_id": video_id,
-                "error": result["error"]
-            })
-            continue
-            
-        if "candidates" in result:
-            results_by_scene_id[scene_id]["candidates"].extend(result["candidates"])
-        
-        if result.get("notes"):
-             notes_by_scene_id[scene_id].append(f"[{video_id}] {result['notes']}")
-            
-    return results_by_scene_id, notes_by_scene_id
-
-
 def _check_scene_warnings(scenes: list[_StoryboardScene]) -> str:
     """Check for time overlaps and duration mismatches."""
     from collections import defaultdict
@@ -775,8 +331,8 @@ def _build_tools(
     brief_store: BriefStore,
     event_store: EventStore,
     session_id: str,
-    company_id: str,
-    user_id: str,
+    company_id: Optional[str],
+    user_id: Optional[str],
     auto_render_callback: Optional[Callable[[], None]] = None,
 ):
     def tool_error(name: str):
@@ -818,6 +374,15 @@ def _build_tools(
                     raise
             return wrapped
         return decorator
+
+    scene_matcher = SceneMatcher(
+        config=config,
+        storyboard_store=storyboard_store,
+        event_store=event_store,
+        session_id=session_id,
+        company_id=company_id,
+        user_id=user_id,
+    )
 
 
     @function_tool(
@@ -1068,84 +633,8 @@ def _build_tools(
     @function_tool(failure_error_function=tool_error("match_scene_to_video"), strict_mode=False)
     @log_tool("match_scene_to_video")
     async def match_scene_to_video(payload: SceneMatchBatchRequest) -> str:
-        """Find candidate video clips for one or more storyboard scenes using uploaded video context.
-
-        Each request includes a scene_id and candidate_video_ids (max 5). The tool evaluates each
-        candidate video in its own prompt and merges the outputs by scene_id.
-        Optional duration_seconds can guide clip length only when no voice over exists for the scene.
-        (Refer to system prompt for full details on matching logic).
-        """
-        scenes = storyboard_store.load(session_id, user_id=user_id) or []
-        if not scenes:
-            return "No storyboard scenes found. Create a storyboard before matching scenes."
-        if not payload.requests:
-            return "No scene match requests provided."
-
-        library = VideoLibrary(config, company_id=company_id)
-        library.scan_library()
-
-        # 1. Validation and Job Building
-        jobs, errors, warnings_by_scene_id = _validate_and_build_jobs(
-            payload.requests, scenes, library
-        )
-        if not jobs:
-             response_payload = {"results": []}
-             if errors:
-                 response_payload["errors"] = errors
-             return json.dumps(response_payload)
-
-        # 2. Upload Videos
-        client = GeminiClient(config)
-        uploaded_files, failed_uploads = _upload_job_videos(client, jobs)
-        
-        # Filter jobs if upload failed
-        valid_jobs = []
-        for job in jobs:
-            if job["video_id"] in failed_uploads:
-                errors.append({
-                    "scene_id": job["scene_id"],
-                    "video_id": job["video_id"],
-                    "error": f"Failed to upload video: {failed_uploads[job['video_id']]}",
-                })
-            else:
-                valid_jobs.append(job)
-        jobs = valid_jobs
-
-        if not jobs:
-            response_payload = {"results": []}
-            if errors:
-                response_payload["errors"] = errors
-            return json.dumps(response_payload)
-
-        # 3. Execution (Analysis)
-        analysis_results = await _execute_analysis_jobs(client, jobs, uploaded_files)
-
-        # 4. Processing Results
-        results_by_scene_id, notes_by_scene_id = _process_analysis_results(
-            jobs, analysis_results, errors
-        )
-        
-        response_payload = {
-            "results": list(results_by_scene_id.values()),
-        }
-        if notes_by_scene_id:
-            response_payload["notes"] = notes_by_scene_id
-        if warnings_by_scene_id:
-            # Flatten empty warnings
-            final_warnings = {k: v for k, v in warnings_by_scene_id.items() if v}
-            if final_warnings:
-                response_payload["warnings"] = final_warnings
-        if errors:
-            response_payload["errors"] = errors
-        
-        event_store.append(session_id, {"type": "video_render_complete"}, user_id=user_id)
-
-        return (
-            f"{json.dumps(response_payload)}\n"
-            "Message: Review the candidates and confirm which one meets the requirements. "
-            "Then update the story board with your chosen clip using 'update_matched_scenes'. "
-            "If no clips match the requirements, update the notes and call this tool again."
-        )
+        """Find candidate clips for one or more storyboard scenes."""
+        return await scene_matcher.match_scene_to_video(payload)
 
     @function_tool(failure_error_function=tool_error("estimate_voice_duration"), strict_mode=False)
     @log_tool("estimate_voice_duration")
@@ -1391,7 +880,7 @@ def _build_tools(
         
         try:
             # Initialize the Genai client
-            client = genai.Client(vertexai=True)
+            client = genai.Client(**build_vertex_client_kwargs(config))
             
             # Use the GCS URI directly for output
             gcs_key = _generated_scene_blob_key(company_id, session_id, output_filename)
@@ -1537,6 +1026,5 @@ def _build_tools(
         update_video_brief,
         match_scene_to_video,
         generate_voice_overs,
-        estimate_voice_duration,
         generate_scene,
     ]

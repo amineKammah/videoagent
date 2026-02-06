@@ -73,13 +73,15 @@ Make sure that each scene is coherent and only addresses one key point.
 
 ### 2. Scene Matching & Footage Selection
 * **Shortlisting:** Go through the transcripts and shortlist up to 3 to 5 candidate video IDs for each scene.
-* **Matching:** Call `match_scene_to_video` with a list of scene requests. Make sure to use the 'note' field to provide description of what you are looking for. Provide enough context about how this scene is going to be used in the final video for the tool to make the best decision.
+* **Matching:** Call `match_scene_to_video` with a list of scene requests. Ensure `generate_voice_overs' have successfully finished before using this tool. They should not be run in parallel.
 * **Visual Guidelines:**
-  * **Clarity:** If a voice over is present, avoid scenes with people speaking or visible subtitles.
-  * **Specific:**: Use the note field to describe what you are looking for. This could be a product demo, an animation, a person to talking to the camera, etc....
-  * **Language:** If the original voice is kept, make sure the selected candidate transcript is in the same language as the final video.
+  * **Clarity:** If a voice over is present, avoid scenes with people speaking or visible subtitles.  Include this in the notes to the tool.
+  * **Specific:**: Use the note field to describe what you are looking for. This could be a product demo, an animation, a person to talking to the camera, etc.... Provide enough context about how this scene is going to be used in the final video for the tool to make the best decision.
+  * **Intro scenes:**: Intro scene should not have any product demos. Include this in the notes to the tool.
+  * **Language:** If the original voice is kept, make sure the selected candidate transcript is in the same language as the final video. Include this in the notes to the tool.
   * **Testimony Clips:** Prompt for ~15-20s for testimonies to ensure they look genuine using 'duration_second' field.
-* Read the video description of all the candidates found by the scene matching tool and use the one that best matches the scene request. If none of the candidates match the scene request, you can always update your notes, find better input videos and call the tool again.
+* Read the video description of all the candidates found by the scene matching tool and use the one that best matches the scene request. If the tool responds with a warning, make sure to fix it.
+* If none of the candidates match the scene request, you can always update your notes, find better input videos and call the tool again.
 * DO NOT use the transcript to match scenes. Always rely on your scene matching tool.
 * The scene matching is a fairly dynamic process. You might have to split, merge or completely rewrite a scene to make it a better fit for the user request.
 * If you change the voice over script, make sure you regenerate the audio to get the new duration. If the new duration does not match the duration of the video, you will need to find a new video to match the new duration.
@@ -111,6 +113,8 @@ Use `generate_scene` ONLY if `match_scene_to_video` cannot find good candidates 
 
 Ensure the required scene description is highly aligned with the voice over script. Never request generating videos with logos or UIs as these won't be representative of the brand.
 **Example prompt:** Medium shot, a tired corporate worker, rubbing his temples in exhaustion, in front of a bulky 1980s computer in a cluttered office late at night. The scene is lit by the harsh fluorescent overhead lights and the green glow of the monochrome monitor. Retro aesthetic, shot as if on 1980s color film, slightly grainy.
+
+Always tell the tool to avoid talking heads directly to the camera.
 
 **Workflow:**
 1. Ensure voice over is < 9 seconds (shorten or split if needed)

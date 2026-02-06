@@ -3,6 +3,59 @@ import { persist, createJSONStorage } from 'zustand/middleware';
 import { api, ApiUtils } from '@/lib/api';
 import { AgentEvent, Message, Session, StoryboardScene, VideoBrief, Company, User } from '@/lib/types';
 
+const MAX_STORED_EVENTS = 200;
+
+export function deriveSessionStateFromEvents(events: AgentEvent[]): {
+    isProcessing: boolean;
+    videoGenerating: boolean;
+    videoPath: string | null;
+} {
+    let lastRunStartIndex = -1;
+    let lastRunEndIndex = -1;
+    let lastRenderStartIndex = -1;
+    let lastRenderEndIndex = -1;
+    let latestVideoPath: string | null = null;
+
+    events.forEach((event, index) => {
+        if (event.type === 'run_start') {
+            lastRunStartIndex = index;
+        } else if (event.type === 'run_end') {
+            lastRunEndIndex = index;
+            lastRenderEndIndex = index;
+        } else if (event.type === 'video_render_start' || event.type === 'auto_render_start') {
+            lastRenderStartIndex = index;
+        } else if (event.type === 'video_render_complete' || event.type === 'auto_render_end') {
+            lastRenderEndIndex = index;
+            if (event.output) {
+                latestVideoPath = event.output;
+            }
+        }
+    });
+
+    return {
+        isProcessing: lastRunStartIndex > lastRunEndIndex,
+        videoGenerating: lastRenderStartIndex > lastRenderEndIndex,
+        videoPath: latestVideoPath,
+    };
+}
+
+export function selectLatestRunEvents(events: AgentEvent[], maxEvents = MAX_STORED_EVENTS): AgentEvent[] {
+    if (events.length === 0) {
+        return [];
+    }
+
+    let latestRunStartIndex = -1;
+    for (let i = events.length - 1; i >= 0; i -= 1) {
+        if (events[i].type === 'run_start') {
+            latestRunStartIndex = i;
+            break;
+        }
+    }
+
+    const runScopedEvents = latestRunStartIndex >= 0 ? events.slice(latestRunStartIndex) : events;
+    return runScopedEvents.slice(-maxEvents);
+}
+
 interface SessionStore {
     // State
     session: Session | null;
@@ -26,6 +79,7 @@ interface SessionStore {
     loadSession: (sessionId: string) => Promise<void>;
     sendMessage: (content: string) => Promise<void>;
     addMessage: (message: Message) => void;
+    setMessages: (messages: Message[]) => void;
     addEvent: (event: AgentEvent) => void;
     setEvents: (events: AgentEvent[]) => void;
     setEventsCursor: (cursor: number) => void;
@@ -153,6 +207,24 @@ export const useSessionStore = create<SessionStore>()(
                 } catch (error) {
                     console.error('Failed to load chat history:', error);
                 }
+
+                // Fetch event history so refresh can recover in-flight runs
+                try {
+                    const eventsResponse = await api.getEvents(sessionId, 0);
+                    const allEvents = eventsResponse.events || [];
+                    const derived = deriveSessionStateFromEvents(allEvents);
+                    const latestRunEvents = selectLatestRunEvents(allEvents);
+
+                    set({
+                        events: latestRunEvents,
+                        eventsCursor: eventsResponse.next_cursor,
+                        isProcessing: derived.isProcessing,
+                        videoGenerating: derived.videoGenerating,
+                        videoPath: derived.videoPath,
+                    });
+                } catch (error) {
+                    console.error('Failed to load event history:', error);
+                }
             },
 
             sendMessage: async (content: string) => {
@@ -214,6 +286,10 @@ export const useSessionStore = create<SessionStore>()(
 
             addMessage: (message: Message) => {
                 set(state => ({ messages: [...state.messages, message] }));
+            },
+
+            setMessages: (messages: Message[]) => {
+                set({ messages });
             },
 
             addEvent: (event: AgentEvent) => {

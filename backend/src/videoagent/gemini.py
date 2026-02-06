@@ -15,6 +15,7 @@ from typing import Optional, TypeVar, Union
 from pydantic import BaseModel
 
 from videoagent.config import Config, default_config
+from videoagent.gcp import build_vertex_client_kwargs
 
 T = TypeVar("T", bound=BaseModel)
 
@@ -54,13 +55,13 @@ class GeminiClient:
             self._load_dotenv()
             self.use_vertexai = vertexai
             if vertexai:
-                api_key = os.getenv("VERTEX_API_KEY")
+                return genai.Client(**build_vertex_client_kwargs(self.config))
             else:
                 api_key = os.getenv("GEMINI_API_KEY")
-            return genai.Client(
-                vertexai=vertexai,
-                api_key=api_key,
-            )
+                return genai.Client(
+                    vertexai=False,
+                    api_key=api_key,
+                )
 
         except ImportError:
             raise RuntimeError(
@@ -265,6 +266,26 @@ class GeminiClient:
         """Public wrapper for file uploads."""
         return self._upload_file(file_path)
 
+    @staticmethod
+    def _is_vertex_api_key_mode() -> bool:
+        return bool((os.getenv("VERTEX_API_KEY") or "").strip())
+
+    def _download_gs_uri_to_local_cache(self, gs_uri: str) -> Path:
+        from videoagent.storage import get_storage_client
+
+        cache_dir = Path(__file__).resolve().parents[3] / ".cache" / "gcs_uploads"
+        cache_dir.mkdir(parents=True, exist_ok=True)
+
+        uri_no_query = gs_uri.split("?", 1)[0]
+        suffix = Path(uri_no_query).suffix or ".bin"
+        cache_key = hashlib.sha256(gs_uri.encode("utf-8")).hexdigest()
+        local_path = cache_dir / f"{cache_key}{suffix}"
+
+        if not local_path.exists() or local_path.stat().st_size == 0:
+            storage = get_storage_client(self.config)
+            storage.download_to_filename(gs_uri, local_path)
+        return local_path
+
     def get_or_upload_file(self, file_path: str) -> object:
         """Return cached Gemini file if possible, otherwise upload and cache it."""
         normalized = file_path.strip()
@@ -272,6 +293,7 @@ class GeminiClient:
             raise ValueError("File path is empty.")
         elif not normalized.startswith("gs://"):
             raise ValueError("File path must start with gs://")
+
         from google.genai import types
 
         return types.Part(file_data=types.FileData(file_uri=normalized, mime_type=f"video/{normalized.split('.')[-1]}"))
@@ -346,7 +368,13 @@ class GeminiClient:
         if not response.candidates:
             raise ValueError("Gemini TTS returned no candidates. Check safety settings or prompt.")
         
-        return response.candidates[0].content.parts[0].inline_data.data
+        candidate = response.candidates[0]
+        if not candidate.content or not candidate.content.parts:
+            # Check for safety ratings or other reasons if available
+            finish_reason = getattr(candidate, "finish_reason", "UNKNOWN")
+            raise ValueError(f"Gemini TTS returned no content parts. Finish reason: {finish_reason}")
+            
+        return candidate.content.parts[0].inline_data.data
 
     async def generate_speeches_parallel(
         self,
@@ -399,4 +427,10 @@ class GeminiClient:
         if not response.candidates:
             raise ValueError("Gemini TTS returned no candidates. Check safety settings or prompt.")
 
-        return response.candidates[0].content.parts[0].inline_data.data
+        candidate = response.candidates[0]
+        if not candidate.content or not candidate.content.parts:
+             # Check for safety ratings or other reasons if available
+            finish_reason = getattr(candidate, "finish_reason", "UNKNOWN")
+            raise ValueError(f"Gemini TTS returned no content parts. Finish reason: {finish_reason}")
+
+        return candidate.content.parts[0].inline_data.data

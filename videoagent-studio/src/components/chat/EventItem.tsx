@@ -84,7 +84,7 @@ function getEventDisplay(event: AgentEvent): EventDisplay {
             }
             return {
                 icon: '🔧',
-                label: `Calling ${formatToolName(event.name)}...`,
+                label: `Calling ${formatEventName(event.name)}...`,
                 color: 'text-blue-600',
                 isAnimated: true,
             };
@@ -93,19 +93,18 @@ function getEventDisplay(event: AgentEvent): EventDisplay {
             if (event.status === 'ok') {
                 return {
                     icon: '✓',
-                    label: `${formatToolName(event.name)} complete`,
+                    label: `${formatEventName(event.name)} complete`,
                     color: 'text-green-600',
                     isAnimated: false,
                 };
             } else {
                 return {
                     icon: '✗',
-                    label: `${formatToolName(event.name)} failed`,
+                    label: `${formatEventName(event.name)} failed`,
                     color: 'text-red-600',
                     isAnimated: false,
                 };
             }
-
 
 
         case 'video_render_complete':
@@ -160,15 +159,15 @@ function getEventDisplay(event: AgentEvent): EventDisplay {
         default:
             return {
                 icon: '•',
-                label: event.message || event.type,
+                label: event.message || formatEventName(event.type),
                 color: 'text-slate-500',
                 isAnimated: false,
             };
     }
 }
 
-function formatToolName(name?: string): string {
-    if (!name) return 'tool';
+function formatEventName(name?: string): string {
+    if (!name) return 'Event';
     // Convert snake_case to Title Case
     return name
         .split('_')

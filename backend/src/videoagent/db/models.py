@@ -6,7 +6,7 @@ by changing the DATABASE_URL connection string.
 """
 from datetime import datetime
 
-from sqlalchemy import Boolean, Column, DateTime, Float, ForeignKey, String, Text
+from sqlalchemy import Boolean, Column, DateTime, Float, ForeignKey, Integer, String, Text
 from sqlalchemy.dialects.sqlite import JSON
 from sqlalchemy.orm import DeclarativeBase, relationship
 
@@ -71,6 +71,63 @@ class Session(Base):
     
     # Relationships
     company = relationship("Company", back_populates="sessions")
+    user = relationship("User")
+
+
+class SessionEvent(Base):
+    """Append-only event log for a session."""
+    __tablename__ = "session_events"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    session_id = Column(String, ForeignKey("sessions.id"), nullable=False, index=True)
+    user_id = Column(String, ForeignKey("users.id"), nullable=True, index=True)
+    event_type = Column(String, nullable=False)
+    payload = Column(JSON, default=dict, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
+
+    session = relationship("Session")
+    user = relationship("User")
+
+
+class SessionStoryboard(Base):
+    """Current storyboard state for a session."""
+    __tablename__ = "session_storyboards"
+
+    session_id = Column(String, ForeignKey("sessions.id"), primary_key=True)
+    user_id = Column(String, ForeignKey("users.id"), nullable=True, index=True)
+    scenes = Column(JSON, default=list, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    session = relationship("Session")
+    user = relationship("User")
+
+
+class SessionBrief(Base):
+    """Current video brief state for a session."""
+    __tablename__ = "session_briefs"
+
+    session_id = Column(String, ForeignKey("sessions.id"), primary_key=True)
+    user_id = Column(String, ForeignKey("users.id"), nullable=True, index=True)
+    brief = Column(JSON, default=dict, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    session = relationship("Session")
+    user = relationship("User")
+
+
+class SessionChatMessage(Base):
+    """Append-only chat history for a session."""
+    __tablename__ = "session_chat_messages"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    session_id = Column(String, ForeignKey("sessions.id"), nullable=False, index=True)
+    user_id = Column(String, ForeignKey("users.id"), nullable=True, index=True)
+    role = Column(String, nullable=False)
+    content = Column(Text, nullable=False)
+    suggested_actions = Column(JSON, default=list, nullable=False)
+    timestamp = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
+
+    session = relationship("Session")
     user = relationship("User")
 
 
@@ -165,4 +222,3 @@ class Pronunciation(Base):
     company = relationship("Company")
     created_by = relationship("User")
     session = relationship("Session")
-

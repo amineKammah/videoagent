@@ -9,7 +9,6 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from threading import Lock
 from typing import Optional
-from datetime import datetime   
 from uuid import uuid4
 
 from agents import (
@@ -19,6 +18,24 @@ from agents import (
     SQLiteSession,
     set_tracing_export_api_key,
 )
+import agents.tracing.span_data
+
+# Monkeypatch GenerationSpanData.export to remove 'requests' field from usage
+# which causes Tracing client error 400 (unknown parameter).
+# This is necessary because LitellmModel manually constructs the usage dict, bypassing serialize_usage.
+_original_generation_span_export = agents.tracing.span_data.GenerationSpanData.export
+
+def _patched_generation_span_export(self) -> dict:
+    data = _original_generation_span_export(self)
+    if data.get("usage") and "requests" in data["usage"]:
+        # Copy to avoid mutating original state if it matters
+        usage = data["usage"].copy()
+        if "requests" in usage:
+            del usage["requests"]
+        data["usage"] = usage
+    return data
+
+agents.tracing.span_data.GenerationSpanData.export = _patched_generation_span_export
 from agents.extensions.models.litellm_model import LitellmModel
 
 from videoagent.config import Config, default_config
@@ -71,6 +88,7 @@ class VideoAgentService:
         # user_id and company_id are resolved dynamically per session
         self.base_dir = base_dir or (Path.cwd() / "output" / "agent_sessions")
         self.base_dir.mkdir(parents=True, exist_ok=True)
+        models.Base.metadata.create_all(bind=connection.engine)
         # Stores are initialized without static user_id; methods must provide it
         self.storyboard_store = StoryboardStore(self.base_dir)
         self.brief_store = BriefStore(self.base_dir)
@@ -79,7 +97,8 @@ class VideoAgentService:
         self.session_db_path = self.base_dir / "agent_memory.db"
         self._agents: dict[str, Agent] = {}
         self._agent_lock = Lock()
-        self._run_lock = Lock()
+        self._run_locks_guard = Lock()
+        self._run_locks: dict[str, Lock] = {}
         self._render_lock = Lock()
         self._render_executor = ThreadPoolExecutor(max_workers=1)
         self._render_futures: dict[str, object] = {}
@@ -202,30 +221,15 @@ class VideoAgentService:
 
     def list_sessions(self) -> list[dict]:
         """List all available sessions with their creation timestamps."""
-        sessions = []
-        if not self.base_dir.exists():
-            return []
-        
-        seen_ids = set()
-        # Look for .events.jsonl files as the marker of a session
-        for path in self.base_dir.glob("*.events.jsonl"):
-            session_id = path.stem.split(".")[0]
-            if session_id in seen_ids:
-                continue
-            seen_ids.add(session_id)
-            
-            # Use file creation time
-            try:
-                created_at = datetime.fromtimestamp(path.stat().st_ctime).isoformat()
-            except OSError:
-                created_at = datetime.now().isoformat()
-                
-            sessions.append({
-                "session_id": session_id,
-                "created_at": created_at,
-            })
-            
-        return sorted(sessions, key=lambda x: x["created_at"], reverse=True)
+        with connection.get_db_context() as db:
+            rows = crud.list_sessions(db, active_only=False)
+            return [
+                {
+                    "session_id": row.id,
+                    "created_at": row.created_at.isoformat() if row.created_at else "",
+                }
+                for row in rows
+            ]
 
     def get_storyboard(self, session_id: str) -> Optional[list[_StoryboardScene]]:
         user_id, _ = self._resolve_session_owner(session_id)
@@ -285,6 +289,14 @@ class VideoAgentService:
                 }
             )
         return transcripts
+
+    def _get_run_lock(self, session_id: str) -> Lock:
+        with self._run_locks_guard:
+            lock = self._run_locks.get(session_id)
+            if lock is None:
+                lock = Lock()
+                self._run_locks[session_id] = lock
+            return lock
 
     def run_turn(self, session_id: str, user_message: str) -> dict:
         agent = self._get_agent(session_id)
@@ -349,7 +361,7 @@ class VideoAgentService:
         self.append_chat_message(session_id, "user", user_message)
         
         try:
-            with self._run_lock:
+            with self._get_run_lock(session_id):
                 result = Runner.run_sync(
                     agent,
                     input=user_message,

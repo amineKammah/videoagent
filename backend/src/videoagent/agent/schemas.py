@@ -108,3 +108,24 @@ class AgentResponse(BaseModel):
         ),
         max_length=3,
     )
+
+
+class SceneMatchVoiceOverCandidate(SceneMatchCandidate):
+    no_talking_heads_confirmed: bool = Field(
+        description="Confirm that there are no people speaking to the camera."
+    )
+    no_subtitles_confirmed: bool = Field(
+        description="Confirm that there are no burnt-in subtitles."
+    )
+    no_camera_recording_on_edge_of_frame_confirmed: bool = Field(
+        description="Confirm there is no camera recording of a person speaking on the edge of the frame."
+    )
+    clip_compatible_with_scene_script_confirmed: bool = Field(
+        description="Confirm that the clip is compatible with the scene script (no text overs/widgets that don't match)."
+    )
+
+
+class SceneMatchVoiceOverResponse(BaseModel):
+    """Response from the scene matching LLM call for Voice Over mode."""
+    candidates: list[SceneMatchVoiceOverCandidate] = Field(default_factory=list)
+    notes: Optional[str] = None

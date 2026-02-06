@@ -18,6 +18,7 @@ async def create_event_stream(
     session_id: str,
     user_id: str,
     request: Request,
+    start_cursor: Optional[int] = None,
     check_interval: float = 0.1,
 ) -> AsyncGenerator[str, None]:
     """
@@ -33,8 +34,11 @@ async def create_event_stream(
     Yields:
         SSE-formatted strings: "data: {...}\n\n"
     """
-    # Get initial cursor position (end of file)
-    _, cursor = event_store.read_since(session_id, None, user_id=user_id)
+    # Either resume from a caller-provided cursor or start from the current end.
+    if start_cursor is None:
+        _, cursor = event_store.read_since(session_id, None, user_id=user_id)
+    else:
+        cursor = int(start_cursor)
     
     # Send initial connection event
     yield f"data: {json.dumps({'type': 'connected', 'cursor': cursor})}\n\n"
@@ -51,6 +55,8 @@ async def create_event_stream(
             for event in events:
                 yield f"data: {json.dumps(event)}\n\n"
             cursor = new_cursor
+            # Emit cursor checkpoints so clients can resume on reconnect without replaying.
+            yield f"data: {json.dumps({'type': 'cursor', 'cursor': cursor})}\n\n"
         
         # Small sleep to prevent busy-waiting
         await asyncio.sleep(check_interval)
@@ -61,6 +67,7 @@ def create_sse_response(
     session_id: str,
     user_id: str,
     request: Request,
+    start_cursor: Optional[int] = None,
 ) -> StreamingResponse:
     """
     Create a StreamingResponse for SSE.
@@ -75,7 +82,7 @@ def create_sse_response(
         StreamingResponse configured for SSE
     """
     return StreamingResponse(
-        create_event_stream(event_store, session_id, user_id, request),
+        create_event_stream(event_store, session_id, user_id, request, start_cursor=start_cursor),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",

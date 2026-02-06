@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useSessionStore } from '@/store/session';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { api } from '@/lib/api';
@@ -15,13 +15,16 @@ export function Sidebar() {
     const loadSession = useSessionStore(state => state.loadSession);
 
 
-    const [sessionInput, setSessionInput] = useState('');
     const [isCreating, setIsCreating] = useState(false);
     const [isCollapsed, setIsCollapsed] = useState(true);
     const [sessions, setSessions] = useState<SessionListItem[]>([]);
 
     const searchParams = useSearchParams();
     const router = useRouter();
+
+    const navigateToSession = useCallback((sessionId: string) => {
+        router.push(`/studio?sessionId=${encodeURIComponent(sessionId)}`);
+    }, [router]);
 
     // Check API health on mount
 
@@ -54,35 +57,31 @@ export function Sidebar() {
                 loadSession(sessionId);
             }
         }
-    }, [apiHealthy, searchParams, session]); // Check when these change
+    }, [apiHealthy, loadSession, searchParams, session]); // Check when these change
+
+    const handleNewSession = useCallback(async () => {
+        setIsCreating(true);
+        try {
+            const newSessionId = await createSession();
+            navigateToSession(newSessionId);
+        } catch (error) {
+            console.error('Failed to create session:', error);
+        } finally {
+            setIsCreating(false);
+        }
+    }, [createSession, navigateToSession]);
 
     // Auto-create session if API is healthy and no session exists AND no session in URL
     useEffect(() => {
         const sessionIdParam = searchParams.get('sessionId');
         if (apiHealthy && !session && !isCreating && !sessionIdParam) {
-            handleNewSession();
+            void handleNewSession();
         }
-    }, [apiHealthy, session, searchParams]);
-
-    const handleNewSession = async () => {
-        setIsCreating(true);
-        try {
-            const newSessionId = await createSession();
-            router.push(`/?sessionId=${newSessionId}`);
-        } catch (error) {
-            setIsCreating(false);
-        }
-    };
-
-    const handleLoadSession = () => {
-        if (sessionInput.trim()) {
-            loadSession(sessionInput.trim());
-            setSessionInput('');
-        }
-    };
+    }, [apiHealthy, handleNewSession, isCreating, searchParams, session]);
 
     const handleSelectSession = (sessionId: string) => {
         loadSession(sessionId);
+        navigateToSession(sessionId);
     };
 
     const formatDate = (dateStr: string) => {

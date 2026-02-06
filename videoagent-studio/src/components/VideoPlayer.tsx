@@ -75,6 +75,51 @@ export const resolveSceneAudioSource = (scene?: StoryboardScene | null): string 
     return resolveMediaSource(voiceOver?.audio_url ?? voiceOver?.audio_path ?? null);
 };
 
+const READY_STATE_HAVE_FUTURE_DATA = 3;
+const MEDIA_READY_TIMEOUT_MS = 15000;
+
+const waitForMediaReady = (mediaEl: HTMLMediaElement, timeoutMs: number = MEDIA_READY_TIMEOUT_MS): Promise<void> => {
+    if (mediaEl.readyState >= READY_STATE_HAVE_FUTURE_DATA) return Promise.resolve();
+
+    return new Promise((resolve, reject) => {
+        let settled = false;
+
+        const cleanup = () => {
+            mediaEl.removeEventListener('canplay', handleReady);
+            mediaEl.removeEventListener('canplaythrough', handleReady);
+            mediaEl.removeEventListener('loadeddata', handleReady);
+            mediaEl.removeEventListener('error', handleError);
+            window.clearTimeout(timeoutId);
+        };
+
+        const finish = () => {
+            if (settled) return;
+            settled = true;
+            cleanup();
+            resolve();
+        };
+
+        const fail = (message: string) => {
+            if (settled) return;
+            settled = true;
+            cleanup();
+            reject(new Error(message));
+        };
+
+        const handleReady = () => finish();
+        const handleError = () => fail('Media failed to load');
+
+        mediaEl.addEventListener('canplay', handleReady);
+        mediaEl.addEventListener('canplaythrough', handleReady);
+        mediaEl.addEventListener('loadeddata', handleReady);
+        mediaEl.addEventListener('error', handleError);
+
+        const timeoutId = window.setTimeout(() => {
+            fail(`Media readiness timeout after ${timeoutMs}ms`);
+        }, timeoutMs);
+    });
+};
+
 export const VideoPlayer = forwardRef<VideoPlayerRef, VideoPlayerProps>(function VideoPlayer({
     onTimeUpdate,
     onPlayChange,
@@ -92,6 +137,7 @@ export const VideoPlayer = forwardRef<VideoPlayerRef, VideoPlayerProps>(function
     // State
     const [metadata, setMetadata] = useState<Record<string, VideoMetadata>>({});
     const [metadataLoading, setMetadataLoading] = useState(false);
+    const [assetLoading, setAssetLoading] = useState(false);
     const [currentSceneIndex, setCurrentSceneIndex] = useState(0);
     const [isPlaying, setIsPlaying] = useState(false);
     const [playbackState, setPlaybackState] = useState<'video' | 'waiting_for_audio'>('video');
@@ -385,13 +431,20 @@ export const VideoPlayer = forwardRef<VideoPlayerRef, VideoPlayerProps>(function
         // Mark transition start to ignore intermediate pause events
         if (shouldPlay) {
             isTransitioningRef.current = true;
+            setAssetLoading(true);
         }
 
         try {
             const meta = metadata[scene.matched_scene.source_video_id];
-            if (!meta || !videoRef.current) return;
+            const videoEl = videoRef.current;
+            const audioEl = audioRef.current;
+            if (!meta || !videoEl) return;
 
             setCurrentSceneIndex(sceneIndex);
+
+            const audioSrc = resolveSceneAudioSource(scene);
+            const shouldUseVoiceOver = Boolean(scene.use_voice_over && audioSrc && audioEl);
+            const voiceOverSrc = shouldUseVoiceOver ? (audioSrc as string) : null;
 
             // Load Video
             const videoSrc = resolveMetadataVideoSource(meta);
@@ -399,25 +452,29 @@ export const VideoPlayer = forwardRef<VideoPlayerRef, VideoPlayerProps>(function
                 setError('Video source is unavailable. Refreshing metadata may be required.');
                 return;
             }
-            if (videoRef.current.getAttribute('src') !== videoSrc) {
-                videoRef.current.src = videoSrc;
-                videoRef.current.load();
+            const readinessPromises: Promise<void>[] = shouldPlay ? [waitForMediaReady(videoEl)] : [];
+            if (shouldPlay && shouldUseVoiceOver && audioEl) {
+                readinessPromises.push(waitForMediaReady(audioEl));
+            }
+            if (videoEl.getAttribute('src') !== videoSrc) {
+                videoEl.src = videoSrc;
+                videoEl.load();
             }
             sourceRetryRef.current[scene.matched_scene.source_video_id] = 0;
             setError(null);
+            setPlaybackState('video');
 
             // Set Start Time
             // Only reset start time if we are not just toggling play on the same scene
             if (reason !== "toggle-play" || sceneIndex !== currentSceneIndex) {
-                videoRef.current.currentTime = scene.matched_scene.start_time;
+                videoEl.currentTime = scene.matched_scene.start_time;
             }
 
             // Handle Voice Over
-            const audioSrc = resolveSceneAudioSource(scene);
-            if (scene.use_voice_over && audioSrc && audioRef.current) {
-                if (audioRef.current.getAttribute('src') !== audioSrc) {
-                    audioRef.current.src = audioSrc;
-                    audioRef.current.load();
+            if (shouldUseVoiceOver && audioEl) {
+                if (audioEl.getAttribute('src') !== voiceOverSrc) {
+                    audioEl.src = voiceOverSrc;
+                    audioEl.load();
                 }
 
                 // Calculate Playback Rate
@@ -434,49 +491,47 @@ export const VideoPlayer = forwardRef<VideoPlayerRef, VideoPlayerProps>(function
 
                 console.log(`[playSegment] Syncing Audio. VideoDur=${videoDuration.toFixed(2)}, AudioDur=${audioDuration.toFixed(2)}, CalcRate=${rate.toFixed(2)}`);
 
-                audioRef.current.playbackRate = rate;
-                console.log(`[playSegment] Applied playbackRate: ${audioRef.current.playbackRate}`);
-
-                if (shouldPlay) {
-                    try {
-                        console.log("Audio attempting play...");
-                        // Important: Ensure we are not blocked by browsers
-                        await audioRef.current.play();
-                        console.log("Audio playing");
-                    } catch (e) {
-                        console.error("Audio play failed", e);
-                    }
-                } else {
-                    audioRef.current.pause();
-                }
-            } else {
+                audioEl.playbackRate = rate;
+                console.log(`[playSegment] Applied playbackRate: ${audioEl.playbackRate}`);
+            } else if (audioEl) {
                 // No audio or audio failed
-                if (audioRef.current) {
-                    audioRef.current.pause();
-                    audioRef.current.src = '';
-                }
+                audioEl.pause();
+                audioEl.src = '';
             }
 
-            // Mute video if playing voice over
-            // Play/Pause Video
-            if (videoRef.current) {
-                videoRef.current.muted = !!(scene.use_voice_over && audioSrc);
-                try {
-                    if (shouldPlay) {
-                        await videoRef.current.play();
-                        setIsPlaying(true);
-                        setPlaybackState('video');
-                    } else {
-                        videoRef.current.pause();
-                        setIsPlaying(false);
+            // Mute source video when playing a voice-over track.
+            videoEl.muted = shouldUseVoiceOver;
+
+            try {
+                if (shouldPlay) {
+                    await Promise.all(readinessPromises);
+
+                    if (shouldUseVoiceOver && audioEl) {
+                        const relativeTime = Math.max(0, videoEl.currentTime - scene.matched_scene.start_time);
+                        const audioTime = relativeTime * (audioEl.playbackRate || 1);
+                        if (isFinite(audioTime)) {
+                            audioEl.currentTime = audioTime;
+                        }
+                        await audioEl.play();
                     }
-                } catch (e) {
-                    console.error("Video play failed", e);
+
+                    await videoEl.play();
+                    setIsPlaying(true);
+                    setPlaybackState('video');
+                } else {
+                    videoEl.pause();
+                    audioEl?.pause();
                     setIsPlaying(false);
                 }
+            } catch (e) {
+                console.error("Media play failed", e);
+                setIsPlaying(false);
             }
         } finally {
             // Transition done
+            if (shouldPlay) {
+                setAssetLoading(false);
+            }
             isTransitioningRef.current = false;
         }
 
@@ -693,6 +748,8 @@ export const VideoPlayer = forwardRef<VideoPlayerRef, VideoPlayerProps>(function
 
 
     const togglePlay = () => {
+        if (assetLoading) return;
+
         if (isPlaying) {
             setIsPlaying(false);
             videoRef.current?.pause();
@@ -978,21 +1035,8 @@ export const VideoPlayer = forwardRef<VideoPlayerRef, VideoPlayerProps>(function
                             </button>
                         )}
                     </div>
-                    {/* Hidden Audio for VO */}
-                    <audio
-                        ref={audioRef}
-                        className="hidden"
-                        onError={(e) => {
-                            console.error("Audio Playback Error", e);
-                            setPlaybackState('video');
-                            if (videoRef.current) {
-                                videoRef.current.muted = false;
-                            }
-                        }}
-                    />
-
                     {/* Overlays */}
-                    {metadataLoading && (
+                    {(metadataLoading || assetLoading) && (
                         <div className="absolute inset-0 flex items-center justify-center bg-black/50 text-white">
                             Loading assets...
                         </div>
@@ -1006,64 +1050,66 @@ export const VideoPlayer = forwardRef<VideoPlayerRef, VideoPlayerProps>(function
             </div>
 
             {/* Timeline & Feedback Footer */}
-            <div className="bg-white border-t border-slate-200 px-0 py-2">
-                {/* Scene Timeline */}
-                <SceneTimeline
-                    scenes={scenes}
-                    metadata={metadata}
-                    currentSceneIndex={currentSceneIndex}
-                    onSceneSelect={(idx) => {
-                        // Select and Pause
-                        playSegment(idx, false, "manual-select");
-                    }}
-                    onTrimChange={handleTrimChange}
-                    onTrimEnd={handleTrimEnd}
-                    isPlaying={isPlaying}
-                />
+            <div className="bg-white border-t border-slate-200 py-2">
+                <div className="w-full max-w-5xl mx-auto">
+                    {/* Scene Timeline */}
+                    <SceneTimeline
+                        scenes={scenes}
+                        metadata={metadata}
+                        currentSceneIndex={currentSceneIndex}
+                        onSceneSelect={(idx) => {
+                            // Select and Pause
+                            playSegment(idx, false, "manual-select");
+                        }}
+                        onTrimChange={handleTrimChange}
+                        onTrimEnd={handleTrimEnd}
+                        isPlaying={isPlaying}
+                    />
 
-                {/* Pending Feedback List */}
-                {pendingFeedback.length > 0 && (
-                    <div className="mt-4 pt-4 border-t border-slate-100 animate-slide-in">
-                        <div className="flex items-center justify-between mb-3">
-                            <h4 className="font-semibold text-slate-800 text-sm flex items-center gap-2">
-                                <span className="w-2 h-2 rounded-full bg-amber-500"></span>
-                                Pending Changes ({pendingFeedback.length})
-                            </h4>
-                            <button
-                                onClick={submitAllFeedback}
-                                className="bg-teal-600 hover:bg-teal-700 text-white text-xs font-semibold px-3 py-1.5 rounded-lg flex items-center gap-2 transition-colors shadow-sm"
-                            >
-                                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"></path></svg>
-                                Submit All to Agent
-                            </button>
-                        </div>
+                    {/* Pending Feedback List */}
+                    {pendingFeedback.length > 0 && (
+                        <div className="mt-4 pt-4 border-t border-slate-100 animate-slide-in">
+                            <div className="flex items-center justify-between mb-3">
+                                <h4 className="font-semibold text-slate-800 text-sm flex items-center gap-2">
+                                    <span className="w-2 h-2 rounded-full bg-amber-500"></span>
+                                    Pending Changes ({pendingFeedback.length})
+                                </h4>
+                                <button
+                                    onClick={submitAllFeedback}
+                                    className="bg-teal-600 hover:bg-teal-700 text-white text-xs font-semibold px-3 py-1.5 rounded-lg flex items-center gap-2 transition-colors shadow-sm"
+                                >
+                                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"></path></svg>
+                                    Submit All to Agent
+                                </button>
+                            </div>
 
-                        <div className="space-y-2 max-h-48 overflow-y-auto pr-1 custom-scrollbar">
-                            {pendingFeedback.map((item) => (
-                                <div key={item.id} className="bg-slate-50 border border-slate-200 rounded-md p-2.5 flex items-start gap-3 group">
-                                    <div className="flex-shrink-0 mt-0.5">
-                                        <div className="w-5 h-5 bg-teal-100 text-teal-700 rounded flex items-center justify-center text-[10px] font-bold">
-                                            {item.sceneNumber}
+                            <div className="space-y-2 max-h-48 overflow-y-auto pr-1 custom-scrollbar">
+                                {pendingFeedback.map((item) => (
+                                    <div key={item.id} className="bg-slate-50 border border-slate-200 rounded-md p-2.5 flex items-start gap-3 group">
+                                        <div className="flex-shrink-0 mt-0.5">
+                                            <div className="w-5 h-5 bg-teal-100 text-teal-700 rounded flex items-center justify-center text-[10px] font-bold">
+                                                {item.sceneNumber}
+                                            </div>
                                         </div>
-                                    </div>
-                                    <div className="flex-1 min-w-0">
-                                        <div className="flex items-center gap-2 mb-0.5">
-                                            <span className="text-[10px] font-mono text-slate-500 bg-slate-200 px-1 rounded">{formatTime(item.relativeTime)}</span>
+                                        <div className="flex-1 min-w-0">
+                                            <div className="flex items-center gap-2 mb-0.5">
+                                                <span className="text-[10px] font-mono text-slate-500 bg-slate-200 px-1 rounded">{formatTime(item.relativeTime)}</span>
+                                            </div>
+                                            <p className="text-sm text-slate-700 leading-snug break-words">{item.feedback}</p>
                                         </div>
-                                        <p className="text-sm text-slate-700 leading-snug break-words">{item.feedback}</p>
+                                        <button
+                                            onClick={() => removePendingItem(item.id)}
+                                            className="text-slate-400 hover:text-red-500 p-1 opacity-0 group-hover:opacity-100 transition-opacity"
+                                            title="Remove note"
+                                        >
+                                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                                        </button>
                                     </div>
-                                    <button
-                                        onClick={() => removePendingItem(item.id)}
-                                        className="text-slate-400 hover:text-red-500 p-1 opacity-0 group-hover:opacity-100 transition-opacity"
-                                        title="Remove note"
-                                    >
-                                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
-                                    </button>
-                                </div>
-                            ))}
+                                ))}
+                            </div>
                         </div>
-                    </div>
-                )}
+                    )}
+                </div>
             </div>
 
             {/* Feedback Dialog Overlay */}
@@ -1110,6 +1156,13 @@ export const VideoPlayer = forwardRef<VideoPlayerRef, VideoPlayerProps>(function
                 className="hidden"
                 preload="auto"
                 playsInline
+                onError={(e) => {
+                    console.error("Audio Playback Error", e);
+                    setPlaybackState('video');
+                    if (videoRef.current) {
+                        videoRef.current.muted = false;
+                    }
+                }}
             />
         </div>
     );

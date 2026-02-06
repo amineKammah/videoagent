@@ -15,6 +15,8 @@ except ImportError as exc:  # pragma: no cover
         "google-cloud-storage is required. Install with: pip install google-cloud-storage"
     ) from exc
 
+from videoagent.gcp import build_storage_client_kwargs
+
 
 PathLike = Union[str, Path]
 
@@ -32,7 +34,8 @@ class GCSStorageClient:
         if not bucket:
             raise ValueError("GCS bucket name is required.")
 
-        self.client = storage.Client()
+        # Force project/credentials from env to avoid silently using local gcloud login.
+        self.client = storage.Client(**build_storage_client_kwargs())
         self.bucket = self.client.bucket(bucket)
         self.bucket.reload()
         self.bucket_location = (self.bucket.location or "").lower()
