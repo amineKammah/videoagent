@@ -129,3 +129,48 @@ class SceneMatchVoiceOverResponse(BaseModel):
     """Response from the scene matching LLM call for Voice Over mode."""
     candidates: list[SceneMatchVoiceOverCandidate] = Field(default_factory=list)
     notes: Optional[str] = None
+
+
+# Candidate selection API schemas
+class SelectCandidateRequest(BaseModel):
+    """Request to select a specific candidate for a scene."""
+    model_config = ConfigDict(extra="forbid")
+    candidate_id: str = Field(description="ID of the candidate to select.")
+    reason: str = Field(default="", description="Optional reason for the selection.")
+
+
+class RestoreSelectionRequest(BaseModel):
+    """Request to restore a previous selection from history."""
+    model_config = ConfigDict(extra="forbid")
+    entry_id: str = Field(description="ID of the history entry to restore.")
+    reason: str = Field(default="", description="Optional reason for the restore.")
+
+
+class SceneUpdateResponse(BaseModel):
+    """Response after updating a scene's candidate selection."""
+    scene: _StoryboardScene
+
+
+# Agent tool schemas for saving handpicked candidates
+class CandidateItem(BaseModel):
+    """A candidate clip handpicked by the agent."""
+    model_config = ConfigDict(extra="forbid")
+    source_video_id: str = Field(description="12-hex video id from the library.")
+    start_time: float = Field(description="Clip start time in seconds.")
+    end_time: float = Field(description="Clip end time in seconds.")
+    description: str = Field(default="", description="Visual description of the clip.")
+    keep_original_audio: bool = Field(default=False, description="If true, keep original audio.")
+
+
+class SceneCandidatesItem(BaseModel):
+    """Candidates for a single scene."""
+    model_config = ConfigDict(extra="forbid")
+    scene_id: str = Field(description="Scene ID to set candidates for.")
+    candidates: list[CandidateItem] = Field(description="Ranked list of candidates (best first).")
+    selected_index: int = Field(default=0, description="Index of the candidate to select (0 = first/best).")
+
+
+class SetSceneCandidatesPayload(BaseModel):
+    """Payload for setting handpicked candidates for multiple scenes."""
+    model_config = ConfigDict(extra="forbid")
+    scenes: list[SceneCandidatesItem] = Field(description="List of scenes with their candidates.")

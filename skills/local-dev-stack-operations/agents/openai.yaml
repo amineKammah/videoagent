@@ -1,0 +1,4 @@
+interface:
+  display_name: "Local Dev Stack Ops"
+  short_description: "Run and troubleshoot local backend/frontend stack"
+  default_prompt: "Use $local-dev-stack-operations to install, run, and troubleshoot the local Cloud SQL proxy + backend + frontend development stack."

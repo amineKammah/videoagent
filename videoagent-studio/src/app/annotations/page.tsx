@@ -467,6 +467,7 @@ export default function AnnotationsPage() {
                                         ref={playerRef}
                                         onTimeUpdate={setCurrentTime}
                                         onPlayChange={setIsPlaying}
+                                        showSceneOptions={false}
                                         primaryAction={
                                             <button
                                                 onClick={handleAddAnnotation}

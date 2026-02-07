@@ -5,6 +5,38 @@ import { useSessionStore } from '@/store/session';
 import { StoryboardScene } from '@/lib/types';
 import { api } from '@/lib/api';
 
+const GENERATED_SOURCE_PREFIX = 'generated:';
+
+function isGeneratedScene(scene: StoryboardScene): boolean {
+    const sourceVideoId = scene.matched_scene?.source_video_id ?? '';
+    return sourceVideoId.startsWith(GENERATED_SOURCE_PREFIX);
+}
+
+function getSceneMatchLabel(scene: StoryboardScene): 'Generated' | 'Matched' {
+    return isGeneratedScene(scene) ? 'Generated' : 'Matched';
+}
+
+function formatMatchedSource(sourceVideoId: string): string {
+    if (!sourceVideoId) {
+        return '';
+    }
+
+    if (sourceVideoId.startsWith(GENERATED_SOURCE_PREFIX)) {
+        const [, runId = '', assetName = ''] = sourceVideoId.split(':');
+        const shortRunId = runId.slice(0, 8);
+        const safeAssetName = assetName || 'generated_clip.mp4';
+        const compactAssetName = safeAssetName.length > 48
+            ? `${safeAssetName.slice(0, 45)}...`
+            : safeAssetName;
+        return shortRunId
+            ? `generated/${compactAssetName} (${shortRunId})`
+            : `generated/${compactAssetName}`;
+    }
+
+    const filename = sourceVideoId.split('/').filter(Boolean).pop() || sourceVideoId;
+    return filename.length > 64 ? `${filename.slice(0, 61)}...` : filename;
+}
+
 export function Storyboard() {
     const scenes = useSessionStore(state => state.scenes);
     const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
@@ -107,6 +139,8 @@ interface SceneCardProps {
 }
 
 function SceneCard({ scene, index, onClick }: SceneCardProps) {
+    const sceneLabel = getSceneMatchLabel(scene);
+
     return (
         <button
             onClick={onClick}
@@ -120,7 +154,7 @@ function SceneCard({ scene, index, onClick }: SceneCardProps) {
                     Scene {index + 1}
                 </span>
                 {scene.matched_scene && (
-                    <span className="w-2 h-2 rounded-full bg-green-500" title="Matched" />
+                    <span className="w-2 h-2 rounded-full bg-green-500" title={sceneLabel} />
                 )}
             </div>
             <h4 className="font-medium text-slate-800 text-sm line-clamp-2 leading-tight">
@@ -143,6 +177,8 @@ interface SceneModalProps {
 function SceneModal({ scenes, currentIndex, onClose, onNavigate }: SceneModalProps) {
     const { session, setScenes, sendMessage } = useSessionStore();
     const scene = scenes[currentIndex];
+    const sceneMatchLabel = getSceneMatchLabel(scene);
+    const isGenerated = sceneMatchLabel === 'Generated';
     const canGoPrev = currentIndex > 0;
     const canGoNext = currentIndex < scenes.length - 1;
 
@@ -219,8 +255,13 @@ function SceneModal({ scenes, currentIndex, onClose, onNavigate }: SceneModalPro
                             Scene {currentIndex + 1} of {scenes.length}
                         </span>
                         {scene.matched_scene && (
-                            <span className="text-xs bg-green-100 text-green-700 px-2 py-1 rounded">
-                                Matched
+                            <span
+                                className={`text-xs px-2 py-1 rounded ${isGenerated
+                                    ? 'bg-cyan-100 text-cyan-700'
+                                    : 'bg-green-100 text-green-700'
+                                    }`}
+                            >
+                                {sceneMatchLabel}
                             </span>
                         )}
                     </div>
@@ -338,20 +379,88 @@ function SceneModal({ scenes, currentIndex, onClose, onNavigate }: SceneModalPro
                             )}
 
                             {scene.matched_scene && (
-                                <div className="bg-green-50 rounded-lg p-4 border border-green-100">
-                                    <p className="text-xs font-medium text-green-700 uppercase tracking-wide mb-2">
-                                        Matched Clip
+                                <div className={`rounded-lg p-4 border ${isGenerated
+                                    ? 'bg-cyan-50 border-cyan-100'
+                                    : 'bg-green-50 border-green-100'
+                                    }`}>
+                                    <p className={`text-xs font-medium uppercase tracking-wide mb-2 ${isGenerated
+                                        ? 'text-cyan-700'
+                                        : 'text-green-700'
+                                        }`}>
+                                        {sceneMatchLabel} Clip
                                     </p>
-                                    <div className="space-y-1 text-sm text-green-800">
-                                        <p><span className="text-green-600">Source:</span> {scene.matched_scene.source_video_id}</p>
+                                    <div className={`space-y-1 text-sm ${isGenerated
+                                        ? 'text-cyan-800'
+                                        : 'text-green-800'
+                                        }`}>
                                         <p>
-                                            <span className="text-green-600">Range:</span>{' '}
+                                            <span className={isGenerated ? 'text-cyan-600' : 'text-green-600'}>Source:</span>{' '}
+                                            {formatMatchedSource(scene.matched_scene.source_video_id)}
+                                        </p>
+                                        <p>
+                                            <span className={isGenerated ? 'text-cyan-600' : 'text-green-600'}>Range:</span>{' '}
                                             {scene.matched_scene.start_time.toFixed(1)}s - {scene.matched_scene.end_time.toFixed(1)}s
                                         </p>
                                         {scene.matched_scene.description && (
-                                            <p><span className="text-green-600">Description:</span> {scene.matched_scene.description}</p>
+                                            <p>
+                                                <span className={isGenerated ? 'text-cyan-600' : 'text-green-600'}>Description:</span>{' '}
+                                                {scene.matched_scene.description}
+                                            </p>
                                         )}
                                     </div>
+                                </div>
+                            )}
+
+                            {/* Candidate Selection Pills */}
+                            {scene.matched_scene_candidates && scene.matched_scene_candidates.length > 1 && (
+                                <div className="bg-slate-50 rounded-lg p-4 border border-slate-200">
+                                    <p className="text-xs font-medium text-slate-500 uppercase tracking-wide mb-3">
+                                        Alternative Candidates
+                                    </p>
+                                    <div className="flex flex-wrap gap-2">
+                                        {scene.matched_scene_candidates.map((candidate, idx) => {
+                                            const isSelected = scene.selected_candidate_id === candidate.candidate_id;
+                                            return (
+                                                <button
+                                                    key={candidate.candidate_id}
+                                                    onClick={async () => {
+                                                        if (isSelected || !session) return;
+                                                        try {
+                                                            const updatedScene = await api.selectCandidate(
+                                                                session.id,
+                                                                scene.scene_id,
+                                                                candidate.candidate_id,
+                                                                'User selected via UI'
+                                                            );
+                                                            // Update scenes in store
+                                                            const newScenes = [...scenes];
+                                                            newScenes[currentIndex] = updatedScene;
+                                                            setScenes(newScenes);
+                                                        } catch (error) {
+                                                            console.error('Failed to select candidate:', error);
+                                                        }
+                                                    }}
+                                                    className={`px-3 py-1.5 text-xs font-medium rounded-full transition-all ${isSelected
+                                                            ? 'bg-teal-600 text-white shadow-sm'
+                                                            : 'bg-white text-slate-600 border border-slate-300 hover:border-teal-400 hover:text-teal-600'
+                                                        }`}
+                                                    title={candidate.description || `Candidate ${idx + 1}`}
+                                                >
+                                                    {isSelected && (
+                                                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" className="w-3 h-3 inline mr-1">
+                                                            <path fillRule="evenodd" d="M12.416 3.376a.75.75 0 0 1 .208 1.04l-5 7.5a.75.75 0 0 1-1.154.114l-3-3a.75.75 0 0 1 1.06-1.06l2.353 2.353 4.493-6.739a.75.75 0 0 1 1.04-.208Z" clipRule="evenodd" />
+                                                        </svg>
+                                                    )}
+                                                    Option {idx + 1}
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+                                    {scene.selected_candidate_id && (
+                                        <p className="text-xs text-slate-400 mt-2">
+                                            Click a pill to switch clips
+                                        </p>
+                                    )}
                                 </div>
                             )}
                         </>

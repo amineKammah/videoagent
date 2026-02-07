@@ -199,6 +199,15 @@ class SessionAnnotatorStatus(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
+class SessionGlobalStatus(Base):
+    """Global session status (legacy/backward compatibility)."""
+    __tablename__ = "session_status"
+    
+    session_id = Column(String, primary_key=True)
+    status = Column(String, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
 class Pronunciation(Base):
     """Pronunciation guidance for specific words/phrases."""
     __tablename__ = "pronunciations"

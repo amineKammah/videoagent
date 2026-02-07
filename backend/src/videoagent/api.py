@@ -38,7 +38,7 @@ from videoagent.annotations import (
     Severity,
     SessionStatus,
     SessionStatusInfo,
-    init_annotations_table,
+    AnnotationMetrics,
     create_annotation as db_create_annotation,
     get_annotation as db_get_annotation,
     list_annotations as db_list_annotations,
@@ -165,7 +165,8 @@ from videoagent.db import multitenancy_router, Base, engine
 async def lifespan(app: FastAPI):
     # Startup: Initialize fetching/database
     init_db()
-    init_annotations_table()
+    init_db()
+
     # Validate storage config early (global GCS mode).
     get_storage_client(agent_config)
     # Create new multi-tenancy tables if they don't exist
@@ -378,6 +379,96 @@ def update_storyboard(session_id: str, request: AgentStoryboardUpdateRequest) ->
     agent_service.save_storyboard(session_id, request.scenes)
     scenes = _hydrate_scene_media_urls(request.scenes) or []
     return AgentStoryboardResponse(session_id=session_id, scenes=scenes)
+
+
+# ============================================================================
+# Scene Candidate Selection Endpoints
+# ============================================================================
+
+from videoagent.candidates import select_candidate, restore_from_history
+from videoagent.agent.schemas import SelectCandidateRequest, RestoreSelectionRequest, SceneUpdateResponse
+
+
+@app.post("/agent/sessions/{session_id}/scenes/{scene_id}/select-candidate", response_model=SceneUpdateResponse)
+def select_scene_candidate(
+    session_id: str,
+    scene_id: str,
+    request: SelectCandidateRequest,
+    x_user_id: Optional[str] = Header(None, alias="X-User-Id"),
+    db: DBSession = Depends(get_db),
+) -> SceneUpdateResponse:
+    """Switch active selection to a different candidate."""
+    if not x_user_id:
+        raise HTTPException(status_code=400, detail="X-User-Id header required")
+
+    user = get_user(db, x_user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    scenes = agent_service.get_storyboard(session_id)
+    if not scenes:
+        raise HTTPException(status_code=404, detail=f"Storyboard not found for session {session_id}")
+
+    # Find the scene
+    scene = next((s for s in scenes if s.scene_id == scene_id), None)
+    if not scene:
+        raise HTTPException(status_code=404, detail=f"Scene {scene_id} not found")
+
+    try:
+        select_candidate(scene, request.candidate_id, changed_by="user", reason=request.reason)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+    # Save updated storyboard
+    agent_service.save_storyboard(session_id, scenes)
+
+    # Emit event for SSE
+    agent_service.event_store.append(session_id, {"type": "storyboard_update"}, user_id=x_user_id)
+
+    # Hydrate scene with media URLs before returning
+    hydrated = _hydrate_scene_media_urls([scene])
+    return SceneUpdateResponse(scene=hydrated[0] if hydrated else scene)
+
+
+@app.post("/agent/sessions/{session_id}/scenes/{scene_id}/restore-selection", response_model=SceneUpdateResponse)
+def restore_scene_selection(
+    session_id: str,
+    scene_id: str,
+    request: RestoreSelectionRequest,
+    x_user_id: Optional[str] = Header(None, alias="X-User-Id"),
+    db: DBSession = Depends(get_db),
+) -> SceneUpdateResponse:
+    """Restore a previous selection from history."""
+    if not x_user_id:
+        raise HTTPException(status_code=400, detail="X-User-Id header required")
+
+    user = get_user(db, x_user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    scenes = agent_service.get_storyboard(session_id)
+    if not scenes:
+        raise HTTPException(status_code=404, detail=f"Storyboard not found for session {session_id}")
+
+    # Find the scene
+    scene = next((s for s in scenes if s.scene_id == scene_id), None)
+    if not scene:
+        raise HTTPException(status_code=404, detail=f"Scene {scene_id} not found")
+
+    try:
+        restore_from_history(scene, request.entry_id, changed_by="user", reason=request.reason)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+    # Save updated storyboard
+    agent_service.save_storyboard(session_id, scenes)
+
+    # Emit event for SSE
+    agent_service.event_store.append(session_id, {"type": "storyboard_update"}, user_id=x_user_id)
+
+    # Hydrate scene with media URLs before returning
+    hydrated = _hydrate_scene_media_urls([scene])
+    return SceneUpdateResponse(scene=hydrated[0] if hydrated else scene)
 
 
 @app.post("/agent/sessions/{session_id}/render", response_model=AgentRenderResponse)
@@ -604,30 +695,31 @@ def _annotation_to_response(ann: Annotation) -> AnnotationResponse:
 
 
 @app.get("/annotations/stats/counts")
-def get_annotation_counts() -> dict[str, int]:
+def get_annotation_counts(db: DBSession = Depends(get_db)) -> dict[str, int]:
     """Get annotation counts for all sessions."""
-    return db_get_all_session_annotation_counts()
+    return db_get_all_session_annotation_counts(db)
 
 
 @app.get("/annotations/stats/statuses")
-def get_session_statuses() -> dict[str, SessionStatus]:
+def get_session_statuses(db: DBSession = Depends(get_db)) -> dict[str, SessionStatus]:
     """Get status for all sessions."""
-    return db_get_all_session_statuses()
+    return db_get_all_session_statuses(db)
 
 
 @app.get("/annotations/stats/conflicts")
-def get_session_conflicts() -> dict[str, int]:
+def get_session_conflicts(db: DBSession = Depends(get_db)) -> dict[str, int]:
     """Get conflict counts for all sessions."""
-    return db_get_all_session_conflict_counts()
+    return db_get_all_session_conflict_counts(db)
 
 
 @app.get("/annotations/{session_id}", response_model=AnnotationListResponse)
 def list_annotations(
     session_id: str,
     annotator_id: Optional[str] = Query(default=None),
+    db: DBSession = Depends(get_db),
 ) -> AnnotationListResponse:
     """List all annotations for a session."""
-    annotations = db_list_annotations(session_id, annotator_id)
+    annotations = db_list_annotations(db, session_id, annotator_id)
     return AnnotationListResponse(
         session_id=session_id,
         annotations=[_annotation_to_response(a) for a in annotations],
@@ -655,14 +747,14 @@ def create_annotation(
     request.annotator_id = user.id
     request.annotator_name = user.name
             
-    annotation = db_create_annotation(request)
+    annotation = db_create_annotation(db, request)
     return _annotation_to_response(annotation)
 
 
 @app.get("/annotations/detail/{annotation_id}", response_model=AnnotationResponse)
-def get_annotation(annotation_id: str) -> AnnotationResponse:
+def get_annotation(annotation_id: str, db: DBSession = Depends(get_db)) -> AnnotationResponse:
     """Get a single annotation by ID."""
-    annotation = db_get_annotation(annotation_id)
+    annotation = db_get_annotation(db, annotation_id)
     if not annotation:
         raise HTTPException(status_code=404, detail=f"Annotation not found: {annotation_id}")
     return _annotation_to_response(annotation)
@@ -672,27 +764,28 @@ def get_annotation(annotation_id: str) -> AnnotationResponse:
 def update_annotation(
     annotation_id: str,
     request: UpdateAnnotationRequest,
+    db: DBSession = Depends(get_db),
 ) -> AnnotationResponse:
     """Update an existing annotation."""
-    annotation = db_update_annotation(annotation_id, request)
+    annotation = db_update_annotation(db, annotation_id, request)
     if not annotation:
         raise HTTPException(status_code=404, detail=f"Annotation not found: {annotation_id}")
     return _annotation_to_response(annotation)
 
 
 @app.delete("/annotations/{annotation_id}")
-def delete_annotation(annotation_id: str) -> dict:
+def delete_annotation(annotation_id: str, db: DBSession = Depends(get_db)) -> dict:
     """Delete an annotation."""
-    deleted = db_delete_annotation(annotation_id)
+    deleted = db_delete_annotation(db, annotation_id)
     if not deleted:
         raise HTTPException(status_code=404, detail=f"Annotation not found: {annotation_id}")
     return {"deleted": True}
 
 
 @app.get("/annotations/{session_id}/metrics", response_model=AnnotationMetricsResponse)
-def get_annotation_metrics(session_id: str) -> AnnotationMetricsResponse:
+def get_annotation_metrics(session_id: str, db: DBSession = Depends(get_db)) -> AnnotationMetricsResponse:
     """Get aggregate metrics for annotations on a session."""
-    metrics = db_get_annotation_metrics(session_id)
+    metrics = db_get_annotation_metrics(db, session_id)
     
     # Get total scenes from storyboard
     scenes = agent_service.get_storyboard(session_id) or []
@@ -714,6 +807,7 @@ def get_annotation_metrics(session_id: str) -> AnnotationMetricsResponse:
 def compare_annotations(
     session_id: str,
     annotator_ids: Optional[str] = Query(default=None),
+    db: DBSession = Depends(get_db),
 ) -> dict:
     """Compare annotations from multiple annotators."""
     # Parse comma-separated annotator IDs
@@ -721,7 +815,7 @@ def compare_annotations(
     if annotator_ids:
         ids_list = [id.strip() for id in annotator_ids.split(",")]
     
-    result = db_compare_annotations(session_id, ids_list)
+    result = db_compare_annotations(db, session_id, ids_list)
     
     # Convert to dict for JSON response
     return {
@@ -751,15 +845,15 @@ class SessionStatusUpdate(BaseModel):
 
 
 @app.post("/annotations/{session_id}/status", response_model=SessionStatusInfo)
-def set_session_status(session_id: str, request: SessionStatusUpdate) -> SessionStatusInfo:
+def set_session_status(session_id: str, request: SessionStatusUpdate, db: DBSession = Depends(get_db)) -> SessionStatusInfo:
     """Set the annotation status for a session."""
-    return db_set_session_status(session_id, request.status, request.annotator_id)
+    return db_set_session_status(db, session_id, request.status, request.annotator_id)
 
 
 @app.get("/annotations/{session_id}/status", response_model=SessionStatusInfo)
-def get_session_status(session_id: str) -> SessionStatusInfo:
+def get_session_status(session_id: str, db: DBSession = Depends(get_db)) -> SessionStatusInfo:
     """Get the annotation status for a session."""
-    status = db_get_session_status(session_id)
+    status = db_get_session_status(db, session_id)
     if not status:
         # Default to PENDING if not found
         from datetime import datetime
@@ -776,23 +870,17 @@ class ResolveAnnotationsRequest(BaseModel):
 
 
 @app.post("/annotations/resolve")
-def resolve_annotations_endpoint(request: ResolveAnnotationsRequest) -> dict:
+def resolve_annotations_endpoint(request: ResolveAnnotationsRequest, db: DBSession = Depends(get_db)) -> dict:
     """Mark multiple annotations as resolved."""
-    count = db_resolve_annotations(request.annotation_ids, request.resolved_by)
+    count = db_resolve_annotations(db, request.annotation_ids, request.resolved_by)
     return {"resolved_count": count}
 
 
 @app.post("/annotations/reject")
-def reject_annotations_endpoint(request: ResolveAnnotationsRequest) -> dict:
+def reject_annotations_endpoint(request: ResolveAnnotationsRequest, db: DBSession = Depends(get_db)) -> dict:
     """Mark multiple annotations as rejected (soft delete)."""
-    count = db_reject_annotations(request.annotation_ids, request.resolved_by)
+    count = db_reject_annotations(db, request.annotation_ids, request.resolved_by)
     return {"rejected_count": count}
-    return status
 
 
-@app.get("/annotations/stats/statuses")
-def get_all_session_statuses() -> dict[str, str]:
-    """Get annotation statuses for all sessions."""
-    statuses = db_get_all_session_statuses()
-    # Convert Enums to strings for simpler JSON
-    return {k: v.value for k, v in statuses.items()}
+

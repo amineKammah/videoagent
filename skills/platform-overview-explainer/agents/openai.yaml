@@ -1,0 +1,4 @@
+interface:
+  display_name: "Platform Overview Explainer"
+  short_description: "Explain platform workflow and agent pipeline"
+  default_prompt: "Use $platform-overview-explainer to explain how this platform turns prospect data into personalized sales videos through brief creation, storyboard scenes, voice-over, asset matching, and AI fallback generation."

@@ -13,6 +13,7 @@ import asyncio
 import time
 import uuid
 from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime, timezone
 from typing import Optional
 
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, model_validator
@@ -52,6 +53,78 @@ class _MatchedScene(BaseModel):
     )
 
 
+class SceneCandidate(BaseModel):
+    """A candidate video clip for a storyboard scene."""
+
+    model_config = ConfigDict(extra="forbid")
+    candidate_id: str = Field(
+        default_factory=lambda: f"cand_{uuid.uuid4().hex[:8]}",
+        description="Unique identifier for this candidate.",
+    )
+    source_video_id: str = Field(
+        description="12-hex video id from the library.",
+    )
+    start_time: float = Field(
+        description="Clip start time in seconds.",
+    )
+    end_time: float = Field(
+        description="Clip end time in seconds.",
+    )
+    description: str = Field(
+        default="",
+        description="Visual description of the clip.",
+    )
+    rationale: str = Field(
+        default="",
+        description="Why this clip fits the scene.",
+    )
+    keep_original_audio: bool = Field(
+        default=False,
+        description="Whether to keep original audio.",
+    )
+    last_rank: int = Field(
+        default=1,
+        description="Most recent rank from matching (1 = best).",
+    )
+    shortlisted: bool = Field(
+        default=True,
+        description="Whether this candidate is in the active shortlist.",
+    )
+    created_at: str = Field(
+        default_factory=lambda: datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+        description="ISO timestamp when candidate was created.",
+    )
+    updated_at: str = Field(
+        default_factory=lambda: datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+        description="ISO timestamp when candidate was last updated.",
+    )
+
+
+class SelectionHistoryEntry(BaseModel):
+    """Record of a candidate selection change."""
+
+    model_config = ConfigDict(extra="forbid")
+    entry_id: str = Field(
+        default_factory=lambda: f"hist_{uuid.uuid4().hex[:8]}",
+        description="Unique identifier for this history entry.",
+    )
+    candidate_id: str = Field(
+        description="The candidate that was previously selected.",
+    )
+    changed_at: str = Field(
+        default_factory=lambda: datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+        description="ISO timestamp when selection changed.",
+    )
+    changed_by: str = Field(
+        default="user",
+        description="Who made the change: 'user' or 'agent'.",
+    )
+    reason: str = Field(
+        default="",
+        description="Optional reason for the selection change.",
+    )
+
+
 class _StoryboardScene(BaseModel):
     model_config = ConfigDict(extra="forbid")
     scene_id: str = Field(
@@ -83,6 +156,51 @@ class _StoryboardScene(BaseModel):
         default=None,
         description="Optional ordering index for the scene.",
     )
+    # Multi-candidate support
+    matched_scene_candidates: list[SceneCandidate] = Field(
+        default_factory=list,
+        description="Ranked list of candidate clips for this scene.",
+    )
+    selected_candidate_id: Optional[str] = Field(
+        default=None,
+        description="ID of the currently selected candidate.",
+    )
+    matched_scene_history: list[SelectionHistoryEntry] = Field(
+        default_factory=list,
+        description="History of selection changes for this scene.",
+    )
+
+    @model_validator(mode="after")
+    def _enforce_invariants(self) -> "_StoryboardScene":
+        """Enforce shortlist cap, history cap, and matched_scene sync."""
+        # Cap shortlist at 5
+        shortlisted = [c for c in self.matched_scene_candidates if c.shortlisted]
+        if len(shortlisted) > 5:
+            shortlisted.sort(key=lambda c: c.last_rank)
+            for c in shortlisted[5:]:
+                c.shortlisted = False
+
+        # Cap history at 20
+        if len(self.matched_scene_history) > 20:
+            self.matched_scene_history = self.matched_scene_history[-20:]
+
+        # Sync matched_scene from selected candidate
+        if self.selected_candidate_id and self.matched_scene_candidates:
+            selected = next(
+                (c for c in self.matched_scene_candidates
+                 if c.candidate_id == self.selected_candidate_id),
+                None
+            )
+            if selected:
+                self.matched_scene = _MatchedScene(
+                    source_video_id=selected.source_video_id,
+                    start_time=selected.start_time,
+                    end_time=selected.end_time,
+                    description=selected.description,
+                    keep_original_audio=selected.keep_original_audio,
+                )
+
+        return self
 
 
 class _SceneClip(BaseModel):

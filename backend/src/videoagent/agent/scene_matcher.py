@@ -144,8 +144,10 @@ class SceneMatcher:
 
         return (
             f"{json.dumps(response_payload)}\n"
-            "Message: Review the candidates and confirm which one meets the requirements. "
-            "Then update the story board with your chosen clip using 'update_matched_scenes'. "
+            "Message: Review the candidates above. Curate the 2-4 BEST candidates per scene "
+            "(ranked from best to worst) and call 'set_scene_candidates' to save them. "
+            "The UI will display your curated candidates so the user can switch between "
+            "alternatives without another LLM call. "
             "If no clips match the requirements, update the notes and call this tool again."
         )
 
@@ -396,7 +398,8 @@ Evaluate the single video provided below.
 - Total Duration: {metadata.duration:.1f}s
 
 ### OUTPUT INSTRUCTIONS
-- Return up to 3 candidate clips.
+- Return up to 3 candidate clips, RANKED from best to worst.
+- The first candidate should be your top recommendation.
 - Return EXACTLY the `video_id` provided above.
 - Include a detailed visual description for each candidate.
 - Include rationale proving visual-rules compliance.
@@ -437,7 +440,8 @@ Evaluate the single video provided below.
 - Total Duration: {metadata.duration:.1f}s
 
 ### OUTPUT INSTRUCTIONS
-- Return up to 3 candidate clips.
+- Return up to 3 candidate clips, RANKED from best to worst.
+- The first candidate should be your top recommendation.
 - Return EXACTLY the `video_id` provided above.
 - Include what is being said and seen in each candidate description.
 - Include rationale confirming speaking-head and timing rule compliance.

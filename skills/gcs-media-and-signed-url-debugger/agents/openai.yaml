@@ -1,0 +1,4 @@
+interface:
+  display_name: "GCS Media URL Debugger"
+  short_description: "Debug GCS media paths and signed URL playback"
+  default_prompt: "Use $gcs-media-and-signed-url-debugger to diagnose gs:// path, signed URL, and media playback/export failures across backend and frontend."

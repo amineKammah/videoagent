@@ -42,6 +42,7 @@ interface VideoPlayerProps {
     overlay?: ReactNode;
     primaryAction?: ReactNode;
     hideTimeline?: boolean;
+    showSceneOptions?: boolean;
     className?: string;
 }
 
@@ -126,6 +127,7 @@ export const VideoPlayer = forwardRef<VideoPlayerRef, VideoPlayerProps>(function
     overlay,
     primaryAction,
     hideTimeline = false,
+    showSceneOptions = true,
     className
 }, ref) {
     const session = useSessionStore(state => state.session);
@@ -1065,6 +1067,61 @@ export const VideoPlayer = forwardRef<VideoPlayerRef, VideoPlayerProps>(function
                         onTrimEnd={handleTrimEnd}
                         isPlaying={isPlaying}
                     />
+
+                    {/* Candidate Pills Bar - for quick switching between alternatives */}
+                    {showSceneOptions && activeScene?.matched_scene_candidates && activeScene.matched_scene_candidates.length > 1 && (
+                        <div className="mt-3 pt-3 border-t border-slate-100">
+                            <div className="flex items-center gap-3 flex-wrap">
+                                <span className="text-xs font-medium text-slate-500 uppercase tracking-wide whitespace-nowrap">
+                                    Scene {currentSceneIndex + 1} Options:
+                                </span>
+                                <div className="flex gap-2 flex-wrap">
+                                    {activeScene.matched_scene_candidates.map((candidate, idx) => {
+                                        const isSelected = activeScene.selected_candidate_id === candidate.candidate_id;
+                                        return (
+                                            <button
+                                                key={candidate.candidate_id}
+                                                onClick={async () => {
+                                                    if (isSelected || !session) return;
+                                                    try {
+                                                        const updatedScene = await api.selectCandidate(
+                                                            session.id,
+                                                            activeScene.scene_id,
+                                                            candidate.candidate_id,
+                                                            'User selected via video player'
+                                                        );
+                                                        // Update scenes in store
+                                                        const newScenes = [...scenes];
+                                                        newScenes[currentSceneIndex] = updatedScene;
+                                                        setScenes(newScenes);
+                                                        // Reload the scene with new video
+                                                        playSegment(currentSceneIndex, false, "candidate-switch");
+                                                    } catch (error) {
+                                                        console.error('Failed to select candidate:', error);
+                                                    }
+                                                }}
+                                                className={`px-3 py-1.5 text-xs font-medium rounded-full transition-all ${isSelected
+                                                    ? 'bg-teal-600 text-white shadow-sm'
+                                                    : 'bg-slate-100 text-slate-600 hover:bg-teal-50 hover:text-teal-600 border border-slate-200 hover:border-teal-400'
+                                                    }`}
+                                                title={candidate.description || `Option ${idx + 1}`}
+                                            >
+                                                {isSelected && (
+                                                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" className="w-3 h-3 inline mr-1">
+                                                        <path fillRule="evenodd" d="M12.416 3.376a.75.75 0 0 1 .208 1.04l-5 7.5a.75.75 0 0 1-1.154.114l-3-3a.75.75 0 0 1 1.06-1.06l2.353 2.353 4.493-6.739a.75.75 0 0 1 1.04-.208Z" clipRule="evenodd" />
+                                                    </svg>
+                                                )}
+                                                Option {idx + 1}
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+                                <span className="text-[10px] text-slate-400 hidden sm:inline">
+                                    Click to swap video clip
+                                </span>
+                            </div>
+                        </div>
+                    )}
 
                     {/* Pending Feedback List */}
                     {pendingFeedback.length > 0 && (

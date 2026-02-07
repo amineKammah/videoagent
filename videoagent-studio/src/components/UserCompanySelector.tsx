@@ -1,20 +1,32 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { usePathname, useRouter } from 'next/navigation';
 import { useSessionStore } from '@/store/session';
 import { api } from '@/lib/api';
 import { Company, User } from '@/lib/types';
 
 export function UserCompanySelector() {
+    const router = useRouter();
+    const pathname = usePathname();
+
     const sessionCompany = useSessionStore(state => state.company);
     const sessionUser = useSessionStore(state => state.user);
     const setCompany = useSessionStore(state => state.setCompany);
     const setUser = useSessionStore(state => state.setUser);
+    const clearSessionData = useSessionStore(state => state.clearSessionData);
 
     const [companies, setCompanies] = useState<Company[]>([]);
     const [users, setUsers] = useState<User[]>([]);
     const [loadingCompanies, setLoadingCompanies] = useState(false);
     const [loadingUsers, setLoadingUsers] = useState(false);
+    const pendingCompanyContextReset = useRef(false);
+    const sessionCompanyId = sessionCompany?.id;
+
+    const resetActiveView = useCallback(() => {
+        clearSessionData();
+        router.replace(pathname);
+    }, [clearSessionData, pathname, router]);
 
     // Fetch companies on mount
     useEffect(() => {
@@ -35,14 +47,14 @@ export function UserCompanySelector() {
     // Fetch users when company changes
     useEffect(() => {
         const fetchUsers = async () => {
-            if (!sessionCompany) {
+            if (!sessionCompanyId) {
                 setUsers([]);
                 return;
             }
 
             setLoadingUsers(true);
             try {
-                const list = await api.listUsers(sessionCompany.id);
+                const list = await api.listUsers(sessionCompanyId);
                 setUsers(list);
 
                 // If the current user is NOT in the new list (e.g. we just switched company),
@@ -71,6 +83,11 @@ export function UserCompanySelector() {
                     console.warn('Selected company has no users!');
                 }
 
+                if (pendingCompanyContextReset.current) {
+                    pendingCompanyContextReset.current = false;
+                    resetActiveView();
+                }
+
             } catch (error) {
                 console.error('Failed to list users', error);
             } finally {
@@ -79,12 +96,13 @@ export function UserCompanySelector() {
         };
 
         fetchUsers();
-    }, [sessionCompany?.id]); // Only re-run if company ID changes
+    }, [sessionCompanyId, sessionUser?.id, setUser, resetActiveView]); // Keep user list in sync with active company/user
 
     const handleCompanyChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
         const companyId = e.target.value;
         const selected = companies.find(c => c.id === companyId);
         if (selected) {
+            pendingCompanyContextReset.current = selected.id !== sessionCompany?.id;
             setCompany(selected);
             // We rely on the useEffect above to fetch users and update the user selection
         }
@@ -95,6 +113,9 @@ export function UserCompanySelector() {
         const selected = users.find(u => u.id === userId);
         if (selected) {
             setUser(selected);
+            if (selected.id !== sessionUser?.id) {
+                resetActiveView();
+            }
         }
     };
 

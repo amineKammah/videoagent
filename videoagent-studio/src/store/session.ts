@@ -89,8 +89,21 @@ interface SessionStore {
     setVideoGenerating: (generating: boolean) => void;
     setVideoPath: (path: string | null) => void;
     clearEvents: () => void;
+    clearSessionData: () => void;
     reset: () => void;
 }
+
+const EMPTY_SESSION_STATE = {
+    session: null,
+    messages: [],
+    events: [],
+    scenes: [],
+    videoBrief: null,
+    isProcessing: false,
+    eventsCursor: undefined,
+    videoGenerating: false,
+    videoPath: null,
+};
 
 export const useSessionStore = create<SessionStore>()(
     persist(
@@ -326,6 +339,10 @@ export const useSessionStore = create<SessionStore>()(
 
             clearEvents: () => {
                 set({ events: [], eventsCursor: undefined });
+            },
+
+            clearSessionData: () => {
+                set(EMPTY_SESSION_STATE);
             },
 
             reset: () => {

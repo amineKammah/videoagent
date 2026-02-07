@@ -7,7 +7,7 @@ name = "videoagent"
 version = "0.1.0"
 description = "Backend library for LLM-powered personalized video generation."
 readme = "README.md"
-requires-python = ">=3.13"
+requires-python = ">=3.12"
 license = {text = "MIT"}
 authors = [{name = "VideoAgent"}]
 dependencies = [

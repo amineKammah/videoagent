@@ -6,6 +6,8 @@ import {
     SessionListResponse,
     SessionResponse,
     StoryboardScene,
+    SceneCandidate,
+    SelectionHistoryEntry,
     VideoMetadata,
     Customer,
     VideoBrief,
@@ -158,6 +160,46 @@ export const api = {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ scenes }),
         });
+    },
+
+    // ========================================================================
+    // Scene Candidate Selection
+    // ========================================================================
+
+    selectCandidate: async (
+        sessionId: string,
+        sceneId: string,
+        candidateId: string,
+        reason?: string
+    ): Promise<StoryboardScene> => {
+        const response = await fetchWithTimeout(
+            `${API_BASE}/agent/sessions/${sessionId}/scenes/${sceneId}/select-candidate`,
+            {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ candidate_id: candidateId, reason: reason || '' }),
+            }
+        );
+        const data = await handleResponse<{ scene: StoryboardScene }>(response);
+        return data.scene;
+    },
+
+    restoreSelection: async (
+        sessionId: string,
+        sceneId: string,
+        entryId: string,
+        reason?: string
+    ): Promise<StoryboardScene> => {
+        const response = await fetchWithTimeout(
+            `${API_BASE}/agent/sessions/${sessionId}/scenes/${sceneId}/restore-selection`,
+            {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ entry_id: entryId, reason: reason || '' }),
+            }
+        );
+        const data = await handleResponse<{ scene: StoryboardScene }>(response);
+        return data.scene;
     },
 
     updateSessionStatus: async (sessionId: string, status: SessionStatus, annotatorId?: string): Promise<void> => {

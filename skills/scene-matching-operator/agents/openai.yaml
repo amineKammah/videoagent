@@ -1,0 +1,4 @@
+interface:
+  display_name: "Scene Matching Operator"
+  short_description: "Operate scene matching workflow safely"
+  default_prompt: "Use $scene-matching-operator to run scene candidate selection, note crafting, warning triage, and match updates."

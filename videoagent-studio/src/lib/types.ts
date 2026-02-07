@@ -82,6 +82,10 @@ export interface StoryboardScene {
     voice_over?: VoiceOver | null;
     matched_scene?: MatchedScene | null;
     order?: number | null;
+    // Multi-candidate support
+    matched_scene_candidates?: SceneCandidate[];
+    selected_candidate_id?: string | null;
+    matched_scene_history?: SelectionHistoryEntry[];
 }
 
 export interface MatchedScene {
@@ -91,6 +95,28 @@ export interface MatchedScene {
     end_time: number;
     description: string;
     keep_original_audio: boolean;
+}
+
+export interface SceneCandidate {
+    candidate_id: string;
+    source_video_id: string;
+    start_time: number;
+    end_time: number;
+    description: string;
+    rationale: string;
+    keep_original_audio: boolean;
+    last_rank: number;
+    shortlisted: boolean;
+    created_at: string;
+    updated_at: string;
+}
+
+export interface SelectionHistoryEntry {
+    entry_id: string;
+    candidate_id: string;
+    changed_at: string;
+    changed_by: 'user' | 'agent';
+    reason: string;
 }
 
 export interface VoiceOver {

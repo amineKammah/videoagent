@@ -20,7 +20,7 @@ from videoagent.gcp import build_vertex_client_kwargs
 from videoagent.library import VideoLibrary
 from videoagent.models import RenderResult, VoiceOver
 from videoagent.storage import get_storage_client
-from videoagent.story import _StoryboardScene
+from videoagent.story import _StoryboardScene, SceneCandidate
 from videoagent.db import crud, connection, models
 from videoagent.voice import VoiceOverGenerator, estimate_speech_duration
 from videoagent.editor import VideoEditor
@@ -32,6 +32,7 @@ from .schemas import (
     MatchedScenesUpdatePayload,
     VideoBriefUpdatePayload,
     SceneMatchBatchRequest,
+    SetSceneCandidatesPayload,
 )
 from .scene_matcher import SceneMatcher
 from .storage import (
@@ -487,7 +488,26 @@ def _build_tools(
 
         for item in payload.scenes:
             if item.scene_id in scene_map:
-                scene_map[item.scene_id].matched_scene = item.matched_scene
+                scene = scene_map[item.scene_id]
+                scene.matched_scene = item.matched_scene
+                
+                # Also create a SceneCandidate from this matched_scene
+                # This enables the multi-candidate UI even when updated via LLM
+                candidate = SceneCandidate(
+                    source_video_id=item.matched_scene.source_video_id,
+                    start_time=item.matched_scene.start_time,
+                    end_time=item.matched_scene.end_time,
+                    description=item.matched_scene.description,
+                    keep_original_audio=item.matched_scene.keep_original_audio,
+                    last_rank=1,
+                    shortlisted=True,
+                )
+                # Replace candidates with the single new selection
+                scene.matched_scene_candidates = [candidate]
+                scene.selected_candidate_id = candidate.candidate_id
+                # Clear history when LLM replaces the clip entirely
+                scene.matched_scene_history = []
+                
                 updated_count += 1
             else:
                 missing_ids.append(item.scene_id)
@@ -502,6 +522,70 @@ def _build_tools(
             
         warnings = _check_scene_warnings(scenes)
         return msg + warnings
+
+    @function_tool(failure_error_function=tool_error("set_scene_candidates"), strict_mode=True)
+    @log_tool("set_scene_candidates")
+    def set_scene_candidates(payload: SetSceneCandidatesPayload) -> str:
+        """Save handpicked candidates for one or more scenes. Use this after reviewing 
+        scene matching results to curate the best alternatives for each scene.
+        
+        The candidates are ranked from best to worst. The 'selected_index' determines
+        which candidate becomes the active matched_scene. Alternative candidates are
+        displayed in the UI for the user to switch between.
+        """
+        scenes = storyboard_store.load(session_id)
+        scene_map = {s.scene_id: s for s in scenes}
+        updated_count = 0
+        missing_ids = []
+
+        for item in payload.scenes:
+            scene = scene_map.get(item.scene_id)
+            if not scene:
+                missing_ids.append(item.scene_id)
+                continue
+
+            if not item.candidates:
+                continue
+
+            # Convert CandidateItem to SceneCandidate
+            new_candidates = []
+            for rank, cand in enumerate(item.candidates):
+                new_candidates.append(SceneCandidate(
+                    source_video_id=cand.source_video_id,
+                    start_time=cand.start_time,
+                    end_time=cand.end_time,
+                    description=cand.description,
+                    rationale="",
+                    keep_original_audio=cand.keep_original_audio,
+                    last_rank=rank,
+                    shortlisted=True,
+                ))
+
+            # Set candidates using the candidates module
+            from videoagent.candidates import set_candidates
+            set_candidates(scene, new_candidates)
+
+            # Select the candidate at selected_index
+            if item.selected_index >= 0 and item.selected_index < len(new_candidates):
+                from videoagent.candidates import select_candidate
+                select_candidate(
+                    scene,
+                    new_candidates[item.selected_index].candidate_id,
+                    changed_by="agent",
+                    reason="Agent selected best candidate"
+                )
+
+            updated_count += 1
+
+        if updated_count > 0:
+            storyboard_store.save(session_id, scenes, user_id=user_id)
+            event_store.append(session_id, {"type": "storyboard_update"}, user_id=user_id)
+
+        msg = f"Saved candidates for {updated_count} scene(s)."
+        if missing_ids:
+            msg += f" Warning: Scene IDs not found: {', '.join(missing_ids)}"
+
+        return msg
 
     @function_tool(failure_error_function=tool_error("update_video_brief"), strict_mode=True)
     @log_tool("update_video_brief")
@@ -1023,6 +1107,7 @@ def _build_tools(
         update_storyboard,
         update_storyboard_scene,
         update_matched_scenes,
+        set_scene_candidates,
         update_video_brief,
         match_scene_to_video,
         generate_voice_overs,

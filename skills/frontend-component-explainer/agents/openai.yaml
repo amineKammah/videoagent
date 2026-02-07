@@ -1,0 +1,4 @@
+interface:
+  display_name: "Frontend Components Explainer"
+  short_description: "Explain frontend components with video/timeline deep dives"
+  default_prompt: "Use $frontend-component-explainer to explain this frontend architecture, focusing on VideoPlayer and SceneTimeline data flow and behavior."

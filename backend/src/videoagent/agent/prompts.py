@@ -74,6 +74,16 @@ Make sure that each scene is coherent and only addresses one key point.
 ### 2. Scene Matching & Footage Selection
 * **Shortlisting:** Go through the transcripts and shortlist up to 3 to 5 candidate video IDs for each scene.
 * **Matching:** Call `match_scene_to_video` with a list of scene requests. Ensure `generate_voice_overs' have successfully finished before using this tool. They should not be run in parallel.
+
+* **Candidate Curation (IMPORTANT):**
+  After receiving scene matching results, YOU must curate the best candidates for each scene:
+  1. Review ALL candidates returned by `match_scene_to_video`
+  2. For each scene, pick 2-4 of the BEST alternatives (ranked from best to worst)
+  3. Call `set_scene_candidates` to save your handpicked candidates
+  4. The UI will display these as "Alternative Candidates" so the user can switch between clips without another LLM call
+  
+  This gives users more control while reducing back-and-forth with you.
+
 * **Visual Guidelines:**
   * **Clarity:** If a voice over is present, avoid scenes with people speaking or visible subtitles.  Include this in the notes to the tool.
   * **Specific:**: Use the note field to describe what you are looking for. This could be a product demo, an animation, a person to talking to the camera, etc.... Provide enough context about how this scene is going to be used in the final video for the tool to make the best decision.

@@ -6,16 +6,21 @@ This module provides:
 - Database CRUD operations for annotations
 - Proximity-based clustering for multi-annotator comparison
 """
-import sqlite3
 import uuid
 from datetime import datetime
 from enum import Enum
-from pathlib import Path
-from typing import Optional
+from typing import Optional, List
 
 from pydantic import BaseModel, Field
+from sqlalchemy import func, or_, and_, select
+from sqlalchemy.orm import Session as DBSession
 
-from videoagent.database import get_db_connection
+# Import ORM models
+from videoagent.db.models import (
+    Annotation as DBAnnotation,
+    SessionAnnotatorStatus as DBSessionAnnotatorStatus,
+    SessionGlobalStatus as DBSessionGlobalStatus
+)
 
 
 class Severity(str, Enum):
@@ -82,9 +87,6 @@ class UpdateAnnotationRequest(BaseModel):
     rejected: Optional[bool] = None
 
 
-    rejected: Optional[bool] = None
-
-
 class AnnotationMetrics(BaseModel):
     """Aggregated metrics for annotations on a session."""
     total_annotations: int
@@ -131,99 +133,35 @@ class ComparisonResult(BaseModel):
     stats: dict
 
 
-def init_annotations_table():
-    """Create the annotations table if it doesn't exist."""
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS annotations (
-            id TEXT PRIMARY KEY,
-            company_id TEXT,
-            session_id TEXT NOT NULL,
-            scene_id TEXT NOT NULL,
-            timestamp REAL NOT NULL,
-            global_timestamp REAL NOT NULL,
-            annotator_id TEXT NOT NULL,
-            annotator_name TEXT NOT NULL,
-            category TEXT NOT NULL,
-            description TEXT NOT NULL,
-            severity TEXT DEFAULT 'medium',
-            created_at TEXT NOT NULL,
-            updated_at TEXT NOT NULL,
-            resolved INTEGER DEFAULT 0,
-            resolved_by TEXT,
-            rejected INTEGER DEFAULT 0
-        )
-    """)
-    
-    # Create indexes
-    cursor.execute("""
-        CREATE INDEX IF NOT EXISTS idx_annotations_session 
-        ON annotations(session_id)
-    """)
-    cursor.execute("""
-        CREATE INDEX IF NOT EXISTS idx_annotations_annotator 
-        ON annotations(session_id, annotator_id)
-    """)
-    
-    # Create session_annotator_status table
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS session_annotator_status (
-            session_id TEXT NOT NULL,
-            annotator_id TEXT NOT NULL,
-            status TEXT NOT NULL,
-            updated_at TEXT NOT NULL,
-            PRIMARY KEY (session_id, annotator_id)
-        )
-    """)
-
-    # Keep global session_status for backward compat if needed, or migration
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS session_status (
-            session_id TEXT PRIMARY KEY,
-            status TEXT NOT NULL,
-            updated_at TEXT NOT NULL
-        )
-    """)
-    
-    conn.commit()
-    conn.close()
-
-
-def _row_to_annotation(row: sqlite3.Row) -> Annotation:
-    """Convert a database row to an Annotation model."""
-    rejected = False
-    if "rejected" in row.keys():
-         rejected = bool(row["rejected"])
-    
-    company_id = None
-    if "company_id" in row.keys():
-        company_id = row["company_id"]
-         
+def _orm_to_model(orm_obj: DBAnnotation) -> Annotation:
+    """Convert an ORM object to an Annotation model."""
     return Annotation(
-        id=row["id"],
-        company_id=company_id,
-        session_id=row["session_id"],
-        scene_id=row["scene_id"],
-        timestamp=row["timestamp"],
-        global_timestamp=row["global_timestamp"],
-        annotator_id=row["annotator_id"],
-        annotator_name=row["annotator_name"],
-        category=row["category"],
-        description=row["description"],
-        severity=Severity(row["severity"]),
-        created_at=datetime.fromisoformat(row["created_at"]),
-        updated_at=datetime.fromisoformat(row["updated_at"]),
-        resolved=bool(row["resolved"]),
-        resolved_by=row["resolved_by"],
-        rejected=rejected,
+        id=orm_obj.id,
+        company_id=orm_obj.company_id,
+        session_id=orm_obj.session_id,
+        scene_id=orm_obj.scene_id,
+        timestamp=orm_obj.timestamp,
+        global_timestamp=orm_obj.global_timestamp,
+        annotator_id=orm_obj.annotator_id,
+        annotator_name=orm_obj.annotator_name,
+        category=orm_obj.category,
+        description=orm_obj.description,
+        severity=Severity(orm_obj.severity),
+        created_at=orm_obj.created_at,
+        updated_at=orm_obj.updated_at,
+        resolved=orm_obj.resolved,
+        resolved_by=orm_obj.resolved_by,
+        rejected=orm_obj.rejected,
     )
 
-def create_annotation(request: CreateAnnotationRequest) -> Annotation:
+
+def create_annotation(db: DBSession, request: CreateAnnotationRequest) -> Annotation:
     """Create a new annotation in the database."""
     now = datetime.utcnow()
-    annotation = Annotation(
+    annotation_id = str(uuid.uuid4())
+    
+    db_annotation = DBAnnotation(
+        id=annotation_id,
         company_id=request.company_id,
         session_id=request.session_id,
         scene_id=request.scene_id,
@@ -233,219 +171,125 @@ def create_annotation(request: CreateAnnotationRequest) -> Annotation:
         annotator_name=request.annotator_name,
         category=request.category,
         description=request.description,
-        severity=request.severity,
+        severity=request.severity.value,
         created_at=now,
         updated_at=now,
+        resolved=False,
+        rejected=False
     )
     
-    conn = get_db_connection()
-    cursor = conn.cursor()
+    db.add(db_annotation)
+    db.commit()
+    db.refresh(db_annotation)
     
-    cursor.execute("""
-        INSERT INTO annotations (
-            id, company_id, session_id, scene_id, timestamp, global_timestamp,
-            annotator_id, annotator_name, category, description, severity,
-            created_at, updated_at, resolved, resolved_by, rejected
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    """, (
-        annotation.id,
-        annotation.company_id,
-        annotation.session_id,
-        annotation.scene_id,
-        annotation.timestamp,
-        annotation.global_timestamp,
-        annotation.annotator_id,
-        annotation.annotator_name,
-        annotation.category,
-        annotation.description,
-        annotation.severity.value,
-        annotation.created_at.isoformat(),
-        annotation.updated_at.isoformat(),
-        0,
-        None,
-        0
-    ))
-    
-    conn.commit()
-    conn.close()
-    
-    return annotation
+    return _orm_to_model(db_annotation)
 
 
-def get_annotation(annotation_id: str) -> Optional[Annotation]:
+def get_annotation(db: DBSession, annotation_id: str) -> Optional[Annotation]:
     """Get a single annotation by ID."""
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    
-    cursor.execute("SELECT * FROM annotations WHERE id = ?", (annotation_id,))
-    row = cursor.fetchone()
-    conn.close()
-    
-    if row:
-        return _row_to_annotation(row)
-    return None
-
-
-
-def get_annotation(annotation_id: str) -> Optional[Annotation]:
-    """Get a single annotation by ID."""
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    
-    cursor.execute("SELECT * FROM annotations WHERE id = ?", (annotation_id,))
-    row = cursor.fetchone()
-    conn.close()
-    
-    if row:
-        return _row_to_annotation(row)
+    db_annotation = db.query(DBAnnotation).filter(DBAnnotation.id == annotation_id).first()
+    if db_annotation:
+        return _orm_to_model(db_annotation)
     return None
 
 
 def list_annotations(
+    db: DBSession,
     session_id: str,
     annotator_id: Optional[str] = None,
     include_rejected: bool = False,
 ) -> list[Annotation]:
     """List all annotations for a session, optionally filtered by annotator."""
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    
-    query = "SELECT * FROM annotations WHERE session_id = ?"
-    params = [session_id]
+    query = db.query(DBAnnotation).filter(DBAnnotation.session_id == session_id)
     
     if annotator_id:
-        query += " AND annotator_id = ?"
-        params.append(annotator_id)
+        query = query.filter(DBAnnotation.annotator_id == annotator_id)
         
     if not include_rejected:
-        # Check if column exists first? 
-        # Assuming schema is migrated.
-        query += " AND (rejected = 0 OR rejected IS NULL)"
+        query = query.filter(or_(DBAnnotation.rejected == False, DBAnnotation.rejected == None))
         
-    query += " ORDER BY global_timestamp"
+    query = query.order_by(DBAnnotation.global_timestamp)
+    rows = query.all()
     
-    cursor.execute(query, params)
-    rows = cursor.fetchall()
-    conn.close()
-    
-    return [_row_to_annotation(row) for row in rows]
+    return [_orm_to_model(row) for row in rows]
 
 
 def update_annotation(
+    db: DBSession,
     annotation_id: str,
     request: UpdateAnnotationRequest,
 ) -> Optional[Annotation]:
     """Update an existing annotation."""
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    
-    # Build update query dynamically based on provided fields
-    updates = []
-    values = []
+    db_annotation = db.query(DBAnnotation).filter(DBAnnotation.id == annotation_id).first()
+    if not db_annotation:
+        return None
     
     if request.category is not None:
-        updates.append("category = ?")
-        values.append(request.category)
+        db_annotation.category = request.category
     if request.description is not None:
-        updates.append("description = ?")
-        values.append(request.description)
+        db_annotation.description = request.description
     if request.severity is not None:
-        updates.append("severity = ?")
-        values.append(request.severity.value)
+        db_annotation.severity = request.severity.value
     if request.resolved is not None:
-        updates.append("resolved = ?")
-        values.append(1 if request.resolved else 0)
+        db_annotation.resolved = request.resolved
     if request.resolved_by is not None:
-        updates.append("resolved_by = ?")
-        values.append(request.resolved_by)
+        db_annotation.resolved_by = request.resolved_by
     if request.rejected is not None:
-        updates.append("rejected = ?")
-        values.append(1 if request.rejected else 0)
+        db_annotation.rejected = request.rejected
     
-    if not updates:
-        conn.close()
-        return get_annotation(annotation_id)
+    db_annotation.updated_at = datetime.utcnow()
     
-    updates.append("updated_at = ?")
-    values.append(datetime.utcnow().isoformat())
-    values.append(annotation_id)
+    db.commit()
+    db.refresh(db_annotation)
     
-    cursor.execute(
-        f"UPDATE annotations SET {', '.join(updates)} WHERE id = ?",
-        values
-    )
-    
-    conn.commit()
-    conn.close()
-    
-    return get_annotation(annotation_id)
-
-    return get_annotation(annotation_id)
+    return _orm_to_model(db_annotation)
 
 
-def delete_annotation(annotation_id: str) -> bool:
+def delete_annotation(db: DBSession, annotation_id: str) -> bool:
     """Delete an annotation by ID."""
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    
-    cursor.execute("DELETE FROM annotations WHERE id = ?", (annotation_id,))
-    deleted = cursor.rowcount > 0
-    
-    conn.commit()
-    conn.close()
-    
-    return deleted
+    db_annotation = db.query(DBAnnotation).filter(DBAnnotation.id == annotation_id).first()
+    if db_annotation:
+        db.delete(db_annotation)
+        db.commit()
+        return True
+    return False
 
-def reject_annotations(annotation_ids: list[str], resolved_by: Optional[str] = None) -> int:
+
+def reject_annotations(db: DBSession, annotation_ids: list[str], resolved_by: Optional[str] = None) -> int:
     """Mark annotations as rejected (soft delete)."""
     if not annotation_ids:
         return 0
         
-    conn = get_db_connection()
-    cursor = conn.cursor()
+    now = datetime.utcnow()
     
-    placeholders = ','.join('?' * len(annotation_ids))
-    now = datetime.utcnow().isoformat()
+    count = db.query(DBAnnotation).filter(
+        DBAnnotation.id.in_(annotation_ids)
+    ).update({
+        DBAnnotation.rejected: True,
+        DBAnnotation.resolved: True,
+        DBAnnotation.resolved_by: resolved_by,
+        DBAnnotation.updated_at: now
+    }, synchronize_session=False)
     
-    values = [1, 1, resolved_by, now]
-    values.extend(annotation_ids)
-    
-    # Rejected implies resolved (closed issue)
-    cursor.execute(f"""
-        UPDATE annotations 
-        SET rejected = ?, resolved = ?, resolved_by = ?, updated_at = ?
-        WHERE id IN ({placeholders})
-    """, values)
-    
-    count = cursor.rowcount
-    conn.commit()
-    conn.close()
-    
-    return count
-
+    db.commit()
     return count
 
 
-def get_all_session_annotation_counts() -> dict[str, int]:
+def get_all_session_annotation_counts(db: DBSession) -> dict[str, int]:
     """Get total number of annotations for each session."""
-    conn = get_db_connection()
-    cursor = conn.cursor()
+    rows = db.query(
+        DBAnnotation.session_id, func.count(DBAnnotation.id)
+    ).filter(
+        or_(DBAnnotation.rejected == False, DBAnnotation.rejected == None)
+    ).group_by(DBAnnotation.session_id).all()
     
-    cursor.execute("""
-        SELECT session_id, COUNT(*) as count 
-        FROM annotations 
-        WHERE (rejected = 0 OR rejected IS NULL)
-        GROUP BY session_id
-    """)
-    rows = cursor.fetchall()
-    conn.close()
-    
-    return {row["session_id"]: row["count"] for row in rows}
+    return {row[0]: row[1] for row in rows}
 
 
-def get_annotation_metrics(session_id: str) -> AnnotationMetrics:
+def get_annotation_metrics(db: DBSession, session_id: str) -> AnnotationMetrics:
     """Get metrics for a session's annotations."""
-    annotations = list_annotations(session_id)
+    # This reuses the list function which already returns Pydantic models
+    annotations = list_annotations(db, session_id)
     
     total = len(annotations)
     by_category = {}
@@ -468,33 +312,30 @@ def get_annotation_metrics(session_id: str) -> AnnotationMetrics:
 
 
 def compare_annotations(
+    db: DBSession,
     session_id: str,
     annotator_ids: Optional[list[str]] = None,
 ) -> ComparisonResult:
     """
     Compare annotations from multiple annotators.
-    Returns ALL annotations (including rejected) for history.
-    Status is determined by ACTIVE (non-rejected) annotations.
     """
     # Get all annotations including rejected
-    all_annotations = list_annotations(session_id, include_rejected=True)
+    all_annotations = list_annotations(db, session_id, include_rejected=True)
     
     # Filter by annotator_ids if provided
     if annotator_ids:
         all_annotations = [a for a in all_annotations if a.annotator_id in annotator_ids]
     
-    # Calculate total participants (Union of those who Annotated AND those who explicitly marked status)
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute("SELECT DISTINCT annotator_id FROM session_annotator_status WHERE session_id = ?", (session_id,))
-    status_annotators = [row[0] for row in cursor.fetchall()]
-    conn.close()
+    # Get participants who have explicitly set status
+    status_rows = db.query(DBSessionAnnotatorStatus.annotator_id).filter(
+        DBSessionAnnotatorStatus.session_id == session_id
+    ).distinct().all()
+    status_annotators = [row[0] for row in status_rows]
     
     # Get unique annotators from annotations
-    annotation_annotators = list(set(a.annotator_id for a in all_annotations)) # Use ID not Name
+    annotation_annotators = list(set(a.annotator_id for a in all_annotations))
     
     # Full set of participants IDs
-    # If filter provided, start with that. Else union of all sources.
     if annotator_ids:
         participant_ids = set(annotator_ids)
     else:
@@ -518,34 +359,26 @@ def compare_annotations(
             
         scene_annotations.sort(key=lambda a: a.global_timestamp)
         
-        # Determine status based on ACTIVE annotations only
         active_annotations = [a for a in scene_annotations if not a.rejected]
         
-        # Calculate participation
-        scene_annotator_ids = set(a.annotator_id for a in active_annotations) # Use ID
+        scene_annotator_ids = set(a.annotator_id for a in active_annotations)
         annotator_count = len(scene_annotator_ids)
-        # total_annotators already calculated
         
         status = ClusterStatus.UNIQUE
         
         if not active_annotations:
-            # All rejected
             status = ClusterStatus.AGREEMENT
         else:
-            # Presence Check: If not all annotators are present, it's a conflict
             if annotator_count < total_annotators:
                  status = ClusterStatus.CONFLICT
             else:
-                # All present. Check Content Match.
                 annotator_counts = {}
                 for a in active_annotations:
                     annotator_counts[a.annotator_id] = annotator_counts.get(a.annotator_id, 0) + 1
                 
-                # Check for multiple annotations from same person (conflict)
                 if any(c > 1 for c in annotator_counts.values()):
                     status = ClusterStatus.CONFLICT
                 else:
-                    # Check Content Equality
                     categories = set(a.category.lower() for a in active_annotations)
                     severities = set(a.severity.value for a in active_annotations)
                     if len(categories) == 1 and len(severities) == 1:
@@ -553,25 +386,19 @@ def compare_annotations(
                     else:
                         status = ClusterStatus.CONFLICT
 
-        # Center uses all annotations range? Or just active?
-        # Use active if available, else all.
         target_set = active_annotations if active_annotations else scene_annotations
         center = sum(a.global_timestamp for a in target_set) / len(target_set)
         
         clusters.append(AnnotationCluster(
             scene_id=scene_id,
             center_timestamp=center,
-            annotations=scene_annotations, # Return ALL (history)
+            annotations=scene_annotations,
             status=status,
             annotator_count=annotator_count,
             total_annotators=total_annotators,
         ))
     
-    # Sort clusters
     clusters.sort(key=lambda c: c.center_timestamp)
-    
-    # Calculate stats (based on active clusters?)
-    # or conflicting clusters.
     
     return ComparisonResult(
         session_id=session_id,
@@ -586,78 +413,66 @@ def compare_annotations(
     )
 
 
-def set_session_status(session_id: str, status: SessionStatus, annotator_id: Optional[str] = None) -> SessionStatusInfo:
+def set_session_status(db: DBSession, session_id: str, status: SessionStatus, annotator_id: Optional[str] = None) -> SessionStatusInfo:
     """Set the annotation status for a session. NOW supports per-annotator."""
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    
-    now = datetime.utcnow().isoformat()
+    now = datetime.utcnow()
     
     # 1. Update Global Status (Legacy/Overall)
-    cursor.execute("""
-        INSERT INTO session_status (session_id, status, updated_at)
-        VALUES (?, ?, ?)
-        ON CONFLICT(session_id) DO UPDATE SET
-            status = excluded.status,
-            updated_at = excluded.updated_at
-    """, (session_id, status.value, now))
+    # Using merge for upsert-like behavior
+    global_status = db.query(DBSessionGlobalStatus).filter(DBSessionGlobalStatus.session_id == session_id).first()
+    if not global_status:
+        global_status = DBSessionGlobalStatus(session_id=session_id)
+        db.add(global_status)
+    
+    global_status.status = status.value
+    global_status.updated_at = now
     
     # 2. Update Per-Annotator Status if provided
     if annotator_id:
-        cursor.execute("""
-            INSERT INTO session_annotator_status (session_id, annotator_id, status, updated_at)
-            VALUES (?, ?, ?, ?)
-            ON CONFLICT(session_id, annotator_id) DO UPDATE SET
-                status = excluded.status,
-                updated_at = excluded.updated_at
-        """, (session_id, annotator_id, status.value, now))
+        user_status = db.query(DBSessionAnnotatorStatus).filter(
+            DBSessionAnnotatorStatus.session_id == session_id,
+            DBSessionAnnotatorStatus.annotator_id == annotator_id
+        ).first()
+        
+        if not user_status:
+            user_status = DBSessionAnnotatorStatus(
+                session_id=session_id,
+                annotator_id=annotator_id
+            )
+            db.add(user_status)
+            
+        user_status.status = status.value
+        user_status.updated_at = now
     
-    conn.commit()
-    conn.close()
+    db.commit()
     
     return SessionStatusInfo(
         session_id=session_id,
         status=status,
-        updated_at=datetime.fromisoformat(now)
+        updated_at=now
     )
 
 
-def get_session_status(session_id: str) -> Optional[SessionStatusInfo]:
+def get_session_status(db: DBSession, session_id: str) -> Optional[SessionStatusInfo]:
     """Get the annotation status for a session."""
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    
-    cursor.execute("SELECT * FROM session_status WHERE session_id = ?", (session_id,))
-    row = cursor.fetchone()
-    conn.close()
-    
+    row = db.query(DBSessionGlobalStatus).filter(DBSessionGlobalStatus.session_id == session_id).first()
     if row:
         return SessionStatusInfo(
-            session_id=row["session_id"],
-            status=SessionStatus(row["status"]),
-            updated_at=datetime.fromisoformat(row["updated_at"])
+            session_id=row.session_id,
+            status=SessionStatus(row.status),
+            updated_at=row.updated_at
         )
     return None
 
 
-def get_all_session_statuses() -> dict[str, SessionStatus]:
+def get_all_session_statuses(db: DBSession) -> dict[str, SessionStatus]:
     """Get annotation statuses for all sessions."""
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    
-    cursor.execute("SELECT session_id, status FROM session_status")
-    rows = cursor.fetchall()
-    conn.close()
-    
-    return {row["session_id"]: SessionStatus(row["status"]) for row in rows}
-
-
-    return {row["session_id"]: row["count"] for row in rows}
+    rows = db.query(DBSessionGlobalStatus).all()
+    return {row.session_id: SessionStatus(row.status) for row in rows}
 
 
 def _is_scene_conflict(scene_annotations: list[Annotation]) -> bool:
     """Check if a group of scene annotations represents a conflict."""
-    # Filter active only
     active = [a for a in scene_annotations if not a.rejected]
     
     if not active:
@@ -669,30 +484,24 @@ def _is_scene_conflict(scene_annotations: list[Annotation]) -> bool:
         
     annotator_set = set(annotator_counts.keys())
     
-    # Needs multiple annotators to be a conflict
     if len(annotator_set) < 2:
         return False
         
-    # Check for count mismatch (must be 1-to-1)
     if any(c > 1 for c in annotator_counts.values()):
         return True
         
-    # Check for content mismatch (Category + Severity)
     categories = set(a.category.lower() for a in active)
     severities = set(a.severity.value for a in active)
     
     if len(categories) == 1 and len(severities) == 1:
-        return False # Agreement
+        return False
         
-    return True # Content Disagreement
+    return True
 
 
-def get_all_session_conflict_counts() -> dict[str, int]:
+def get_all_session_conflict_counts(db: DBSession) -> dict[str, int]:
     """Get conflict counts for all sessions."""
-    # This is a bit expensive, but fine for prototype scale.
-    # Optimization: perform this in SQL? Complex logic makes it hard.
-    # We'll fetch all active annotations and process in python.
-    annotations = list_annotations_all() 
+    annotations = list_annotations_all(db)
     
     by_session: dict[str, dict[str, list[Annotation]]] = {}
     
@@ -721,38 +530,26 @@ def get_all_session_conflict_counts() -> dict[str, int]:
     return conflict_counts
 
 
-def list_annotations_all() -> list[Annotation]:
+def list_annotations_all(db: DBSession) -> list[Annotation]:
     """List ALL annotations across all sessions."""
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute("SELECT * FROM annotations ORDER BY session_id, scene_id")
-    rows = cursor.fetchall()
-    conn.close()
-    return [_row_to_annotation(row) for row in rows]
+    rows = db.query(DBAnnotation).order_by(DBAnnotation.session_id, DBAnnotation.scene_id).all()
+    return [_orm_to_model(row) for row in rows]
 
 
-def resolve_annotations(annotation_ids: list[str], resolved_by: Optional[str] = None) -> int:
+def resolve_annotations(db: DBSession, annotation_ids: list[str], resolved_by: Optional[str] = None) -> int:
     """Mark multiple annotations as resolved."""
     if not annotation_ids:
         return 0
         
-    conn = get_db_connection()
-    cursor = conn.cursor()
+    now = datetime.utcnow()
     
-    placeholders = ','.join('?' * len(annotation_ids))
-    now = datetime.utcnow().isoformat()
+    count = db.query(DBAnnotation).filter(
+        DBAnnotation.id.in_(annotation_ids)
+    ).update({
+        DBAnnotation.resolved: True,
+        DBAnnotation.resolved_by: resolved_by,
+        DBAnnotation.updated_at: now
+    }, synchronize_session=False)
     
-    values = [1, resolved_by, now]
-    values.extend(annotation_ids)
-    
-    cursor.execute(f"""
-        UPDATE annotations 
-        SET resolved = ?, resolved_by = ?, updated_at = ?
-        WHERE id IN ({placeholders})
-    """, values)
-    
-    count = cursor.rowcount
-    conn.commit()
-    conn.close()
-    
+    db.commit()
     return count
