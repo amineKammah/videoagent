@@ -21,8 +21,9 @@ from videoagent.library import VideoLibrary
 from videoagent.models import RenderResult, VoiceOver
 from videoagent.storage import get_storage_client
 from videoagent.story import _StoryboardScene, SceneCandidate
-from videoagent.db import crud, connection, models
+from videoagent.db import crud, connection
 from videoagent.voice import VoiceOverGenerator, estimate_speech_duration
+from videoagent.voiceover_v2 import PronunciationGuidance, VoiceOverV2Generator
 from videoagent.editor import VideoEditor
 
 from .schemas import (
@@ -33,6 +34,7 @@ from .schemas import (
     VideoBriefUpdatePayload,
     SceneMatchBatchRequest,
     SetSceneCandidatesPayload,
+    GenerateVoiceoverV2Payload,
 )
 from .scene_matcher import SceneMatcher
 from .storage import (
@@ -99,6 +101,7 @@ def _build_storyboard_voice_over_paths(
                 except Exception:
                     continue
     return paths
+
 
 def _render_storyboard_scenes(
     scenes: list[_StoryboardScene],
@@ -326,6 +329,79 @@ def _check_scene_warnings(scenes: list[_StoryboardScene]) -> str:
     return ""
 
 
+_CANDIDATE_OVERLAP_RATIO_THRESHOLD = 0.8
+_CANDIDATE_BOUNDARY_DELTA_SECONDS = 2.0
+
+
+def _range_overlap_ratio(start_a: float, end_a: float, start_b: float, end_b: float) -> float:
+    """Return overlap ratio against the shorter clip duration."""
+    duration_a = max(0.0, float(end_a) - float(start_a))
+    duration_b = max(0.0, float(end_b) - float(start_b))
+    if duration_a == 0.0 or duration_b == 0.0:
+        return 0.0
+
+    overlap_start = max(float(start_a), float(start_b))
+    overlap_end = min(float(end_a), float(end_b))
+    overlap = max(0.0, overlap_end - overlap_start)
+    if overlap == 0.0:
+        return 0.0
+
+    return overlap / min(duration_a, duration_b)
+
+
+def _dedupe_high_overlap_candidates(
+    scene_id: str,
+    candidates_with_index: list[tuple[int, SceneCandidate]],
+) -> tuple[list[tuple[int, SceneCandidate]], list[str]]:
+    """Drop near-duplicate candidates from the same source video while preserving order."""
+    kept: list[tuple[int, SceneCandidate]] = []
+    warnings: list[str] = []
+
+    for original_index, candidate in candidates_with_index:
+        duplicate_of: tuple[int, SceneCandidate] | None = None
+        overlap_ratio = 0.0
+        start_delta = 0.0
+        end_delta = 0.0
+
+        for kept_index, kept_candidate in kept:
+            if kept_candidate.source_video_id != candidate.source_video_id:
+                continue
+
+            overlap_ratio = _range_overlap_ratio(
+                kept_candidate.start_time,
+                kept_candidate.end_time,
+                candidate.start_time,
+                candidate.end_time,
+            )
+            start_delta = abs(float(kept_candidate.start_time) - float(candidate.start_time))
+            end_delta = abs(float(kept_candidate.end_time) - float(candidate.end_time))
+
+            if (
+                overlap_ratio >= _CANDIDATE_OVERLAP_RATIO_THRESHOLD
+                and start_delta <= _CANDIDATE_BOUNDARY_DELTA_SECONDS
+                and end_delta <= _CANDIDATE_BOUNDARY_DELTA_SECONDS
+            ):
+                duplicate_of = (kept_index, kept_candidate)
+                break
+
+        if duplicate_of is None:
+            kept.append((original_index, candidate))
+            continue
+
+        kept_index, kept_candidate = duplicate_of
+        warnings.append(
+            "Warning: Scene "
+            f"{scene_id} removed candidate #{original_index + 1} "
+            f"({candidate.source_video_id} {candidate.start_time:.1f}-{candidate.end_time:.1f}s) "
+            "due to high overlap with candidate "
+            f"#{kept_index + 1} ({kept_candidate.start_time:.1f}-{kept_candidate.end_time:.1f}s). "
+            f"(overlap={overlap_ratio:.0%}, "
+            f"Δstart={start_delta:.1f}s, Δend={end_delta:.1f}s)"
+        )
+
+    return kept, warnings
+
+
 def _build_tools(
     config: Config,
     storyboard_store: StoryboardStore,
@@ -537,6 +613,7 @@ def _build_tools(
         scene_map = {s.scene_id: s for s in scenes}
         updated_count = 0
         missing_ids = []
+        overlap_warnings: list[str] = []
 
         for item in payload.scenes:
             scene = scene_map.get(item.scene_id)
@@ -548,29 +625,65 @@ def _build_tools(
                 continue
 
             # Convert CandidateItem to SceneCandidate
-            new_candidates = []
+            candidates_with_index: list[tuple[int, SceneCandidate]] = []
             for rank, cand in enumerate(item.candidates):
-                new_candidates.append(SceneCandidate(
-                    source_video_id=cand.source_video_id,
-                    start_time=cand.start_time,
-                    end_time=cand.end_time,
-                    description=cand.description,
-                    rationale="",
-                    keep_original_audio=cand.keep_original_audio,
-                    last_rank=rank,
-                    shortlisted=True,
-                ))
+                candidates_with_index.append(
+                    (
+                        rank,
+                        SceneCandidate(
+                            source_video_id=cand.source_video_id,
+                            start_time=cand.start_time,
+                            end_time=cand.end_time,
+                            description=cand.description,
+                            rationale="",
+                            keep_original_audio=cand.keep_original_audio,
+                            last_rank=rank,
+                            shortlisted=True,
+                        ),
+                    )
+                )
+
+            candidates_with_index, dedupe_warnings = _dedupe_high_overlap_candidates(
+                item.scene_id,
+                candidates_with_index,
+            )
+            overlap_warnings.extend(dedupe_warnings)
+
+            if not candidates_with_index:
+                overlap_warnings.append(
+                    f"Warning: Scene {item.scene_id} has no candidates after overlap filtering; "
+                    "no updates were applied for this scene."
+                )
+                continue
+
+            new_candidates = [candidate for _, candidate in candidates_with_index]
 
             # Set candidates using the candidates module
             from videoagent.candidates import set_candidates
             set_candidates(scene, new_candidates)
 
             # Select the candidate at selected_index
-            if item.selected_index >= 0 and item.selected_index < len(new_candidates):
+            if item.selected_index >= 0 and item.selected_index < len(item.candidates):
+                filtered_selected_index = next(
+                    (
+                        idx
+                        for idx, (original_idx, _) in enumerate(candidates_with_index)
+                        if original_idx == item.selected_index
+                    ),
+                    None,
+                )
+                if filtered_selected_index is None:
+                    filtered_selected_index = 0
+                    overlap_warnings.append(
+                        f"Warning: Scene {item.scene_id} selected candidate "
+                        f"#{item.selected_index + 1} was removed due to high overlap; "
+                        "defaulted to candidate #1."
+                    )
+
                 from videoagent.candidates import select_candidate
                 select_candidate(
                     scene,
-                    new_candidates[item.selected_index].candidate_id,
+                    new_candidates[filtered_selected_index].candidate_id,
                     changed_by="agent",
                     reason="Agent selected best candidate"
                 )
@@ -584,6 +697,8 @@ def _build_tools(
         msg = f"Saved candidates for {updated_count} scene(s)."
         if missing_ids:
             msg += f" Warning: Scene IDs not found: {', '.join(missing_ids)}"
+        if overlap_warnings:
+            msg += "\n" + "\n".join(overlap_warnings)
 
         return msg
 
@@ -713,6 +828,149 @@ def _build_tools(
             return f"Voice overs generated for {len(segment_ids)} storyboard scene(s)."
         finally:
             generator.cleanup()
+
+    @function_tool(failure_error_function=tool_error("generate_voiceover_v2"), strict_mode=True)
+    @log_tool("generate_voiceover_v2")
+    async def generate_voiceover_v2(payload: GenerateVoiceoverV2Payload) -> str:
+        """
+        Generate SSML-first voiceovers with pronunciation guidance, then synthesize via ElevenLabs.
+
+        Inputs:
+        - `segment_ids`: storyboard scene ids to regenerate.
+        - `notes`: optional global delivery notes.
+        - `scene_notes`: optional scene-specific note overrides.
+        """
+        event_store.append(session_id, {"type": "video_render_start"}, user_id=user_id)
+
+        step_start = time.perf_counter()
+        scenes = storyboard_store.load(session_id, user_id=user_id) or []
+        if not scenes:
+            return "No storyboard scenes found. Create a storyboard before generating voice overs."
+
+        segment_ids = payload.segment_ids
+        scene_map = {scene.scene_id: scene for scene in scenes}
+        missing_ids = [scene_id for scene_id in segment_ids if scene_id not in scene_map]
+        if missing_ids:
+            return "Storyboard scene id(s) not found: " + ", ".join(missing_ids)
+
+        non_voice_ids = [
+            scene_id for scene_id in segment_ids if scene_map[scene_id].use_voice_over is False
+        ]
+        if non_voice_ids:
+            return "Voice over disabled for storyboard scene id(s): " + ", ".join(non_voice_ids)
+
+        missing_script_ids = [
+            scene_id
+            for scene_id in segment_ids
+            if not (scene_map[scene_id].script and scene_map[scene_id].script.strip())
+        ]
+        if missing_script_ids:
+            return "Missing script for storyboard scene id(s): " + ", ".join(missing_script_ids)
+
+        scene_notes_map = {
+            item.scene_id: item.note
+            for item in payload.scene_notes
+            if item.scene_id and item.note
+        }
+
+        pronunciations: list[PronunciationGuidance] = []
+
+        if user_id and company_id:
+            try:
+                with connection.get_db_context() as db:
+                    pronunciation_rows = crud.list_pronunciations(
+                        db,
+                        company_id=company_id,
+                        user_id=user_id,
+                        session_id=session_id,
+                    )
+                    for item in pronunciation_rows:
+                        word = (item.word or "").strip()
+                        phonetic = (item.phonetic_spelling or "").strip()
+                        if not word or not phonetic:
+                            continue
+                        pronunciations.append(
+                            PronunciationGuidance(
+                                word=word,
+                                phonetic_spelling=phonetic,
+                            )
+                        )
+            except Exception as exc:
+                print(f"[generate_voiceover_v2] Failed to fetch user/pronunciation context: {exc}")
+
+        generator = VoiceOverV2Generator(config)
+        storage_client = get_storage_client(config)
+        try:
+            session_dir = storyboard_store._storyboard_path(session_id, user_id=user_id).parent
+            voice_dir = session_dir / "voice_overs"
+            voice_dir.mkdir(parents=True, exist_ok=True)
+
+            semaphore = asyncio.Semaphore(4)
+
+            async def _run(scene_id: str) -> VoiceOver:
+                job_start = time.perf_counter()
+                scene = scene_map[scene_id]
+                audio_id = uuid4().hex[:8]
+                output_path = voice_dir / f"vo_{audio_id}.wav"
+
+                note_parts: list[str] = []
+                if payload.notes and payload.notes.strip():
+                    note_parts.append(payload.notes.strip())
+                scene_note = scene_notes_map.get(scene_id)
+                if scene_note and scene_note.strip():
+                    note_parts.append(scene_note.strip())
+                merged_notes = "\n".join(note_parts) if note_parts else None
+
+                async with semaphore:
+                    voice_over = await generator.generate_voice_over_async(
+                        scene.script,
+                        output_path=output_path,
+                        notes=merged_notes,
+                        pronunciations=pronunciations,
+                        elevenlabs_model_id=payload.elevenlabs_model_id,
+                        ssml_model=payload.ssml_model,
+                    )
+                print(
+                    "[generate_voiceover_v2] "
+                    f"{scene_id} generated in {time.perf_counter() - job_start:.2f}s"
+                )
+
+                if voice_over.audio_id != audio_id:
+                    voice_over.audio_id = audio_id
+                gcs_key = _voice_over_blob_key(company_id, session_id, output_path.name)
+                await asyncio.to_thread(
+                    storage_client.upload_from_filename,
+                    gcs_key,
+                    output_path,
+                    "audio/wav",
+                )
+                voice_over.audio_path = storage_client.to_gs_uri(gcs_key)
+                voice_over.audio_url = None
+                return voice_over
+
+            results = await asyncio.gather(*[_run(scene_id) for scene_id in segment_ids])
+            for scene_id, voice_over in zip(segment_ids, results):
+                scene_map[scene_id].voice_over = voice_over
+
+            storyboard_store.save(session_id, scenes, user_id=user_id)
+            print(
+                "[generate_voiceover_v2] total time: "
+                f"{time.perf_counter() - step_start:.2f}s"
+            )
+
+            notes_applied = int(bool(payload.notes and payload.notes.strip())) + sum(
+                1 for value in scene_notes_map.values() if value and value.strip()
+            )
+            return (
+                f"Voiceovers v2 generated for {len(segment_ids)} storyboard scene(s). "
+                f"Pronunciation rules used: {len(pronunciations)}. "
+                f"Notes applied: {notes_applied}."
+            )
+        finally:
+            # Kept for API compatibility with the original generator lifecycle.
+            cleanup = getattr(generator, "cleanup", None)
+            if callable(cleanup):
+                cleanup()
 
     @function_tool(failure_error_function=tool_error("match_scene_to_video"), strict_mode=False)
     @log_tool("match_scene_to_video")

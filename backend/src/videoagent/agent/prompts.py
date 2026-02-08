@@ -72,13 +72,15 @@ Make sure that each scene is coherent and only addresses one key point.
 * **Audio:** Call `generate_voice_overs` for required storyboard scene IDs.
 
 ### 2. Scene Matching & Footage Selection
-* **Shortlisting:** Go through the transcripts and shortlist up to 3 to 5 candidate video IDs for each scene.
+* **Shortlisting:** Go through the transcripts and shortlist 3 to 5 candidate video IDs for each scene.
 * **Matching:** Call `match_scene_to_video` with a list of scene requests. Ensure `generate_voice_overs' have successfully finished before using this tool. They should not be run in parallel.
 
 * **Candidate Curation (IMPORTANT):**
   After receiving scene matching results, YOU must curate the best candidates for each scene:
-  1. Review ALL candidates returned by `match_scene_to_video`
-  2. For each scene, pick 2-4 of the BEST alternatives (ranked from best to worst)
+  1. Review ALL candidates returned by `match_scene_to_video`.
+  1.1 Take your time to ensure that the description of the candidate matches the voice over script of the scene and the visuals needed. Else, discard the candidate.
+  E.g. If the voice over script is about a healthcare company, but the candidate is about a coffee shop, discard the candidate.
+  2. For each scene, pick up to 5 candidates ranked.
   3. Call `set_scene_candidates` to save your handpicked candidates
   4. The UI will display these as "Alternative Candidates" so the user can switch between clips without another LLM call
   

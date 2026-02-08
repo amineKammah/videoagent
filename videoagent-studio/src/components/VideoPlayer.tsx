@@ -121,6 +121,80 @@ const waitForMediaReady = (mediaEl: HTMLMediaElement, timeoutMs: number = MEDIA_
     });
 };
 
+interface CandidateThumbnailProps {
+    src: string;
+    seekTime: number;
+    alt: string;
+}
+
+const CandidateThumbnail = ({ src, seekTime, alt }: CandidateThumbnailProps) => {
+    const previewRef = useRef<HTMLVideoElement>(null);
+    const didSeekRef = useRef(false);
+    const [isReady, setIsReady] = useState(false);
+    const [hasError, setHasError] = useState(false);
+
+    const handleLoadedData = () => {
+        const videoEl = previewRef.current;
+        if (!videoEl || didSeekRef.current) {
+            setIsReady(true);
+            return;
+        }
+
+        didSeekRef.current = true;
+
+        const duration = Number.isFinite(videoEl.duration) ? videoEl.duration : 0;
+        const safeMax = duration > 0 ? Math.max(0, duration - 0.05) : seekTime + 0.05;
+        const targetTime = Math.max(0, Math.min(seekTime + 0.05, safeMax));
+
+        const handleSeeked = () => {
+            setIsReady(true);
+        };
+
+        videoEl.addEventListener('seeked', handleSeeked, { once: true });
+        try {
+            videoEl.currentTime = targetTime;
+        } catch {
+            setIsReady(true);
+        }
+    };
+
+    return (
+        <div className="relative aspect-video w-full overflow-hidden rounded-md bg-slate-200">
+            {!hasError && (
+                <video
+                    ref={previewRef}
+                    src={src}
+                    muted
+                    playsInline
+                    preload="metadata"
+                    className={`h-full w-full object-cover transition-opacity ${isReady ? 'opacity-100' : 'opacity-0'}`}
+                    onLoadStart={() => {
+                        didSeekRef.current = false;
+                        setIsReady(false);
+                        setHasError(false);
+                    }}
+                    onLoadedData={handleLoadedData}
+                    onError={() => {
+                        setHasError(true);
+                        setIsReady(false);
+                    }}
+                    aria-label={alt}
+                />
+            )}
+
+            {!isReady && !hasError && (
+                <div className="absolute inset-0 animate-pulse bg-slate-200" />
+            )}
+
+            {hasError && (
+                <div className="absolute inset-0 flex items-center justify-center bg-slate-200 text-[10px] text-slate-500">
+                    No preview
+                </div>
+            )}
+        </div>
+    );
+};
+
 export const VideoPlayer = forwardRef<VideoPlayerRef, VideoPlayerProps>(function VideoPlayer({
     onTimeUpdate,
     onPlayChange,
@@ -194,6 +268,7 @@ export const VideoPlayer = forwardRef<VideoPlayerRef, VideoPlayerProps>(function
     const [isExporting, setIsExporting] = useState(false);
     const [exportError, setExportError] = useState<string | null>(null);
     const [downloadUrl, setDownloadUrl] = useState<string | null>(null);
+    const [candidateSwitchingId, setCandidateSwitchingId] = useState<string | null>(null);
 
     const submitFeedback = () => {
         const sceneStartTime = segmentStarts[currentSceneIndex];
@@ -325,6 +400,13 @@ export const VideoPlayer = forwardRef<VideoPlayerRef, VideoPlayerProps>(function
     const activeScene = scenes[currentSceneIndex];
     const activeMetadata = activeScene?.matched_scene ? metadata[activeScene.matched_scene.source_video_id] : null;
     const hasMatchedScenes = scenes.some(s => s.matched_scene);
+    const activeCandidateVideoIds = useMemo(() => {
+        if (!activeScene?.matched_scene_candidates) return [];
+        const ids = activeScene.matched_scene_candidates
+            .map(candidate => candidate.source_video_id)
+            .filter((videoId): videoId is string => Boolean(videoId));
+        return Array.from(new Set(ids));
+    }, [activeScene]);
 
     // Global Timeline Calculation
     const { segmentStarts, totalDuration } = useMemo(() => {
@@ -379,6 +461,11 @@ export const VideoPlayer = forwardRef<VideoPlayerRef, VideoPlayerProps>(function
                     idsToFetch.add(videoId);
                 }
             });
+            activeCandidateVideoIds.forEach(videoId => {
+                if (videoId && !metadata[videoId] && !failedIds.has(videoId)) {
+                    idsToFetch.add(videoId);
+                }
+            });
 
             if (idsToFetch.size === 0) return;
 
@@ -415,7 +502,7 @@ export const VideoPlayer = forwardRef<VideoPlayerRef, VideoPlayerProps>(function
         if (hasMatchedScenes) {
             fetchMetadata();
         }
-    }, [scenes, metadata, hasMatchedScenes, user, failedIds]);
+    }, [scenes, metadata, hasMatchedScenes, user, failedIds, activeCandidateVideoIds]);
 
     // Playback Logic
     const playSegment = useCallback(async (sceneIndex: number, shouldPlay: boolean = true, reason: string = "unknown") => {
@@ -1070,19 +1157,30 @@ export const VideoPlayer = forwardRef<VideoPlayerRef, VideoPlayerProps>(function
 
                     {/* Candidate Pills Bar - for quick switching between alternatives */}
                     {showSceneOptions && activeScene?.matched_scene_candidates && activeScene.matched_scene_candidates.length > 1 && (
-                        <div className="mt-3 pt-3 border-t border-slate-100">
-                            <div className="flex items-center gap-3 flex-wrap">
-                                <span className="text-xs font-medium text-slate-500 uppercase tracking-wide whitespace-nowrap">
-                                    Scene {currentSceneIndex + 1} Options:
+                        <div className="mt-2 border-t border-slate-100 pt-2">
+                            <div className="mb-1.5 flex items-center justify-between gap-2">
+                                <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wide whitespace-nowrap">
+                                    Scene {currentSceneIndex + 1} Options
                                 </span>
-                                <div className="flex gap-2 flex-wrap">
+                                <span className="text-[9px] text-slate-400">
+                                    {activeScene.matched_scene_candidates.length} clips
+                                </span>
+                            </div>
+
+                            <div className="overflow-x-auto pb-0.5">
+                                <div className="flex gap-1.5 min-w-max">
                                     {activeScene.matched_scene_candidates.map((candidate, idx) => {
                                         const isSelected = activeScene.selected_candidate_id === candidate.candidate_id;
+                                        const candidateMeta = metadata[candidate.source_video_id];
+                                        const candidateSrc = resolveMetadataVideoSource(candidateMeta);
+                                        const isSwitching = candidateSwitchingId === candidate.candidate_id;
+                                        const isBusy = candidateSwitchingId !== null;
                                         return (
                                             <button
                                                 key={candidate.candidate_id}
                                                 onClick={async () => {
-                                                    if (isSelected || !session) return;
+                                                    if (isSelected || !session || isBusy) return;
+                                                    setCandidateSwitchingId(candidate.candidate_id);
                                                     try {
                                                         const updatedScene = await api.selectCandidate(
                                                             session.id,
@@ -1098,27 +1196,42 @@ export const VideoPlayer = forwardRef<VideoPlayerRef, VideoPlayerProps>(function
                                                         playSegment(currentSceneIndex, false, "candidate-switch");
                                                     } catch (error) {
                                                         console.error('Failed to select candidate:', error);
+                                                    } finally {
+                                                        setCandidateSwitchingId(null);
                                                     }
                                                 }}
-                                                className={`px-3 py-1.5 text-xs font-medium rounded-full transition-all ${isSelected
-                                                    ? 'bg-teal-600 text-white shadow-sm'
-                                                    : 'bg-slate-100 text-slate-600 hover:bg-teal-50 hover:text-teal-600 border border-slate-200 hover:border-teal-400'
+                                                disabled={isSelected || !session || isBusy}
+                                                aria-pressed={isSelected}
+                                                aria-busy={isSwitching}
+                                                className={`group relative w-24 shrink-0 overflow-hidden rounded-md border transition-all ${isSelected
+                                                    ? 'border-teal-500 ring-1 ring-teal-500/70'
+                                                    : 'border-transparent hover:border-slate-300'
                                                     }`}
                                                 title={candidate.description || `Option ${idx + 1}`}
                                             >
-                                                {isSelected && (
-                                                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" className="w-3 h-3 inline mr-1">
-                                                        <path fillRule="evenodd" d="M12.416 3.376a.75.75 0 0 1 .208 1.04l-5 7.5a.75.75 0 0 1-1.154.114l-3-3a.75.75 0 0 1 1.06-1.06l2.353 2.353 4.493-6.739a.75.75 0 0 1 1.04-.208Z" clipRule="evenodd" />
-                                                    </svg>
-                                                )}
-                                                Option {idx + 1}
+                                                <div className="relative">
+                                                    {candidateSrc ? (
+                                                        <CandidateThumbnail
+                                                            src={candidateSrc}
+                                                            seekTime={candidate.start_time}
+                                                            alt={`Scene ${currentSceneIndex + 1} option ${idx + 1}`}
+                                                        />
+                                                    ) : (
+                                                        <div className="aspect-video w-full rounded-md bg-slate-200 flex items-center justify-center text-[9px] text-slate-500">
+                                                            ...
+                                                        </div>
+                                                    )}
+
+                                                    {isSwitching && (
+                                                        <div className="absolute inset-0 flex items-center justify-center rounded-md bg-black/45 text-[9px] font-semibold text-white">
+                                                            ...
+                                                        </div>
+                                                    )}
+                                                </div>
                                             </button>
                                         );
                                     })}
                                 </div>
-                                <span className="text-[10px] text-slate-400 hidden sm:inline">
-                                    Click to swap video clip
-                                </span>
                             </div>
                         </div>
                     )}

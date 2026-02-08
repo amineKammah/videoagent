@@ -44,6 +44,11 @@ class SceneMatchJob:
     notes: str
     mode: SceneMatchMode
     duration_section: str
+    target_duration: Optional[float]
+
+
+# Keep this aligned with tools._check_scene_warnings (>10% is considered mismatch).
+_VOICE_OVER_DURATION_MISMATCH_RATIO_THRESHOLD = 0.10
 
 
 class SceneMatcher:
@@ -164,6 +169,7 @@ def _build_voice_over_jobs(
     candidate_ids: list[str],
     video_map: dict[str, object],
     duration_section: str,
+    target_duration: Optional[float],
 ) -> list[SceneMatchJob]:
     jobs: list[SceneMatchJob] = []
     for video_id in candidate_ids:
@@ -179,6 +185,7 @@ def _build_voice_over_jobs(
                 notes=request.notes,
                 mode=SceneMatchMode.VOICE_OVER,
                 duration_section=duration_section,
+                target_duration=target_duration,
             )
         )
     return jobs
@@ -190,6 +197,7 @@ def _build_original_audio_jobs(
     candidate_ids: list[str],
     video_map: dict[str, object],
     duration_section: str,
+    target_duration: Optional[float],
 ) -> list[SceneMatchJob]:
     jobs: list[SceneMatchJob] = []
     for video_id in candidate_ids:
@@ -205,6 +213,7 @@ def _build_original_audio_jobs(
                 notes=request.notes,
                 mode=SceneMatchMode.ORIGINAL_AUDIO,
                 duration_section=duration_section,
+                target_duration=target_duration,
             )
         )
     return jobs
@@ -310,6 +319,7 @@ def _validate_and_build_jobs(
                     candidate_ids=request.candidate_video_ids,
                     video_map=video_map,
                     duration_section=duration_section,
+                    target_duration=target_duration,
                 )
             )
         else:
@@ -320,6 +330,7 @@ def _validate_and_build_jobs(
                     candidate_ids=request.candidate_video_ids,
                     video_map=video_map,
                     duration_section=duration_section,
+                    target_duration=target_duration,
                 )
             )
 
@@ -487,6 +498,41 @@ def _print_prompt_log(
     print(f"[Analysis] {job.scene_id}:{job.video_id}:{mode} finished in {dur}{tokens}")
 
 
+def _clip_duration_matches_target(
+    *,
+    clip_start: float,
+    clip_end: float,
+    target_duration: Optional[float],
+) -> bool:
+    """Return True when clip duration is within the accepted mismatch threshold."""
+    if target_duration is None or target_duration <= 0:
+        return True
+
+    clip_duration = float(clip_end) - float(clip_start)
+    if clip_duration <= 0:
+        return False
+
+    diff_ratio = abs(clip_duration - target_duration) / target_duration
+    return diff_ratio <= _VOICE_OVER_DURATION_MISMATCH_RATIO_THRESHOLD
+
+
+def _duration_mismatch_ratio(
+    *,
+    clip_start: float,
+    clip_end: float,
+    target_duration: Optional[float],
+) -> Optional[float]:
+    """Return mismatch ratio for clip vs target duration, or None when not applicable."""
+    if target_duration is None or target_duration <= 0:
+        return None
+
+    clip_duration = float(clip_end) - float(clip_start)
+    if clip_duration <= 0:
+        return None
+
+    return abs(clip_duration - target_duration) / target_duration
+
+
 async def _analyze_job_with_prompt(
     client: GeminiClient,
     job: SceneMatchJob,
@@ -584,6 +630,37 @@ async def _analyze_job_with_prompt(
             "video_id": job.video_id,
             "error": str(exc),
         }
+
+    # In voice-over mode, discard clips that do not closely match the target duration.
+    if job.mode == SceneMatchMode.VOICE_OVER:
+        filtered_candidates: list[dict] = []
+        for candidate in normalized_candidates:
+            matches_duration = _clip_duration_matches_target(
+                clip_start=candidate["start_seconds"],
+                clip_end=candidate["end_seconds"],
+                target_duration=job.target_duration,
+            )
+            if not matches_duration:
+                ratio = _duration_mismatch_ratio(
+                    clip_start=candidate["start_seconds"],
+                    clip_end=candidate["end_seconds"],
+                    target_duration=job.target_duration,
+                )
+                clip_duration = candidate["end_seconds"] - candidate["start_seconds"]
+                mismatch_pct = ratio * 100 if ratio is not None else None
+                mismatch_text = f"{mismatch_pct:.1f}%" if mismatch_pct is not None else "unknown"
+                print(
+                    "[DurationFilter] "
+                    f"Discarded candidate for scene={job.scene_id}, video={job.video_id}, "
+                    f"range={candidate['start_timestamp']}->{candidate['end_timestamp']}, "
+                    f"clip_duration={clip_duration:.3f}s, "
+                    f"target_duration={job.target_duration}, "
+                    f"mismatch={mismatch_text} "
+                    f"(threshold={_VOICE_OVER_DURATION_MISMATCH_RATIO_THRESHOLD * 100:.1f}%)."
+                )
+                continue
+            filtered_candidates.append(candidate)
+        normalized_candidates = filtered_candidates
 
     _print_prompt_log(job, llm_response_time, response.usage_metadata)
     return {

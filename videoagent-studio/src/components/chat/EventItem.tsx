@@ -74,6 +74,14 @@ function getEventDisplay(event: AgentEvent): EventDisplay {
                     isAnimated: true,
                 };
             }
+            if (event.name === 'generate_voiceover_v2') {
+                return {
+                    icon: '🎙️',
+                    label: 'Generating SSML voice-overs...',
+                    color: 'text-blue-600',
+                    isAnimated: true,
+                };
+            }
             if (event.name === 'update_storyboard') {
                 return {
                     icon: '📝',

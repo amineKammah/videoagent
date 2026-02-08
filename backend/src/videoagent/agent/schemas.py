@@ -174,3 +174,43 @@ class SetSceneCandidatesPayload(BaseModel):
     """Payload for setting handpicked candidates for multiple scenes."""
     model_config = ConfigDict(extra="forbid")
     scenes: list[SceneCandidatesItem] = Field(description="List of scenes with their candidates.")
+
+
+class SceneNoteItem(BaseModel):
+    """Scene-specific voiceover direction note."""
+    model_config = ConfigDict(extra="forbid")
+    scene_id: str = Field(description="Storyboard scene ID to apply the note to.")
+    note: str = Field(description="Delivery direction for the specific scene.")
+
+
+class GenerateVoiceoverV2Payload(BaseModel):
+    """Payload for SSML-first ElevenLabs voiceover generation."""
+    model_config = ConfigDict(extra="forbid")
+    segment_ids: list[str] = Field(
+        description="Storyboard scene IDs that should get regenerated voiceovers."
+    )
+    notes: Optional[str] = Field(
+        default=None,
+        description=(
+            "Optional global direction notes for delivery style. "
+            "Example: 'Make the first sentence whisper-like and dramatic.'"
+        ),
+    )
+    scene_notes: list[SceneNoteItem] = Field(
+        default_factory=list,
+        description=(
+            "Optional scene-specific direction notes."
+        ),
+    )
+    elevenlabs_model_id: Optional[str] = Field(
+        default=None,
+        description=(
+            "Optional ElevenLabs model id override (default is eleven_turbo_v2)."
+        ),
+    )
+    ssml_model: Optional[str] = Field(
+        default=None,
+        description=(
+            "Optional Gemini model override for the SSML generation pass."
+        ),
+    )
