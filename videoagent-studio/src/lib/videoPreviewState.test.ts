@@ -25,6 +25,17 @@ describe('getVideoPreviewState', () => {
         expect(state).toBe('loading');
     });
 
+    it('keeps preview ready when all scenes are matched during background processing', () => {
+        const state = getVideoPreviewState({
+            hasScenes: true,
+            allScenesReady: true,
+            isProcessing: true,
+            videoGenerating: true,
+        });
+
+        expect(state).toBe('ready');
+    });
+
     it('only becomes ready when every scene is matched', () => {
         const state = getVideoPreviewState({
             hasScenes: true,

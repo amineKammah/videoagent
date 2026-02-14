@@ -179,3 +179,38 @@ class PronunciationGenerationResponse(BaseModel):
     phonetic_spelling: str
     english_spelling: str
 
+
+# ============================================================================
+# Feedback Schemas
+# ============================================================================
+
+class FeedbackCreate(BaseModel):
+    """Request to create or update feedback."""
+    target_type: str  # "storyboard" | "scene"
+    target_id: Optional[str] = None  # scene_id or null
+    rating: str  # "up" | "down"
+    comment: Optional[str] = None
+
+
+class FeedbackUpdate(BaseModel):
+    """Request to update existing feedback."""
+    rating: Optional[str] = None
+    comment: Optional[str] = None
+
+
+class FeedbackResponse(BaseModel):
+    """Feedback response schema."""
+    id: str
+    session_id: str
+    company_id: str
+    user_id: str
+    target_type: str
+    target_id: Optional[str] = None
+    rating: str
+    comment: Optional[str] = None
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+

@@ -8,7 +8,7 @@ from typing import Optional
 from pydantic import BaseModel, ConfigDict, Field
 
 from videoagent.models import VideoBrief
-from videoagent.story import _StoryboardScene, _MatchedScene
+from videoagent.story import _MatchedScene, _StoryboardScene
 
 
 class StoryboardSceneUpdate(BaseModel):
@@ -74,12 +74,43 @@ class SceneMatchRequest(BaseModel):
         )
     )
     duration_seconds: Optional[float] = None
+    start_offset_seconds: Optional[float] = Field(
+        default=None,
+        description=(
+            "Optional analysis window start in source video seconds. "
+            "If provided, end_offset_seconds must also be provided."
+        ),
+    )
+    end_offset_seconds: Optional[float] = Field(
+        default=None,
+        description=(
+            "Optional analysis window end in source video seconds. "
+            "If provided, start_offset_seconds must also be provided."
+        ),
+    )
 
 
 class SceneMatchBatchRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     requests: list[SceneMatchRequest] = Field(
         description="List of scene match requests to process in one call."
+    )
+
+
+class SceneMatchV2Request(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    scene_id: str = Field(description="Storyboard scene ID to match with v2.")
+    notes: str = Field(
+        description=(
+            "Visual direction for the scene. Include desired visuals, avoids, and narrative role."
+        )
+    )
+
+
+class SceneMatchV2BatchRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    requests: list[SceneMatchV2Request] = Field(
+        description="List of v2 scene match requests to process in one call."
     )
 
 
@@ -121,7 +152,10 @@ class SceneMatchVoiceOverCandidate(SceneMatchCandidate):
         description="Confirm there is no camera recording of a person speaking on the edge of the frame."
     )
     clip_compatible_with_scene_script_confirmed: bool = Field(
-        description="Confirm that the clip is compatible with the scene script (no text overs/widgets that don't match)."
+        description=(
+            "Confirm that the clip is compatible with the scene script "
+            "(no text overs/widgets that don't match)."
+        )
     )
 
 
@@ -183,8 +217,15 @@ class SceneNoteItem(BaseModel):
     note: str = Field(description="Delivery direction for the specific scene.")
 
 
-class GenerateVoiceoverV2Payload(BaseModel):
-    """Payload for SSML-first ElevenLabs voiceover generation."""
+class PronunciationItem(BaseModel):
+    """Resolved pronunciation guidance item."""
+    model_config = ConfigDict(extra="forbid")
+    word: str = Field(description="Original text token to guide pronunciation for.")
+    phonetic_spelling: str = Field(description="Phonetic hint for the target token.")
+
+
+class GenerateVoiceoverV3Payload(BaseModel):
+    """Payload for ElevenLabs v3 voiceover generation."""
     model_config = ConfigDict(extra="forbid")
     segment_ids: list[str] = Field(
         description="Storyboard scene IDs that should get regenerated voiceovers."
@@ -202,15 +243,9 @@ class GenerateVoiceoverV2Payload(BaseModel):
             "Optional scene-specific direction notes."
         ),
     )
-    elevenlabs_model_id: Optional[str] = Field(
-        default=None,
+    pronunciations: list[PronunciationItem] = Field(
+        default_factory=list,
         description=(
-            "Optional ElevenLabs model id override (default is eleven_turbo_v2)."
-        ),
-    )
-    ssml_model: Optional[str] = Field(
-        default=None,
-        description=(
-            "Optional Gemini model override for the SSML generation pass."
+            "Resolved pronunciation hints passed from upstream context."
         ),
     )

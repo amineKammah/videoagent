@@ -22,6 +22,8 @@ import {
     VoiceOption,
     Pronunciation,
     CreatePronunciationRequest,
+    Feedback,
+    UpsertFeedbackRequest,
 } from './types';
 
 export const ApiUtils = {
@@ -475,5 +477,35 @@ export const api = {
             body: formData,
         });
         return handleResponse<{ phonetic_spelling: string; english_spelling: string }>(response);
+    },
+
+    // ========================================================================
+    // Feedback
+    // ========================================================================
+
+    upsertFeedback: async (sessionId: string, request: UpsertFeedbackRequest): Promise<Feedback> => {
+        const url = new URL(`${API_BASE}/api/v1/feedback`);
+        url.searchParams.set('session_id', sessionId);
+        const response = await fetchWithTimeout(url.toString(), {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(request),
+        });
+        return handleResponse<Feedback>(response);
+    },
+
+    listFeedback: async (sessionId: string, targetType?: string, targetId?: string): Promise<Feedback[]> => {
+        const url = new URL(`${API_BASE}/api/v1/feedback`);
+        url.searchParams.set('session_id', sessionId);
+        if (targetType) url.searchParams.set('target_type', targetType);
+        if (targetId) url.searchParams.set('target_id', targetId);
+        const response = await fetchWithTimeout(url.toString());
+        return handleResponse<Feedback[]>(response);
+    },
+
+    deleteFeedback: async (id: string): Promise<void> => {
+        await fetchWithTimeout(`${API_BASE}/api/v1/feedback/${id}`, {
+            method: 'DELETE',
+        });
     },
 };

@@ -8,11 +8,11 @@ import functools
 import json
 import os
 import time
-import traceback
 from pathlib import Path
 from typing import Callable, Optional
 from uuid import uuid4
 
+from opentelemetry import trace
 from agents import function_tool
 
 from videoagent.config import Config
@@ -23,7 +23,7 @@ from videoagent.storage import get_storage_client
 from videoagent.story import _StoryboardScene, SceneCandidate
 from videoagent.db import crud, connection
 from videoagent.voice import VoiceOverGenerator, estimate_speech_duration
-from videoagent.voiceover_v2 import PronunciationGuidance, VoiceOverV2Generator
+from videoagent.voiceover_v3 import PronunciationGuidance, VoiceOverV3Generator
 from videoagent.editor import VideoEditor
 
 from .schemas import (
@@ -33,10 +33,12 @@ from .schemas import (
     MatchedScenesUpdatePayload,
     VideoBriefUpdatePayload,
     SceneMatchBatchRequest,
+    SceneMatchV2BatchRequest,
     SetSceneCandidatesPayload,
-    GenerateVoiceoverV2Payload,
+    GenerateVoiceoverV3Payload,
 )
 from .scene_matcher import SceneMatcher
+from .scene_matcher_v2 import SceneMatcherV2
 from .storage import (
     EventStore,
     StoryboardStore,
@@ -412,9 +414,13 @@ def _build_tools(
     user_id: Optional[str],
     auto_render_callback: Optional[Callable[[], None]] = None,
 ):
+    tracer = trace.get_tracer(__name__)
+
     def tool_error(name: str):
         def error_fn(ctx, error: Exception):
-            return f"{name} failed: {error}, {ctx}\nTraceback: {traceback.format_exc()}"
+            error_type = type(error).__name__
+            error_message = str(error).strip() or "No additional details."
+            return f"{name} failed: {error_type}: {error_message}"
         return error_fn
 
     def log_tool(name: str):
@@ -422,9 +428,26 @@ def _build_tools(
             if asyncio.iscoroutinefunction(fn):
                 @functools.wraps(fn)
                 async def wrapped(*args, **kwargs):
+                    with tracer.start_as_current_span(name):
+                        event_store.append(session_id, {"type": "tool_start", "name": name}, user_id=user_id)
+                        try:
+                            result = await fn(*args, **kwargs)
+                            event_store.append(session_id, {"type": "tool_end", "name": name, "status": "ok"}, user_id=user_id)
+                            return result
+                        except Exception as exc:
+                            event_store.append(
+                                session_id,
+                                {"type": "tool_end", "name": name, "status": "error", "error": str(exc)},
+                                user_id=user_id,
+                            )
+                            raise
+                return wrapped
+            @functools.wraps(fn)
+            def wrapped(*args, **kwargs):
+                with tracer.start_as_current_span(name):
                     event_store.append(session_id, {"type": "tool_start", "name": name}, user_id=user_id)
                     try:
-                        result = await fn(*args, **kwargs)
+                        result = fn(*args, **kwargs)
                         event_store.append(session_id, {"type": "tool_end", "name": name, "status": "ok"}, user_id=user_id)
                         return result
                     except Exception as exc:
@@ -434,25 +457,18 @@ def _build_tools(
                             user_id=user_id,
                         )
                         raise
-                return wrapped
-            @functools.wraps(fn)
-            def wrapped(*args, **kwargs):
-                event_store.append(session_id, {"type": "tool_start", "name": name}, user_id=user_id)
-                try:
-                    result = fn(*args, **kwargs)
-                    event_store.append(session_id, {"type": "tool_end", "name": name, "status": "ok"}, user_id=user_id)
-                    return result
-                except Exception as exc:
-                    event_store.append(
-                        session_id,
-                        {"type": "tool_end", "name": name, "status": "error", "error": str(exc)},
-                        user_id=user_id,
-                    )
-                    raise
             return wrapped
         return decorator
 
     scene_matcher = SceneMatcher(
+        config=config,
+        storyboard_store=storyboard_store,
+        event_store=event_store,
+        session_id=session_id,
+        company_id=company_id,
+        user_id=user_id,
+    )
+    scene_matcher_v2 = SceneMatcherV2(
         config=config,
         storyboard_store=storyboard_store,
         event_store=event_store,
@@ -658,6 +674,7 @@ def _build_tools(
 
             new_candidates = [candidate for _, candidate in candidates_with_index]
 
+
             # Set candidates using the candidates module
             from videoagent.candidates import set_candidates
             set_candidates(scene, new_candidates)
@@ -690,6 +707,64 @@ def _build_tools(
 
             updated_count += 1
 
+        # Check for overlaps between scenes (blocking error)
+        # We check the pending state of 'scenes' which has been modified in-place above
+        from collections import defaultdict
+        scene_ranges = defaultdict(list)
+        for s in scenes:
+            if s.matched_scene and s.matched_scene.source_video_id and s.matched_scene.start_time is not None:
+                scene_ranges[s.matched_scene.source_video_id].append({
+                    "scene_id": s.scene_id,
+                    "title": s.title,
+                    "start": float(s.matched_scene.start_time),
+                    "end": float(s.matched_scene.end_time),
+                })
+        
+        blocking_errors = []
+        visited_pairs = set()
+        
+        for vid, ranges in scene_ranges.items():
+            ranges.sort(key=lambda r: r["start"])
+            for i in range(len(ranges)):
+                for j in range(i + 1, len(ranges)):
+                    r1 = ranges[i]
+                    r2 = ranges[j]
+                    
+                    # Check overlap: max(start1, start2) < min(end1, end2)
+                    overlap_start = max(r1["start"], r2["start"])
+                    overlap_end = min(r1["end"], r2["end"])
+                    
+
+                    if overlap_start < overlap_end:
+                        overlap_duration = overlap_end - overlap_start
+                        if overlap_duration > 0.5:
+                            pair_key = tuple(sorted((r1["scene_id"], r2["scene_id"])))
+                            if pair_key not in visited_pairs:
+                                blocking_errors.append(
+                                    f"Detected high overlap between candidate for scene '{r1['title']}' ({r1['scene_id']}) "
+                                    f"and candidate for scene '{r2['title']}' ({r2['scene_id']}) "
+                                    f"on video {vid} (overlap={overlap_duration:.1f}s)."
+                                )
+                                visited_pairs.add(pair_key)
+        
+        # Check for duration mismatch (blocking error)
+        for s in scenes:
+            if s.use_voice_over and s.voice_over and s.voice_over.duration:
+                if s.matched_scene and s.matched_scene.start_time is not None and s.matched_scene.end_time is not None:
+                    scene_duration = float(s.matched_scene.end_time) - float(s.matched_scene.start_time)
+                    vo_duration = s.voice_over.duration
+                    
+                    diff = abs(scene_duration - vo_duration)
+                    if diff > 1.0:
+                        blocking_errors.append(
+                            f"Duration mismatch for scene '{s.title}' ({s.scene_id}): "
+                            f"Video duration ({scene_duration:.1f}s) differs from voiceover duration ({vo_duration:.1f}s) "
+                            f"by {diff:.1f}s (max allowed: 1.0s)."
+                        )
+
+        if blocking_errors:
+            return "Error: No candidates were saved.\n" + "\n".join(blocking_errors)
+
         if updated_count > 0:
             storyboard_store.save(session_id, scenes, user_id=user_id)
             event_store.append(session_id, {"type": "storyboard_update"}, user_id=user_id)
@@ -700,7 +775,8 @@ def _build_tools(
         if overlap_warnings:
             msg += "\n" + "\n".join(overlap_warnings)
 
-        return msg
+        return msg 
+
 
     @function_tool(failure_error_function=tool_error("update_video_brief"), strict_mode=True)
     @log_tool("update_video_brief")
@@ -829,11 +905,11 @@ def _build_tools(
         finally:
             generator.cleanup()
 
-    @function_tool(failure_error_function=tool_error("generate_voiceover_v2"), strict_mode=True)
-    @log_tool("generate_voiceover_v2")
-    async def generate_voiceover_v2(payload: GenerateVoiceoverV2Payload) -> str:
+    @function_tool(failure_error_function=tool_error("generate_voiceover_v3"), strict_mode=True)
+    @log_tool("generate_voiceover")
+    async def generate_voiceover_v3(payload: GenerateVoiceoverV3Payload) -> str:
         """
-        Generate SSML-first voiceovers with pronunciation guidance, then synthesize via ElevenLabs.
+        Generate ElevenLabs v3 voiceovers with optional LLM enhancement.
 
         Inputs:
         - `segment_ids`: storyboard scene ids to regenerate.
@@ -873,32 +949,24 @@ def _build_tools(
             if item.scene_id and item.note
         }
 
-        pronunciations: list[PronunciationGuidance] = []
+        pronunciations = [
+            PronunciationGuidance(word=item.word.strip(), phonetic_spelling=item.phonetic_spelling.strip())
+            for item in payload.pronunciations
+            if item.word.strip() and item.phonetic_spelling.strip()
+        ]
 
-        if user_id and company_id:
+        # Look up user preference from DB
+        user_voice_preference = None
+        if user_id:
             try:
                 with connection.get_db_context() as db:
-                    pronunciation_rows = crud.list_pronunciations(
-                        db,
-                        company_id=company_id,
-                        user_id=user_id,
-                        session_id=session_id,
-                    )
-                    for item in pronunciation_rows:
-                        word = (item.word or "").strip()
-                        phonetic = (item.phonetic_spelling or "").strip()
-                        if not word or not phonetic:
-                            continue
-                        pronunciations.append(
-                            PronunciationGuidance(
-                                word=word,
-                                phonetic_spelling=phonetic,
-                            )
-                        )
-            except Exception as exc:
-                print(f"[generate_voiceover_v2] Failed to fetch user/pronunciation context: {exc}")
+                    user = crud.get_user(db, user_id)
+                    if user and user.settings and "tts_voice" in user.settings:
+                        user_voice_preference = user.settings["tts_voice"]
+            except Exception as e:
+                print(f"[generate_voiceover] Failed to look up user voice preference: {e}")
 
-        generator = VoiceOverV2Generator(config)
+        generator = VoiceOverV3Generator(config)
         storage_client = get_storage_client(config)
         try:
             session_dir = storyboard_store._storyboard_path(session_id, user_id=user_id).parent
@@ -927,11 +995,10 @@ def _build_tools(
                         output_path=output_path,
                         notes=merged_notes,
                         pronunciations=pronunciations,
-                        elevenlabs_model_id=payload.elevenlabs_model_id,
-                        ssml_model=payload.ssml_model,
+                        voice_id=user_voice_preference,
                     )
                 print(
-                    "[generate_voiceover_v2] "
+                    "[generate_voiceover] "
                     f"{scene_id} generated in {time.perf_counter() - job_start:.2f}s"
                 )
 
@@ -954,7 +1021,7 @@ def _build_tools(
 
             storyboard_store.save(session_id, scenes, user_id=user_id)
             print(
-                "[generate_voiceover_v2] total time: "
+                "[generate_voiceover] total time: "
                 f"{time.perf_counter() - step_start:.2f}s"
             )
 
@@ -962,7 +1029,7 @@ def _build_tools(
                 1 for value in scene_notes_map.values() if value and value.strip()
             )
             return (
-                f"Voiceovers v2 generated for {len(segment_ids)} storyboard scene(s). "
+                f"Voiceovers generated for {len(segment_ids)} storyboard scene(s). "
                 f"Pronunciation rules used: {len(pronunciations)}. "
                 f"Notes applied: {notes_applied}."
             )
@@ -977,6 +1044,14 @@ def _build_tools(
     async def match_scene_to_video(payload: SceneMatchBatchRequest) -> str:
         """Find candidate clips for one or more storyboard scenes."""
         return await scene_matcher.match_scene_to_video(payload)
+
+    @function_tool(failure_error_function=tool_error("match_scene_to_video_v2"), strict_mode=False)
+    @log_tool("match_scene_to_video")
+    async def match_scene_to_video_v2(payload: SceneMatchV2BatchRequest) -> str:
+        """Find candidate clips for one or more VO storyboard scenes using v2 matching."""
+        return await scene_matcher_v2.match_scene_to_video_v2(
+            payload=payload,
+        )
 
     @function_tool(failure_error_function=tool_error("estimate_voice_duration"), strict_mode=False)
     @log_tool("estimate_voice_duration")
@@ -1154,7 +1229,7 @@ def _build_tools(
                 "success": False,
                 "error": (
                     f"No voice over found for scene '{scene_id}'. "
-                    "Voice over MUST be generated first using generate_voice_overs before using generate_scene."
+                    "Voice over MUST be generated first using generate_voiceover_v3 before using generate_scene."
                 ),
             })
         
@@ -1164,7 +1239,7 @@ def _build_tools(
                 "success": False,
                 "error": (
                     f"Voice over duration is not set for scene '{scene_id}'. "
-                    "Please regenerate the voice over using generate_voice_overs."
+                    "Please regenerate the voice over using generate_voiceover_v3."
                 ),
             })
         
@@ -1368,6 +1443,7 @@ def _build_tools(
         set_scene_candidates,
         update_video_brief,
         match_scene_to_video,
-        generate_voice_overs,
+        match_scene_to_video_v2,
+        generate_voiceover_v3,
         generate_scene,
     ]

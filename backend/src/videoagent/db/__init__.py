@@ -4,6 +4,7 @@ from .models import (
     Base,
     Company,
     CustomerProfile,
+    Feedback,
     Session,
     SessionAnnotatorStatus,
     SessionBrief,
@@ -29,6 +30,7 @@ __all__ = [
     "SessionChatMessage",
     "CustomerProfile",
     "Annotation",
+    "Feedback",
     "SessionAnnotatorStatus",
     # Connection
     "engine",

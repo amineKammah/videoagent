@@ -3,7 +3,8 @@
 import { useState, useEffect } from 'react';
 import { useSessionStore } from '@/store/session';
 import { api } from '@/lib/api';
-import { VideoBrief } from '@/lib/types';
+import { VideoBrief, Feedback } from '@/lib/types';
+import { FeedbackControl } from './FeedbackControl';
 
 export function ProjectBrief() {
     const { videoBrief, setVideoBrief, session, sendMessage } = useSessionStore();
@@ -11,6 +12,29 @@ export function ProjectBrief() {
     const [isEditing, setIsEditing] = useState(false);
     const [editForm, setEditForm] = useState<VideoBrief | null>(null);
     const [isSaving, setIsSaving] = useState(false);
+    const [feedback, setFeedback] = useState<Feedback | null>(null);
+
+    useEffect(() => {
+        if (!session?.id) return;
+        const loadFeedback = async () => {
+            try {
+                // Fetch feedback specifically for video_brief
+                const list = await api.listFeedback(session.id, 'video_brief');
+                if (list.length > 0) {
+                    setFeedback(list[0]);
+                } else {
+                    setFeedback(null);
+                }
+            } catch (err) {
+                console.error('Failed to load brief feedback:', err);
+            }
+        };
+        loadFeedback();
+    }, [session?.id]);
+
+    const handleFeedbackUpdate = (updated: Feedback) => {
+        setFeedback(updated);
+    };
 
     useEffect(() => {
         if (isEditing && videoBrief) {
@@ -123,7 +147,7 @@ export function ProjectBrief() {
 
             {/* Content */}
             {!isCollapsed && (
-                <div className="p-6 space-y-6">
+                <div className="relative p-6 pb-16 space-y-6">
                     {isEditing && editForm ? (
                         <div className="space-y-4">
                             <div>
@@ -220,6 +244,22 @@ export function ProjectBrief() {
                                 </ul>
                             </div>
                         </>
+                    )}
+
+
+
+                    {/* Feedback Control - Sleek/Minimal */}
+                    {!isEditing && session && (
+                        <div className="absolute bottom-4 right-4">
+                            <FeedbackControl
+                                sessionId={session.id}
+                                targetType="video_brief"
+                                targetId={null}
+                                initialFeedback={feedback}
+                                onFeedbackUpdate={handleFeedbackUpdate}
+                                variant="minimal"
+                            />
+                        </div>
                     )}
                 </div>
             )}

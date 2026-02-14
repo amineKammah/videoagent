@@ -7,11 +7,13 @@ from sqlalchemy import create_engine, select
 from sqlalchemy.orm import sessionmaker
 from videoagent.db.models import Company
 
-# Path to the active database detected
-DB_PATH = "/Users/amineka/videoagent/videoagent.db"
-DATABASE_URL = f"sqlite:///{DB_PATH}"
+# DATABASE_URL from env or default to postgres
+DATABASE_URL = os.getenv("DATABASE_URL")
+if not DATABASE_URL:
+    print("DATABASE_URL not set. Exiting.")
+    sys.exit(1)
 
-print(f"Connecting to {DATABASE_URL}...")
+print(f"Connecting to {DATABASE_URL.split('@')[-1]}...")
 engine = create_engine(DATABASE_URL)
 SessionLocal = sessionmaker(bind=engine)
 session = SessionLocal()

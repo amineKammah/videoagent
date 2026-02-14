@@ -311,3 +311,29 @@ export interface CreatePronunciationRequest {
     session_id?: string;
     always_included?: boolean;
 }
+
+// ============================================================================
+// Feedback Types
+// ============================================================================
+
+export type FeedbackRating = 'up' | 'down';
+
+export interface Feedback {
+    id: string;
+    session_id: string;
+    company_id: string;
+    user_id: string;
+    target_type: 'storyboard' | 'scene' | 'video_brief';
+    target_id: string | null;
+    rating: FeedbackRating;
+    comment: string | null;
+    created_at: string;
+    updated_at: string;
+}
+
+export interface UpsertFeedbackRequest {
+    target_type: 'storyboard' | 'scene' | 'video_brief';
+    target_id?: string | null;
+    rating: FeedbackRating;
+    comment?: string | null;
+}

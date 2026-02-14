@@ -12,12 +12,12 @@ export function getVideoPreviewState(input: VideoPreviewStateInput): VideoPrevie
         return 'hidden';
     }
 
-    if (input.isProcessing || input.videoGenerating) {
-        return 'loading';
-    }
-
     if (input.allScenesReady) {
         return 'ready';
+    }
+
+    if (input.isProcessing || input.videoGenerating) {
+        return 'loading';
     }
 
     return 'incomplete';

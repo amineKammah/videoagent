@@ -10,7 +10,7 @@ from typing import Optional
 
 from sqlalchemy.orm import Session as DBSession
 
-from .models import Company, User, Session, CustomerProfile, Annotation, Pronunciation
+from .models import Company, User, Session, CustomerProfile, Annotation, Pronunciation, Feedback
 
 
 # ============================================================================
@@ -478,4 +478,76 @@ def delete_pronunciation(db: DBSession, pronunciation_id: str, user_id: str) -> 
     db.delete(pronunciation)
     db.commit()
     return True
+
+
+# ============================================================================
+# Feedback CRUD
+# ============================================================================
+
+def upsert_feedback(
+    db: DBSession,
+    session_id: str,
+    company_id: str,
+    user_id: str,
+    target_type: str,
+    target_id: str | None,
+    rating: str,
+    comment: str | None = None,
+) -> Feedback:
+    """Create or update feedback (one per user per target in a session)."""
+    existing = db.query(Feedback).filter(
+        Feedback.session_id == session_id,
+        Feedback.user_id == user_id,
+        Feedback.target_type == target_type,
+        Feedback.target_id == target_id,
+    ).first()
+
+    if existing:
+        existing.rating = rating
+        existing.comment = comment
+        existing.updated_at = datetime.utcnow()
+        db.commit()
+        db.refresh(existing)
+        return existing
+
+    feedback = Feedback(
+        id=str(uuid.uuid4()),
+        session_id=session_id,
+        company_id=company_id,
+        user_id=user_id,
+        target_type=target_type,
+        target_id=target_id,
+        rating=rating,
+        comment=comment,
+    )
+    db.add(feedback)
+    db.commit()
+    db.refresh(feedback)
+    return feedback
+
+
+def list_feedback(
+    db: DBSession,
+    session_id: str,
+    target_type: str | None = None,
+    target_id: str | None = None,
+) -> list[Feedback]:
+    """List feedback for a session, optionally filtered."""
+    query = db.query(Feedback).filter(Feedback.session_id == session_id)
+    if target_type is not None:
+        query = query.filter(Feedback.target_type == target_type)
+    if target_id is not None:
+        query = query.filter(Feedback.target_id == target_id)
+    return query.order_by(Feedback.created_at.desc()).all()
+
+
+def delete_feedback(db: DBSession, feedback_id: str, user_id: str) -> bool:
+    """Delete feedback if owned by the requesting user."""
+    feedback = db.query(Feedback).filter(Feedback.id == feedback_id).first()
+    if not feedback or feedback.user_id != user_id:
+        return False
+    db.delete(feedback)
+    db.commit()
+    return True
+
 

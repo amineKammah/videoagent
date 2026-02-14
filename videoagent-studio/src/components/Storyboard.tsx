@@ -2,8 +2,9 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useSessionStore } from '@/store/session';
-import { StoryboardScene } from '@/lib/types';
+import { StoryboardScene, Feedback } from '@/lib/types';
 import { api } from '@/lib/api';
+import { FeedbackControl } from './FeedbackControl';
 
 const GENERATED_SOURCE_PREFIX = 'generated:';
 
@@ -38,8 +39,35 @@ function formatMatchedSource(sourceVideoId: string): string {
 }
 
 export function Storyboard() {
-    const scenes = useSessionStore(state => state.scenes);
+    const { scenes, session } = useSessionStore();
     const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
+    const [feedbackMap, setFeedbackMap] = useState<Record<string, Feedback>>({});
+
+    // Load feedback when session loads
+    useEffect(() => {
+        if (!session?.id) return;
+
+        const loadFeedback = async () => {
+            try {
+                const allFeedback = await api.listFeedback(session.id);
+                const map: Record<string, Feedback> = {};
+                allFeedback.forEach(f => {
+                    const key = f.target_type === 'storyboard' ? 'storyboard' : `scene:${f.target_id}`;
+                    map[key] = f;
+                });
+                setFeedbackMap(map);
+            } catch (err) {
+                console.error('Failed to load feedback:', err);
+            }
+        };
+
+        loadFeedback();
+    }, [session?.id]);
+
+    const handleFeedbackUpdate = (feedback: Feedback) => {
+        const key = feedback.target_type === 'storyboard' ? 'storyboard' : `scene:${feedback.target_id}`;
+        setFeedbackMap(prev => ({ ...prev, [key]: feedback }));
+    };
 
     // Handle keyboard navigation
     useEffect(() => {
@@ -77,6 +105,8 @@ export function Storyboard() {
 
     return (
         <>
+
+
             {/* Horizontal scrolling container */}
             <div className="relative group">
                 <div
@@ -90,6 +120,7 @@ export function Storyboard() {
                                 scene={scene}
                                 index={index}
                                 onClick={() => setSelectedIndex(index)}
+                                feedback={feedbackMap[`scene:${scene.scene_id}`]}
                             />
                         ))}
                     </div>
@@ -119,6 +150,20 @@ export function Storyboard() {
                 </button>
             </div>
 
+            {/* Storyboard-level Feedback */}
+            {session && (
+                <div className="mx-4 mt-2 flex justify-end">
+                    <FeedbackControl
+                        sessionId={session.id}
+                        targetType="storyboard"
+                        targetId={null}
+                        initialFeedback={feedbackMap['storyboard'] || null}
+                        onFeedbackUpdate={handleFeedbackUpdate}
+                        variant="minimal"
+                    />
+                </div>
+            )}
+
             {/* Modal for expanded view */}
             {selectedIndex !== null && (
                 <SceneModal
@@ -126,6 +171,8 @@ export function Storyboard() {
                     currentIndex={selectedIndex}
                     onClose={() => setSelectedIndex(null)}
                     onNavigate={setSelectedIndex}
+                    feedbackMap={feedbackMap}
+                    onFeedbackUpdate={handleFeedbackUpdate}
                 />
             )}
         </>
@@ -136,9 +183,10 @@ interface SceneCardProps {
     scene: StoryboardScene;
     index: number;
     onClick: () => void;
+    feedback?: Feedback;
 }
 
-function SceneCard({ scene, index, onClick }: SceneCardProps) {
+function SceneCard({ scene, index, onClick, feedback }: SceneCardProps) {
     const sceneLabel = getSceneMatchLabel(scene);
 
     return (
@@ -160,6 +208,26 @@ function SceneCard({ scene, index, onClick }: SceneCardProps) {
             <h4 className="font-medium text-slate-800 text-sm line-clamp-2 leading-tight">
                 {scene.title}
             </h4>
+
+            {/* Feedback Indicator */}
+            {feedback && (
+                <div className="absolute bottom-3 right-3">
+                    {feedback.rating === 'up' ? (
+                        <div className="bg-green-100 text-green-700 p-1 rounded-full shadow-sm">
+                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3 h-3">
+                                <path d="M1 8.25a1.25 1.25 0 1 1 2.5 0v7.5a1.25 1.25 0 1 1-2.5 0v-7.5ZM11 3V1.7c0-.268.14-.526.395-.607A2 2 0 0 1 14 3c0 .995-.182 1.948-.514 2.826-.204.54.166 1.174.744 1.174h2.52c1.243 0 2.261 1.01 2.261 2.251v5.753c0 1.24-1.018 2.251-2.261 2.251h-6.83a2 2 0 0 1-1.396-.519l-3.674-2.25a1.25 1.25 0 0 1 .6 2.05l-3.33 2.155a.75.75 0 0 1-1.16-.628l-.34-4.86A3.251 3.251 0 0 1 5 6.75h1.25v2.247l3.655-2.274a2 2 0 0 1 1.345-.523h4.636l-1.03-3.07a.75.75 0 0 0-.712-.511L11 3Z" />
+                            </svg>
+                        </div>
+                    ) : (
+                        <div className="bg-red-100 text-red-700 p-1 rounded-full shadow-sm">
+                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3 h-3">
+                                <path d="M18.905 12.75a1.25 1.25 0 0 1-2.5 0v-7.5a1.25 1.25 0 1 1 2.5 0v7.5ZM8.905 17v1.3c0 .268-.14.526-.395.607A2 2 0 0 1 5.905 17c0-.995.182-1.948.514-2.826.204-.54-.166-1.174-.744-1.174h-2.52c-1.243 0-2.261-1.01-2.261-2.251v-5.753c0-1.24 1.018-2.251 2.261-2.251h6.83A2 2 0 0 1 11.381 3.26l3.674 2.25a1.25 1.25 0 0 1-.6-2.05l3.33-2.155a.75.75 0 0 1 1.16.628l.34 4.86a3.251 3.251 0 0 1-1.924 3.957h-1.25v-2.247l-3.655 2.274a2 2 0 0 1-1.345.523h-4.636l1.03 3.07a.75.75 0 0 0 .712.511l.104-.005Z" />
+                            </svg>
+                        </div>
+                    )}
+                </div>
+            )}
+
             <p className="text-xs text-slate-500 mt-1 line-clamp-2">
                 {scene.purpose}
             </p>
@@ -172,9 +240,11 @@ interface SceneModalProps {
     currentIndex: number;
     onClose: () => void;
     onNavigate: (index: number) => void;
+    feedbackMap: Record<string, Feedback>;
+    onFeedbackUpdate: (feedback: Feedback) => void;
 }
 
-function SceneModal({ scenes, currentIndex, onClose, onNavigate }: SceneModalProps) {
+function SceneModal({ scenes, currentIndex, onClose, onNavigate, feedbackMap, onFeedbackUpdate }: SceneModalProps) {
     const { session, setScenes, sendMessage } = useSessionStore();
     const scene = scenes[currentIndex];
     const sceneMatchLabel = getSceneMatchLabel(scene);
@@ -291,7 +361,7 @@ function SceneModal({ scenes, currentIndex, onClose, onNavigate }: SceneModalPro
                 </div>
 
                 {/* Content */}
-                <div className="flex-1 overflow-y-auto p-6 space-y-4">
+                <div className="flex-1 overflow-y-auto p-6 pb-16 space-y-4 relative">
                     {isEditing ? (
                         <div className="space-y-4">
                             <div>
@@ -441,8 +511,8 @@ function SceneModal({ scenes, currentIndex, onClose, onNavigate }: SceneModalPro
                                                         }
                                                     }}
                                                     className={`px-3 py-1.5 text-xs font-medium rounded-full transition-all ${isSelected
-                                                            ? 'bg-teal-600 text-white shadow-sm'
-                                                            : 'bg-white text-slate-600 border border-slate-300 hover:border-teal-400 hover:text-teal-600'
+                                                        ? 'bg-teal-600 text-white shadow-sm'
+                                                        : 'bg-white text-slate-600 border border-slate-300 hover:border-teal-400 hover:text-teal-600'
                                                         }`}
                                                     title={candidate.description || `Candidate ${idx + 1}`}
                                                 >
@@ -461,6 +531,20 @@ function SceneModal({ scenes, currentIndex, onClose, onNavigate }: SceneModalPro
                                             Click a pill to switch clips
                                         </p>
                                     )}
+                                </div>
+                            )}
+
+                            {/* Feedback Control in Modal - Sleek */}
+                            {session && (
+                                <div className="absolute bottom-4 right-4 z-10">
+                                    <FeedbackControl
+                                        sessionId={session.id}
+                                        targetType="scene"
+                                        targetId={scene.scene_id}
+                                        initialFeedback={feedbackMap[`scene:${scene.scene_id}`] || null}
+                                        onFeedbackUpdate={onFeedbackUpdate}
+                                        variant="minimal"
+                                    />
                                 </div>
                             )}
                         </>

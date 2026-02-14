@@ -15,6 +15,7 @@ from .schemas import (
     UserCreate, UserUpdate, UserResponse,
     CustomerProfileCreate, CustomerProfileUpdate, CustomerProfileResponse,
     PronunciationCreate, PronunciationUpdate, PronunciationResponse, PronunciationGenerationResponse,
+    FeedbackCreate, FeedbackResponse,
 )
 from ..gemini import GeminiClient
 import tempfile
@@ -364,3 +365,56 @@ async def generate_pronunciation(
     except Exception as e:
         print(f"Error generating pronunciation: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# ============================================================================
+# Feedback Endpoints
+# ============================================================================
+
+@router.put("/feedback", response_model=FeedbackResponse)
+def upsert_feedback(
+    request: FeedbackCreate,
+    x_company_id: str = Header(..., alias="X-Company-ID"),
+    x_user_id: str = Header(..., alias="X-User-ID"),
+    session_id: str = Query(...),
+    db: DBSession = Depends(get_db),
+):
+    """Create or update feedback (one per user per target)."""
+    return crud.upsert_feedback(
+        db,
+        session_id=session_id,
+        company_id=x_company_id,
+        user_id=x_user_id,
+        target_type=request.target_type,
+        target_id=request.target_id,
+        rating=request.rating,
+        comment=request.comment,
+    )
+
+
+@router.get("/feedback", response_model=list[FeedbackResponse])
+def list_feedback(
+    session_id: str = Query(...),
+    target_type: Optional[str] = Query(None),
+    target_id: Optional[str] = Query(None),
+    db: DBSession = Depends(get_db),
+):
+    """List feedback for a session."""
+    return crud.list_feedback(
+        db,
+        session_id=session_id,
+        target_type=target_type,
+        target_id=target_id,
+    )
+
+
+@router.delete("/feedback/{feedback_id}")
+def delete_feedback(
+    feedback_id: str,
+    x_user_id: str = Header(..., alias="X-User-ID"),
+    db: DBSession = Depends(get_db),
+):
+    """Delete feedback."""
+    if not crud.delete_feedback(db, feedback_id, x_user_id):
+        raise HTTPException(status_code=404, detail="Feedback not found or unauthorized")
+    return {"status": "deleted"}

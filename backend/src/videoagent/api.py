@@ -8,6 +8,9 @@ import os
 from pathlib import Path
 from typing import Optional
 
+from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
+from opentelemetry.instrumentation.asyncio import AsyncioInstrumentor
+
 from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, Request, Header, Query
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, ConfigDict, Field
@@ -158,23 +161,25 @@ class ChatHistoryResponse(BaseModel):
 
 
 from contextlib import asynccontextmanager
-from videoagent.database import init_db, get_all_customers
 from videoagent.db import multitenancy_router, Base, engine
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup: Initialize fetching/database
-    init_db()
-    init_db()
+
 
     # Validate storage config early (global GCS mode).
     get_storage_client(agent_config)
     # Create new multi-tenancy tables if they don't exist
     Base.metadata.create_all(bind=engine)
+    
+    # Instrument Asyncio
+    AsyncioInstrumentor().instrument()
+    
     yield
     # Shutdown: Clean up if needed
 
 app = FastAPI(title="VideoAgent API", version="0.1.0", lifespan=lifespan)
+FastAPIInstrumentor.instrument_app(app)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -272,8 +277,8 @@ def list_customers(
 @app.get("/voices")
 def list_voices():
     """Return available TTS voice options with sample audio URLs."""
-    from videoagent.voice_options import GEMINI_TTS_VOICES
-    return {"voices": GEMINI_TTS_VOICES}
+    from videoagent.voice_options import ELEVENLABS_VOICES
+    return {"voices": ELEVENLABS_VOICES}
 
 
 @app.get("/agent/sessions", response_model=SessionListResponse)
@@ -321,7 +326,17 @@ def create_agent_session(
 async def agent_chat(request: AgentChatRequest) -> AgentChatResponse:
     try:
         # run_turn returns a string (the agent's message)
-        result = await asyncio.to_thread(agent_service.run_turn, request.session_id, request.message)
+        from opentelemetry import context
+        ctx = context.get_current()
+        
+        def _run_with_ctx():
+            token = context.attach(ctx)
+            try:
+                return agent_service.run_turn(request.session_id, request.message)
+            finally:
+                context.detach(token)
+
+        result = await asyncio.to_thread(_run_with_ctx)
     except Exception as exc:
         raise HTTPException(status_code=400, detail=str(exc))
 

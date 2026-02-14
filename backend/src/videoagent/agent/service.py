@@ -11,6 +11,8 @@ from threading import Lock
 from typing import Optional
 from uuid import uuid4
 
+from opentelemetry import trace
+
 from agents import (
     Agent,
     RunConfig,
@@ -55,7 +57,7 @@ from .tools import (
     _build_tools,
     _render_storyboard_scenes,
 )
-from .prompts import AGENT_SYSTEM_PROMPT
+from .prompts import AGENT_SYSTEM_PROMPT_V2
 
 
 def _load_env() -> None:
@@ -105,7 +107,7 @@ class VideoAgentService:
         _load_env()
         self._configure_tracing()
 
-        self._base_instructions = AGENT_SYSTEM_PROMPT
+        self._base_instructions = AGENT_SYSTEM_PROMPT_V2
 
     def _resolve_session_owner(self, session_id: str) -> tuple[Optional[str], Optional[str]]:
         """Resolve user_id and company_id for a session from the DB."""
@@ -299,112 +301,120 @@ class VideoAgentService:
             return lock
 
     def run_turn(self, session_id: str, user_message: str) -> dict:
-        agent = self._get_agent(session_id)
-
-        session = SQLiteSession(session_id, str(self.session_db_path))
-        ui_update_tools = {
-            "update_storyboard",
-            "update_video_brief",
-        }
-        redacted_args = json.dumps(
-            {"note": "REDACTED TO REDUCE TOKEN USAGE; SEE LATEST STATE IN SYSTEM PROMPT"}
-        )
-
-        def _scrub_input_item(item):
-            if not isinstance(item, dict):
-                return item
-            if item.get("type") == "function_call" and item.get("name") in ui_update_tools:
-                scrubbed = dict(item)
-                scrubbed["arguments"] = redacted_args
-                return scrubbed
-            tool_calls = item.get("tool_calls")
-            if isinstance(tool_calls, list):
-                scrubbed_calls = []
-                for call in tool_calls:
-                    if not isinstance(call, dict):
-                        scrubbed_calls.append(call)
-                        continue
-                    call_copy = dict(call)
-                    func = call_copy.get("function")
-                    if isinstance(func, dict):
-                        name = func.get("name")
-                        if name in ui_update_tools and "arguments" in func:
-                            func_copy = dict(func)
-                            func_copy["arguments"] = redacted_args
-                            call_copy["function"] = func_copy
-                    scrubbed_calls.append(call_copy)
-                scrubbed = dict(item)
-                scrubbed["tool_calls"] = scrubbed_calls
-                return scrubbed
-            return item
-
-        def _merge_session_input(history, new_input):
-            scrubbed_history = [_scrub_input_item(item) for item in history]
-            return scrubbed_history + new_input
-
-        run_config = RunConfig(
-            workflow_name="VideoAgent chat",
-            group_id=session_id,
-            session_input_callback=_merge_session_input,
-        )
-        
-        # Resolve owner for event logging
-        user_id, _ = self._resolve_session_owner(session_id)
-        
-        self.event_store.append(
-            session_id,
-            {"type": "run_start", "message": user_message},
-            user_id=user_id,
-        )
-        
-        # Save user message to chat history
-        self.append_chat_message(session_id, "user", user_message)
-        
-        try:
-            with self._get_run_lock(session_id):
-                result = Runner.run_sync(
-                    agent,
-                    input=user_message,
-                    session=session,
-                    max_turns=100,
-                    run_config=run_config,
-                )
-            output = result.final_output
-            if not isinstance(output, str):
-                output = str(output)
-            
-            # Try to parse structured JSON response
-            response_text = output
-            suggested_actions = []
-            try:
-                # Handle markdown code blocks
-                text = output.strip()
-                if text.startswith("```"):
-                    # Remove markdown code fence
-                    lines = text.split("\n")
-                    if lines[0].startswith("```"):
-                        lines = lines[1:]
-                    if lines and lines[-1].strip() == "```":
-                        lines = lines[:-1]
-                    text = "\n".join(lines)
-                
-                parsed = json.loads(text)
-                if isinstance(parsed, dict) and "response" in parsed:
-                    response_text = parsed.get("response", "")
-                    suggested_actions = parsed.get("suggested_actions", [])
-            except (json.JSONDecodeError, ValueError):
-                pass
-            
-            # Save assistant response to chat history
-            self.append_chat_message(session_id, "assistant", response_text, suggested_actions)
-            
-            return {
-                "response": response_text,
-                "suggested_actions": suggested_actions,
+        tracer = trace.get_tracer(__name__)
+        with tracer.start_as_current_span(
+            "run_turn",
+            attributes={
+                "session_id": session_id,
+                "user_message": user_message[:200]
             }
-        finally:
-            uid, _ = self._resolve_session_owner(session_id)
-            self.event_store.append(session_id, {"type": "run_end"}, user_id=uid)
+        ):
+            agent = self._get_agent(session_id)
+
+            session = SQLiteSession(session_id, str(self.session_db_path))
+            ui_update_tools = {
+                "update_storyboard",
+                "update_video_brief",
+            }
+            redacted_args = json.dumps(
+                {"note": "REDACTED TO REDUCE TOKEN USAGE; SEE LATEST STATE IN SYSTEM PROMPT"}
+            )
+
+            def _scrub_input_item(item):
+                if not isinstance(item, dict):
+                    return item
+                if item.get("type") == "function_call" and item.get("name") in ui_update_tools:
+                    scrubbed = dict(item)
+                    scrubbed["arguments"] = redacted_args
+                    return scrubbed
+                tool_calls = item.get("tool_calls")
+                if isinstance(tool_calls, list):
+                    scrubbed_calls = []
+                    for call in tool_calls:
+                        if not isinstance(call, dict):
+                            scrubbed_calls.append(call)
+                            continue
+                        call_copy = dict(call)
+                        func = call_copy.get("function")
+                        if isinstance(func, dict):
+                            name = func.get("name")
+                            if name in ui_update_tools and "arguments" in func:
+                                func_copy = dict(func)
+                                func_copy["arguments"] = redacted_args
+                                call_copy["function"] = func_copy
+                        scrubbed_calls.append(call_copy)
+                    scrubbed = dict(item)
+                    scrubbed["tool_calls"] = scrubbed_calls
+                    return scrubbed
+                return item
+
+            def _merge_session_input(history, new_input):
+                scrubbed_history = [_scrub_input_item(item) for item in history]
+                return scrubbed_history + new_input
+
+            run_config = RunConfig(
+                workflow_name="VideoAgent chat",
+                group_id=session_id,
+                session_input_callback=_merge_session_input,
+            )
+            
+            # Resolve owner for event logging
+            user_id, _ = self._resolve_session_owner(session_id)
+            
+            self.event_store.append(
+                session_id,
+                {"type": "run_start", "message": user_message},
+                user_id=user_id,
+            )
+            
+            # Save user message to chat history
+            self.append_chat_message(session_id, "user", user_message)
+            
+            try:
+                with self._get_run_lock(session_id):
+                    result = Runner.run_sync(
+                        agent,
+                        input=user_message,
+                        session=session,
+                        max_turns=100,
+                        run_config=run_config,
+                    )
+                output = result.final_output
+                if not isinstance(output, str):
+                    output = str(output)
+                
+                # Try to parse structured JSON response
+                response_text = output
+                suggested_actions = []
+                try:
+                    # Handle markdown code blocks
+                    text = output.strip()
+                    if text.startswith("```"):
+                        # Remove markdown code fence
+                        lines = text.split("\n")
+                        if lines[0].startswith("```"):
+                            lines = lines[1:]
+                        if lines and lines[-1].strip() == "```":
+                            lines = lines[:-1]
+                        text = "\n".join(lines)
+                    
+                    parsed = json.loads(text)
+                    if isinstance(parsed, dict) and "response" in parsed:
+                        response_text = parsed.get("response", "")
+                        suggested_actions = parsed.get("suggested_actions", [])
+                except (json.JSONDecodeError, ValueError):
+                    pass
+                
+                # Save assistant response to chat history
+                self.append_chat_message(session_id, "assistant", response_text, suggested_actions)
+                
+                return {
+                    "response": response_text,
+                    "suggested_actions": suggested_actions,
+                }
+            finally:
+                uid, _ = self._resolve_session_owner(session_id)
+                self.event_store.append(session_id, {"type": "run_end"}, user_id=uid)
 
     def get_events(self, session_id: str, cursor: Optional[int]) -> tuple[list[dict], int]:
         user_id, _ = self._resolve_session_owner(session_id)

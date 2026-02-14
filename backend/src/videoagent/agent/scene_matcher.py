@@ -8,7 +8,6 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Optional
 
-
 from google.genai import types
 from pydantic import ValidationError
 
@@ -45,6 +44,8 @@ class SceneMatchJob:
     mode: SceneMatchMode
     duration_section: str
     target_duration: Optional[float]
+    start_offset_seconds: Optional[float] = None
+    end_offset_seconds: Optional[float] = None
 
 
 # Keep this aligned with tools._check_scene_warnings (>10% is considered mismatch).
@@ -163,6 +164,17 @@ def _duration_section(target_duration: Optional[float]) -> str:
     return f"Duration Target: {target_duration}s (Tolerance: +/- 1s)\n"
 
 
+def _analysis_window_section(job: SceneMatchJob) -> str:
+    if job.start_offset_seconds is None or job.end_offset_seconds is None:
+        return ""
+    return (
+        "Analysis Window (Sub-Span):\n"
+        f"- Start: {job.start_offset_seconds:.3f}s\n"
+        f"- End: {job.end_offset_seconds:.3f}s\n"
+        "- Analyze ONLY this window and return timestamps in absolute source-video time.\n"
+    )
+
+
 def _build_voice_over_jobs(
     request: SceneMatchRequest,
     scene: _StoryboardScene,
@@ -170,6 +182,8 @@ def _build_voice_over_jobs(
     video_map: dict[str, object],
     duration_section: str,
     target_duration: Optional[float],
+    start_offset_seconds: Optional[float],
+    end_offset_seconds: Optional[float],
 ) -> list[SceneMatchJob]:
     jobs: list[SceneMatchJob] = []
     for video_id in candidate_ids:
@@ -186,6 +200,8 @@ def _build_voice_over_jobs(
                 mode=SceneMatchMode.VOICE_OVER,
                 duration_section=duration_section,
                 target_duration=target_duration,
+                start_offset_seconds=start_offset_seconds,
+                end_offset_seconds=end_offset_seconds,
             )
         )
     return jobs
@@ -198,6 +214,8 @@ def _build_original_audio_jobs(
     video_map: dict[str, object],
     duration_section: str,
     target_duration: Optional[float],
+    start_offset_seconds: Optional[float],
+    end_offset_seconds: Optional[float],
 ) -> list[SceneMatchJob]:
     jobs: list[SceneMatchJob] = []
     for video_id in candidate_ids:
@@ -214,6 +232,8 @@ def _build_original_audio_jobs(
                 mode=SceneMatchMode.ORIGINAL_AUDIO,
                 duration_section=duration_section,
                 target_duration=target_duration,
+                start_offset_seconds=start_offset_seconds,
+                end_offset_seconds=end_offset_seconds,
             )
         )
     return jobs
@@ -311,6 +331,37 @@ def _validate_and_build_jobs(
 
         duration_section = _duration_section(target_duration)
 
+        start_offset_seconds = request.start_offset_seconds
+        end_offset_seconds = request.end_offset_seconds
+        if (start_offset_seconds is None) != (end_offset_seconds is None):
+            errors.append(
+                {
+                    "scene_id": request.scene_id,
+                    "error": (
+                        "Provide both start_offset_seconds and end_offset_seconds, "
+                        "or omit both."
+                    ),
+                }
+            )
+            continue
+        if start_offset_seconds is not None and end_offset_seconds is not None:
+            if start_offset_seconds < 0:
+                errors.append(
+                    {
+                        "scene_id": request.scene_id,
+                        "error": "start_offset_seconds must be >= 0.",
+                    }
+                )
+                continue
+            if end_offset_seconds <= start_offset_seconds:
+                errors.append(
+                    {
+                        "scene_id": request.scene_id,
+                        "error": "end_offset_seconds must be greater than start_offset_seconds.",
+                    }
+                )
+                continue
+
         if scene.use_voice_over:
             jobs.extend(
                 _build_voice_over_jobs(
@@ -320,6 +371,8 @@ def _validate_and_build_jobs(
                     video_map=video_map,
                     duration_section=duration_section,
                     target_duration=target_duration,
+                    start_offset_seconds=start_offset_seconds,
+                    end_offset_seconds=end_offset_seconds,
                 )
             )
         else:
@@ -331,6 +384,8 @@ def _validate_and_build_jobs(
                     video_map=video_map,
                     duration_section=duration_section,
                     target_duration=target_duration,
+                    start_offset_seconds=start_offset_seconds,
+                    end_offset_seconds=end_offset_seconds,
                 )
             )
 
@@ -378,7 +433,9 @@ def _upload_job_videos(
 def _build_voice_over_prompt(job: SceneMatchJob) -> str:
     scene_text = f'Voice-Over Script: "{job.scene.script}"' if job.scene.script else "Voice-Over Script: (None)"
     metadata = job.metadata
-    return f"""You are an expert Video Editor. Your task is to find a background video clip that perfectly fits a voice-over script.
+    window_section = _analysis_window_section(job)
+    return f"""You are an expert Video Editor.
+Your task is to find a background video clip that perfectly fits a voice-over script.
 
 ### AUDIO MODE: REPLACE WITH VOICE OVER
 The original audio of the source video will be removed.
@@ -392,23 +449,35 @@ Agent Notes: {job.notes}
 ### 2. STRICT VISUAL RULES (CRITICAL)
 Since this is a background for a voice-over:
 - [ ] NO TALKING HEADS: Do NOT select clips where people are speaking to the camera.
-- [ ] NO EDGE CASES: Be mindful of clips where there is a camera recording of a person speaking to the camera on the edge of the frame.
+- [ ] NO EDGE CASES: Be mindful of clips where there is a camera recording of a
+person speaking to the camera on the edge of the frame.
 - [ ] NO SUBTITLES: Do NOT select clips with burnt-in subtitles.
-- [ ] COMPATIBLE WITH SCRIPT: You should not include scenes with text overs and widgets that don’t match the scene script. Ensure the selected clip is compatible with the scene script.
+- [ ] COMPATIBLE WITH SCRIPT: You should not include scenes with text overs and
+widgets that don’t match the scene script. Ensure the selected clip is compatible
+with the scene script.
 - [ ] NO STATIC SCENES: Do NOT select clips where there is a static frame for the entire duration of the clip.
 
 ### 3. YOUR MISSION
 Evaluate the single video provided below.
 1. Find a continuous clip that matches the Voice-Over Script and Agent Notes.
 2. {job.duration_section}
-3. If the clip is visually good but only matches part of the script, explain that limitation in `description`.
+3. Only perfect matches**: Pay very careful attention to the candidate visual description and ensure it works perfectly with the voiceover.
+    * If the clip only matches visually part of the script, Do NOT return it.
+    * E.g. If the voice over script talks about a product, but the clip shows a similar but different product, discard it.
+    * E.g. If the voice over script talks about a painpoint, but the clip shows the solution, discard it.
+    * E.g. If the script talks about integration with company X, and the clip shows a generic office environment, DO NOT return it.
+    * E.g. If the video has a logo that has nothing to do with the voice over, you should not include this video.
+    * We need to hold an extremely high bar for the produced videos. If you are not 100% sure that the clip works with the voiceover, discard it.
+4. This video will be used a B2B sales video. The quality bar is very high. If there is no perfect matches, DO NOT return it. 
 
 ### VIDEO TO EVALUATE
 - ID: {metadata.id}
 - Filename: {metadata.filename}
 - Total Duration: {metadata.duration:.1f}s
+{window_section}
 
 ### OUTPUT INSTRUCTIONS
+- Make sure each candidate clip is -/+1second of the target duration.
 - Return up to 3 candidate clips, RANKED from best to worst.
 - The first candidate should be your top recommendation.
 - Return EXACTLY the `video_id` provided above.
@@ -416,14 +485,30 @@ Evaluate the single video provided below.
 - Include rationale proving visual-rules compliance.
 
 Example Output:
-{{"candidates":[{{"video_id":"{metadata.id}","start_timestamp":"00:12.500","end_timestamp":"00:30.000","description":"...","rationale":"Confirmed: No talking...","no_talking_heads_confirmed":true,"no_subtitles_confirmed":true,"no_camera_recording_on_edge_of_frame_confirmed":true,"clip_compatible_with_scene_script_confirmed":true}}]}}
+{{
+  "candidates": [
+    {{
+      "video_id": "{metadata.id}",
+      "start_timestamp": "00:12.500",
+      "end_timestamp": "00:30.000",
+      "description": "...",
+      "rationale": "Confirmed: No talking...",
+      "no_talking_heads_confirmed": true,
+      "no_subtitles_confirmed": true,
+      "no_camera_recording_on_edge_of_frame_confirmed": true,
+      "clip_compatible_with_scene_script_confirmed": true
+    }}
+  ]
+}}
 """
 
 
 def _build_original_audio_prompt(job: SceneMatchJob) -> str:
     scene_text = f'Script/Target Line: "{job.scene.script}"' if job.scene.script else "Script/Target Line: (None)"
     metadata = job.metadata
-    return f"""You are an expert Video Editor. Your task is to find a talking segment where original audio should be kept.
+    window_section = _analysis_window_section(job)
+    return f"""You are an expert Video Editor.
+Your task is to find a talking segment where original audio should be kept.
 
 ### AUDIO MODE: KEEP ORIGINAL AUDIO
 The selected clip must contain usable on-camera speech that matches the scene intent.
@@ -449,6 +534,7 @@ Evaluate the single video provided below.
 - ID: {metadata.id}
 - Filename: {metadata.filename}
 - Total Duration: {metadata.duration:.1f}s
+{window_section}
 
 ### OUTPUT INSTRUCTIONS
 - Return up to 3 candidate clips, RANKED from best to worst.
@@ -458,7 +544,17 @@ Evaluate the single video provided below.
 - Include rationale confirming speaking-head and timing rule compliance.
 
 Example Output:
-{{"candidates":[{{"video_id":"{metadata.id}","start_timestamp":"00:12.500","end_timestamp":"00:30.000","description":"...","rationale":"Confirmed: Speaker on-camera and tightly trimmed."}}]}}
+{{
+  "candidates": [
+    {{
+      "video_id": "{metadata.id}",
+      "start_timestamp": "00:12.500",
+      "end_timestamp": "00:30.000",
+      "description": "...",
+      "rationale": "Confirmed: Speaker on-camera and tightly trimmed."
+    }}
+  ]
+}}
 """
 
 
@@ -550,8 +646,21 @@ async def _analyze_job_with_prompt(
             "error": "Video file was not uploaded.",
         }
 
-    print(prompt)
-    contents = types.Content(role="user", parts=[uploaded_file, types.Part(text=prompt)])
+    video_part = uploaded_file
+    if (
+        isinstance(uploaded_file, types.Part)
+        and uploaded_file.file_data is not None
+        and job.start_offset_seconds is not None
+        and job.end_offset_seconds is not None
+    ):
+        video_part = types.Part(
+            file_data=uploaded_file.file_data,
+            video_metadata=types.VideoMetadata(
+                start_offset=f"{job.start_offset_seconds:.3f}s",
+                end_offset=f"{job.end_offset_seconds:.3f}s",
+            ),
+        )
+    contents = types.Content(role="user", parts=[video_part, types.Part(text=prompt)])
     llm_start = time.perf_counter()
     try:
         response = await client.client.aio.models.generate_content(
@@ -622,6 +731,8 @@ async def _analyze_job_with_prompt(
             selection=selection,
             video_id=job.video_id,
             duration=job.metadata.duration,
+            start_offset_seconds=job.start_offset_seconds,
+            end_offset_seconds=job.end_offset_seconds,
         )
     except ValueError as exc:
         _print_prompt_log(job, llm_response_time, response.usage_metadata)
@@ -716,6 +827,8 @@ def _normalize_candidates(
     selection: SceneMatchResponse,
     video_id: str,
     duration: Optional[float],
+    start_offset_seconds: Optional[float] = None,
+    end_offset_seconds: Optional[float] = None,
 ) -> list[dict]:
     normalized_candidates: list[dict] = []
     for candidate in selection.candidates:
@@ -734,6 +847,16 @@ def _normalize_candidates(
             )
         if duration and start_seconds > duration:
             pass
+        if start_offset_seconds is not None and start_seconds < start_offset_seconds - 0.25:
+            raise ValueError(
+                f"Candidate start {start_seconds:.3f}s is outside analysis window "
+                f"start {start_offset_seconds:.3f}s."
+            )
+        if end_offset_seconds is not None and end_seconds > end_offset_seconds + 0.25:
+            raise ValueError(
+                f"Candidate end {end_seconds:.3f}s is outside analysis window "
+                f"end {end_offset_seconds:.3f}s."
+            )
 
         normalized_candidates.append(
             {

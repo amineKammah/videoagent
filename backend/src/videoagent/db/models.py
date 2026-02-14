@@ -231,3 +231,29 @@ class Pronunciation(Base):
     company = relationship("Company")
     created_by = relationship("User")
     session = relationship("Session")
+
+
+class Feedback(Base):
+    """Thumbs up/down feedback on storyboard or individual scenes."""
+    __tablename__ = "feedback"
+
+    id = Column(String, primary_key=True)
+    session_id = Column(String, ForeignKey("sessions.id"), nullable=False, index=True)
+    company_id = Column(String, ForeignKey("companies.id"), nullable=False)
+    user_id = Column(String, ForeignKey("users.id"), nullable=False)
+
+    # "storyboard" or "scene"
+    target_type = Column(String, nullable=False)
+    # scene_id when target_type == "scene"; NULL for storyboard-level
+    target_id = Column(String, nullable=True)
+
+    rating = Column(String, nullable=False)  # "up" | "down"
+    comment = Column(Text, nullable=True)
+
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    # Relationships
+    session = relationship("Session", overlaps="session")
+    company = relationship("Company")
+    user = relationship("User")
