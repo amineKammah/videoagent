@@ -21,20 +21,27 @@ from videoagent.story import _StoryboardScene
 
 
 def _parse_timestamp(text: str) -> float:
-    """Parse MM:SS.sss timestamp format to seconds."""
+    """Parse MM:SS.sss or HH:MM:SS.sss timestamp format to seconds."""
     text = text.strip()
     if not text:
         raise ValueError("Empty timestamp.")
     parts = text.split(":")
-    if len(parts) != 2:
-        raise ValueError(f"Expected MM:SS.sss format, got '{text}'.")
-    minutes, seconds = parts
+    if len(parts) == 2:
+        hours_value = 0
+        minutes, seconds = parts
+    elif len(parts) == 3:
+        hours, minutes, seconds = parts
+        if not hours.isdigit():
+            raise ValueError(f"Invalid hours value in '{text}'.")
+        hours_value = int(hours)
+    else:
+        raise ValueError(f"Expected MM:SS.sss or HH:MM:SS.sss format, got '{text}'.")
     try:
         minutes_value = int(minutes)
     except ValueError as exc:
         raise ValueError(f"Invalid minutes value in '{text}'.") from exc
     if "." not in seconds:
-        raise ValueError(f"Expected MM:SS.sss format, got '{text}'.")
+        raise ValueError(f"Expected MM:SS.sss or HH:MM:SS.sss format, got '{text}'.")
     seconds_main, millis_text = seconds.split(".", 1)
     if not (seconds_main.isdigit() and len(seconds_main) == 2):
         raise ValueError(f"Invalid seconds value in '{text}'.")
@@ -44,9 +51,15 @@ def _parse_timestamp(text: str) -> float:
         seconds_value = int(seconds_main) + (int(millis_text) / 1000.0)
     except ValueError as exc:
         raise ValueError(f"Invalid seconds value in '{text}'.") from exc
-    if minutes_value < 0 or seconds_value < 0 or seconds_value >= 60:
-        raise ValueError(f"Timestamp out of range (MM:SS.sss) in '{text}'.")
-    return minutes_value * 60 + seconds_value
+    if (
+        hours_value < 0
+        or minutes_value < 0
+        or minutes_value >= 60 and len(parts) == 3
+        or seconds_value < 0
+        or seconds_value >= 60
+    ):
+        raise ValueError(f"Timestamp out of range (MM:SS.sss or HH:MM:SS.sss) in '{text}'.")
+    return (hours_value * 3600) + (minutes_value * 60) + seconds_value
 
 
 @dataclass

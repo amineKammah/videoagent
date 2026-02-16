@@ -525,13 +525,14 @@ def agent_debug() -> AgentDebugResponse:
 
     env = {
         "AGENT_MODEL": _present(os.environ.get("AGENT_MODEL")),
+        "VERTEXAI_PROJECT": _present(os.environ.get("VERTEXAI_PROJECT")),
+        "VERTEXAI_LOCATION": _present(os.environ.get("VERTEXAI_LOCATION")),
         "GOOGLE_CLOUD_PROJECT": _present(os.environ.get("GOOGLE_CLOUD_PROJECT")),
         "CLOUDSDK_CORE_PROJECT": _present(os.environ.get("CLOUDSDK_CORE_PROJECT")),
         "GOOGLE_CLOUD_LOCATION": _present(os.environ.get("GOOGLE_CLOUD_LOCATION")),
         "GOOGLE_APPLICATION_CREDENTIALS": _basename(
             os.environ.get("GOOGLE_APPLICATION_CREDENTIALS")
         ),
-        "GEMINI_API_KEY": "set" if os.environ.get("GEMINI_API_KEY") else None,
     }
 
     return AgentDebugResponse(
@@ -896,6 +897,4 @@ def reject_annotations_endpoint(request: ResolveAnnotationsRequest, db: DBSessio
     """Mark multiple annotations as rejected (soft delete)."""
     count = db_reject_annotations(db, request.annotation_ids, request.resolved_by)
     return {"rejected_count": count}
-
-
 

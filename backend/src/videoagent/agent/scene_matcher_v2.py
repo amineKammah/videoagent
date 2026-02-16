@@ -26,6 +26,9 @@ from .scene_matcher import (
 from .schemas import SceneMatchV2BatchRequest
 from .storage import EventStore, StoryboardStore
 
+_SHORTLIST_DURATION_EPSILON_SECONDS = 0.01
+_SHORTLIST_END_SOFT_CAP_SECONDS = 0.5
+
 
 class ShortlistClip(BaseModel):
     video_id: str
@@ -567,19 +570,23 @@ class SceneMatcherV2:
         for idx, clip in enumerate(review_clips, start=1):
             if clip.video_id not in video_map:
                 return f"Shortlist rejected: unknown video_id at position {idx}: {clip.video_id}"
-            if clip.end_time <= clip.start_time:
-                return f"Shortlist rejected: invalid timing at position {idx}."
             if clip.start_time < 0:
                 return f"Shortlist rejected: negative start time at position {idx}."
+            video_duration = float(video_map[clip.video_id].duration)
+            if clip.end_time > video_duration + _SHORTLIST_DURATION_EPSILON_SECONDS:
+                overrun = clip.end_time - video_duration
+                if overrun < _SHORTLIST_END_SOFT_CAP_SECONDS:
+                    clip.end_time = video_duration
+                else:
+                    return (
+                        "Shortlist rejected: clip end exceeds video duration at "
+                        f"position {idx} ({clip.end_time:.3f} > {video_duration:.3f})."
+                    )
+            if clip.end_time <= clip.start_time:
+                return f"Shortlist rejected: invalid timing at position {idx}."
             span = clip.end_time - clip.start_time
             if span > 120.0:
                 return f"Shortlist rejected: span > 120s at position {idx}."
-            video_duration = float(video_map[clip.video_id].duration)
-            if clip.end_time > video_duration + 0.01:
-                return (
-                    "Shortlist rejected: clip end exceeds video duration at "
-                    f"position {idx} ({clip.end_time:.3f} > {video_duration:.3f})."
-                )
         return None
 
     async def _shortlist_review_clips(

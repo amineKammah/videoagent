@@ -573,16 +573,28 @@ with st.sidebar:
             st.rerun()
 
     st.subheader("Environment")
-    if os.environ.get("GEMINI_API_KEY"):
-        st.success("GEMINI_API_KEY set")
+    if os.environ.get("VERTEXAI_PROJECT"):
+        st.success("VERTEXAI_PROJECT set")
     else:
-        st.warning("GEMINI_API_KEY not set")
+        st.warning("VERTEXAI_PROJECT not set")
+    if os.environ.get("VERTEXAI_LOCATION"):
+        st.success("VERTEXAI_LOCATION set")
+    else:
+        st.warning("VERTEXAI_LOCATION not set")
+    if os.environ.get("GOOGLE_CLOUD_PROJECT") or os.environ.get("CLOUDSDK_CORE_PROJECT"):
+        st.success("GOOGLE_CLOUD_PROJECT set")
+    else:
+        st.warning("GOOGLE_CLOUD_PROJECT not set")
+    if os.environ.get("GOOGLE_APPLICATION_CREDENTIALS"):
+        st.success("GOOGLE_APPLICATION_CREDENTIALS set")
+    else:
+        st.warning("GOOGLE_APPLICATION_CREDENTIALS not set (ADC may still work)")
     try:
         debug = api_get("/agent/debug")
         st.caption(f"Model: {debug.get('model', 'unknown')}")
         st.caption(f"Library: {debug.get('library_dir', 'unknown')}")
     except Exception:
-        st.caption(f"Model: {os.environ.get('AGENT_MODEL', 'gemini/gemini-3-pro-preview')}")
+        st.caption(f"Model: {os.environ.get('AGENT_MODEL', 'vertex_ai/gemini-3-pro-preview')}")
 
 storyboard_scenes, storyboard_error, raw_storyboard = fetch_storyboard(
     st.session_state.session_id

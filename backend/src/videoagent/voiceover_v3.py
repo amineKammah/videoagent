@@ -218,6 +218,7 @@ Hard requirements:
 - Keep output compact and directly synthesizable.
 - Pronunciations are handled separately; keep original word spellings.
 - Avoid markdown, code fences, and explanations.
+- Only include pauses if explicitly requested.
 
 Script:
 {script}

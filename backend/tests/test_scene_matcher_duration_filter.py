@@ -113,3 +113,51 @@ def test_analyze_job_filters_voice_over_candidates_by_duration() -> None:
     assert "candidates" in result
     assert len(result["candidates"]) == 1
     assert result["candidates"][0]["end_seconds"] == pytest.approx(10.0)
+
+
+def test_analyze_job_accepts_hhmmss_timestamps() -> None:
+    response_payload = {
+        "candidates": [
+            {
+                "video_id": "video_1",
+                "start_timestamp": "00:00:00.000",
+                "end_timestamp": "00:00:10.000",
+                "description": "Good duration",
+                "rationale": "Fits",
+                "no_talking_heads_confirmed": True,
+                "no_subtitles_confirmed": True,
+                "no_camera_recording_on_edge_of_frame_confirmed": True,
+                "clip_compatible_with_scene_script_confirmed": True,
+            },
+        ]
+    }
+
+    class _FakeModels:
+        async def generate_content(self, **_kwargs):
+            return SimpleNamespace(
+                text=json.dumps(response_payload),
+                usage_metadata=None,
+            )
+
+    fake_client = SimpleNamespace(
+        client=SimpleNamespace(
+            aio=SimpleNamespace(
+                models=_FakeModels(),
+            )
+        )
+    )
+
+    result = asyncio.run(
+        _analyze_job_with_prompt(
+            client=fake_client,
+            job=_make_job(),
+            uploaded_file=genai_types.Part(text="uploaded_file_stub"),
+            prompt="test",
+        )
+    )
+
+    assert "error" not in result
+    assert "candidates" in result
+    assert len(result["candidates"]) == 1
+    assert result["candidates"][0]["start_seconds"] == pytest.approx(0.0)
+    assert result["candidates"][0]["end_seconds"] == pytest.approx(10.0)

@@ -250,7 +250,7 @@ export function ProjectBrief() {
 
                     {/* Feedback Control - Sleek/Minimal */}
                     {!isEditing && session && (
-                        <div className="absolute bottom-4 right-4">
+                        <div className="absolute bottom-4 left-4">
                             <FeedbackControl
                                 sessionId={session.id}
                                 targetType="video_brief"

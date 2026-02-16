@@ -5,7 +5,6 @@ Provides a centralized client for both video analysis and TTS.
 """
 import asyncio
 import hashlib
-import os
 import sqlite3
 import tempfile
 import time
@@ -24,12 +23,12 @@ class GeminiClient:
     """
     Shared Gemini client for video analysis and TTS.
 
-    Uses the google.genai SDK with API key auth only.
+    Uses the google.genai SDK with Vertex AI auth.
     """
 
     def __init__(self, config: Optional[Config] = None):
         self.config = config or default_config
-        self.use_vertexai = False
+        self.use_vertexai = True
         self._content_client = None
         self._tts_client = None
         self._cache_db_path = self._default_cache_db_path()
@@ -48,20 +47,13 @@ class GeminiClient:
         else:
             load_dotenv(dotenv_path=Path(".env"))
 
-    def _create_client(self, vertexai: bool = False):
-        """Create a Gemini API clien."""
+    def _create_client(self):
+        """Create a Gemini client configured for Vertex AI."""
         try:
             from google import genai
             self._load_dotenv()
-            self.use_vertexai = vertexai
-            if vertexai:
-                return genai.Client(**build_vertex_client_kwargs(self.config))
-            else:
-                api_key = os.getenv("GEMINI_API_KEY")
-                return genai.Client(
-                    vertexai=False,
-                    api_key=api_key,
-                )
+            self.use_vertexai = True
+            return genai.Client(**build_vertex_client_kwargs(self.config))
 
         except ImportError:
             raise RuntimeError(
@@ -176,12 +168,12 @@ class GeminiClient:
 
     def _get_content_client(self):
         if self._content_client is None:
-            self._content_client = self._create_client(vertexai=True)
+            self._content_client = self._create_client()
         return self._content_client
 
     def _get_tts_client(self):
         if self._tts_client is None:
-            self._tts_client = self._create_client(vertexai=True)
+            self._tts_client = self._create_client()
         return self._tts_client
 
     @property
@@ -265,10 +257,6 @@ class GeminiClient:
     def upload_file(self, file_path: Path) -> object:
         """Public wrapper for file uploads."""
         return self._upload_file(file_path)
-
-    @staticmethod
-    def _is_vertex_api_key_mode() -> bool:
-        return bool((os.getenv("VERTEX_API_KEY") or "").strip())
 
     def _download_gs_uri_to_local_cache(self, gs_uri: str) -> Path:
         from videoagent.storage import get_storage_client

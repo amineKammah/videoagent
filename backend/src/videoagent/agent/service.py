@@ -72,12 +72,36 @@ def _load_env() -> None:
         load_dotenv()
 
 
+def _configure_litellm_vertex_env(config: Config) -> None:
+    """Mirror standard GCP env vars into LiteLLM Vertex env vars."""
+    project = (
+        os.environ.get("VERTEXAI_PROJECT")
+        or os.environ.get("GOOGLE_CLOUD_PROJECT")
+        or os.environ.get("CLOUDSDK_CORE_PROJECT")
+        or config.gcp_project_id
+    )
+    # Keep Vertex on "global" by default; non-Vertex services may use regional locations
+    # like europe-west2 and should not implicitly steer LiteLLM Vertex routing.
+    location = (os.environ.get("VERTEXAI_LOCATION") or "global").strip()
+
+    if project:
+        os.environ["VERTEXAI_PROJECT"] = project
+    if location:
+        os.environ["VERTEXAI_LOCATION"] = location
+
+
 def _select_model_name(config: Config) -> str:
-    return os.environ.get("AGENT_MODEL") or config.agent_model or f"gemini/{config.gemini_model}"
-
-
-def _select_api_key(config: Config, model_name: str) -> Optional[str]:
-    return os.environ.get("GEMINI_API_KEY") or config.gemini_api_key
+    configured = os.environ.get("AGENT_MODEL") or config.agent_model or config.gemini_model
+    model_name = configured.strip()
+    if model_name.startswith("vertex_ai/"):
+        return model_name
+    if model_name.startswith("gemini/"):
+        return f"vertex_ai/{model_name.split('/', 1)[1]}"
+    if "/" in model_name:
+        raise ValueError(
+            f"Unsupported AGENT_MODEL '{model_name}'. Vertex-only mode requires a 'vertex_ai/' model."
+        )
+    return f"vertex_ai/{model_name}"
 
 
 class VideoAgentService:
@@ -98,6 +122,7 @@ class VideoAgentService:
         self.chat_store = ChatStore(self.base_dir)
         self.session_db_path = self.base_dir / "agent_memory.db"
         self._agents: dict[str, Agent] = {}
+        self._agent_model_names: dict[str, str] = {}
         self._agent_lock = Lock()
         self._run_locks_guard = Lock()
         self._run_locks: dict[str, Lock] = {}
@@ -170,13 +195,32 @@ class VideoAgentService:
                 video_transcripts = payload.get("video_transcripts") or []
                 return self._build_instructions(payload)
 
+            _configure_litellm_vertex_env(self.config)
+            self.model_name = _select_model_name(self.config)
+            provider_model = self.model_name
+            provider_name = "unknown"
+            try:
+                import litellm
+
+                provider_model, provider_name, _, _ = litellm.get_llm_provider(
+                    model=self.model_name
+                )
+            except Exception as exc:
+                raise ValueError(
+                    f"Unable to resolve LiteLLM provider for AGENT_MODEL '{self.model_name}': {exc}"
+                ) from exc
+            if provider_name != "vertex_ai":
+                raise ValueError(
+                    f"AGENT_MODEL '{self.model_name}' resolved to provider '{provider_name}' "
+                    f"(provider model: '{provider_model}'). Vertex-only mode requires 'vertex_ai'."
+                )
+
             agent = self._agents.get(session_id)
-            if agent:
+            if agent and self._agent_model_names.get(session_id) == self.model_name:
                 agent.instructions = _dynamic_instructions
                 return agent
 
-            self.model_name = _select_model_name(self.config)
-            model = LitellmModel(model=self.model_name, api_key= _select_api_key(self.config, self.model_name))
+            model = LitellmModel(model=self.model_name)
             
             # Tools need resolved IDs
             tools = _build_tools(
@@ -196,6 +240,7 @@ class VideoAgentService:
                 tools=tools,
             )
             self._agents[session_id] = agent
+            self._agent_model_names[session_id] = self.model_name
             return agent
 
     def create_session(self, user_id: str, company_id: str, session_id: Optional[str] = None) -> str:

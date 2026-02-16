@@ -3,6 +3,7 @@
 import { useSessionStore } from '@/store/session';
 import { EventItem } from './EventItem';
 import { useEffect, useState } from 'react';
+import { getVisibleEvents } from './eventStreamUtils';
 
 export function EventStream() {
     const events = useSessionStore(state => state.events);
@@ -34,10 +35,8 @@ export function EventStream() {
         return null;
     }
 
-    // Show last 8 events to avoid overwhelming the UI, filtering out internal events
-    const visibleEvents = events
-        .filter(e => e.type !== 'video_render_start' && e.type !== 'storyboard_update')
-        .slice(-8);
+    // Show deduped, user-facing events only
+    const visibleEvents = getVisibleEvents(events);
 
     return (
         <div className="mx-4 mb-4 animate-slide-in">

@@ -58,7 +58,7 @@ IMPORTANT:
 - Keep output concise: each `visual_summary` <= 25 words.
 - `searchable_keywords`: max 5 per scene.
 - Include `semantic_meaning` for each scene and `extracted_insights` at top level.
-- Timestamps MUST use `MM:SS.sss` format (same as scene matcher v1), e.g. `02:23.456`.
+- Timestamps MUST use `MM:SS.sss` or `HH:MM:SS.sss` format, e.g. `02:23.456` or `00:02:23.456`.
 
 # SCENE SPLIT RULES
 Start a new scene on visual cut/transition, clear subject change, framing change, or major on-screen text change.
@@ -407,7 +407,7 @@ def _coerce_scene_timestamp(
             seconds = _parse_timestamp(text)
         except ValueError as exc:
             raise ValueError(
-                f"{scene_id}: {field_name} must use MM:SS.sss format (got '{candidate}')."
+                f"{scene_id}: {field_name} must use MM:SS.sss or HH:MM:SS.sss format (got '{candidate}')."
             ) from exc
         return seconds, text
 

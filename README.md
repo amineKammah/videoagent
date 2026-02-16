@@ -18,10 +18,12 @@ cp .env.example .env
 ```
 
 Required environment variables:
-- `GEMINI_API_KEY` - Google Gemini API key
 - `OPENAI_API_KEY` - OpenAI API key (optional)
 - `GOOGLE_CLOUD_PROJECT` - GCP project ID (for Vertex AI)
+- `GOOGLE_CLOUD_LOCATION` - Vertex location (recommended: `global`)
 - `GOOGLE_APPLICATION_CREDENTIALS` - Path to GCP service account JSON
+- `VERTEXAI_PROJECT` - Optional explicit Vertex project override
+- `VERTEXAI_LOCATION` - Optional explicit Vertex location override (`global` recommended)
 
 ### 2. Backend setup
 

@@ -152,7 +152,7 @@ export function Storyboard() {
 
             {/* Storyboard-level Feedback */}
             {session && (
-                <div className="mx-4 mt-2 flex justify-end">
+                <div className="mx-4 mt-4 mb-4 flex justify-start">
                     <FeedbackControl
                         sessionId={session.id}
                         targetType="storyboard"

@@ -470,6 +470,29 @@ Evaluate the single video provided below.
     * We need to hold an extremely high bar for the produced videos. If you are not 100% sure that the clip works with the voiceover, discard it.
 4. This video will be used a B2B sales video. The quality bar is very high. If there is no perfect matches, DO NOT return it. 
 
+### 4. Scene-Specific Priorities
+- **Intro:** Highest bar in the video; must be specific, authentic, and immediately engaging. Avoid product demos at this stage.
+- **Closing:** Must clearly show the company logo and feel brand-authentic.
+
+
+### 5 Hard Rejection Checklist (Non-Negotiable)
+Reject immediately if any condition is true:
+1. Visual is adjacent but not exact to script meaning.
+2. Wrong industry context/environment cues.
+3. Competitor brand/logo/UI appears when a specific brand is referenced.
+4. Shows the solution LOGO when a pain is being discussed in the voice over.
+5. Voice over talks about Pain but visual shows a solution, or vice versa.
+6. Technical-function mismatch (e.g., analytics visuals for compliance/reporting claim).
+7. Script has multiple key points but visual supports only part.
+8. VO scene has speaking talking head or obvious mouth-sync conflict.
+9. Burned-in subtitles/captions/[MUSIC] tags/conflicting overlays.
+10. Language mismatch for original-audio scenes.
+11. Intro feels generic or weak.
+15. Personalization cues in early scenes are not visually supported.
+17. Style/quality breaks continuity of the full video.
+18. Confidence is below perfect-match bar.
+
+
 ### VIDEO TO EVALUATE
 - ID: {metadata.id}
 - Filename: {metadata.filename}
@@ -481,7 +504,7 @@ Evaluate the single video provided below.
 - Return up to 3 candidate clips, RANKED from best to worst.
 - The first candidate should be your top recommendation.
 - Return EXACTLY the `video_id` provided above.
-- Include a detailed visual description for each candidate.
+- Include a detailed visual description for each candidate. This description MUST include all the logos, text, and any other elements that are present in the clip.
 - Include rationale proving visual-rules compliance.
 
 Example Output:
@@ -838,7 +861,7 @@ def _normalize_candidates(
         except ValueError as exc:
             raise ValueError(
                 f"Detailed timestamp error: {exc}. "
-                "Expected format MM:SS.sss (e.g. 02:23.456)"
+                "Expected format MM:SS.sss (e.g. 02:23.456) or HH:MM:SS.sss (e.g. 00:02:23.456)"
             ) from exc
 
         if start_seconds >= end_seconds:

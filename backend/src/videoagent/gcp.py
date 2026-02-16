@@ -21,6 +21,18 @@ def get_gcp_project(config: Optional[Config] = None) -> Optional[str]:
     return project or None
 
 
+def get_vertex_project(config: Optional[Config] = None) -> Optional[str]:
+    """Resolve Vertex project with env-first precedence."""
+    project = (
+        os.environ.get("VERTEXAI_PROJECT")
+        or os.environ.get("GOOGLE_CLOUD_PROJECT")
+        or os.environ.get("CLOUDSDK_CORE_PROJECT")
+        or (config.gcp_project_id if config else None)
+        or ""
+    ).strip()
+    return project or None
+
+
 def get_gcp_location(config: Optional[Config] = None) -> Optional[str]:
     """Resolve GCP location with env-first precedence."""
     location = (
@@ -28,6 +40,13 @@ def get_gcp_location(config: Optional[Config] = None) -> Optional[str]:
         or (config.gcp_location if config else None)
         or "europe-west2"
     ).strip()
+    return location or None
+
+
+def get_vertex_location(config: Optional[Config] = None) -> Optional[str]:
+    """Resolve Vertex location with env-first precedence."""
+    # Keep Vertex routing independent from regional settings used by other services.
+    location = (os.environ.get("VERTEXAI_LOCATION") or "global").strip()
     return location or None
 
 
@@ -70,10 +89,12 @@ def build_vertex_client_kwargs(config: Optional[Config] = None) -> dict[str, Any
     credentials = get_service_account_credentials(scopes=[CLOUD_PLATFORM_SCOPE])
     if credentials is not None:
         kwargs["credentials"] = credentials
-    project = get_gcp_project(config)
+    project = get_vertex_project(config)
     if not project and credentials is not None:
         project = getattr(credentials, "project_id", None)
     if project:
         kwargs["project"] = project
-    kwargs["location"] = "global"
+    location = get_vertex_location(config)
+    if location:
+        kwargs["location"] = location
     return kwargs

@@ -42,9 +42,16 @@ The agent runtime uses the OpenAI Agents SDK with Gemini via LiteLLM.
 Required environment variables:
 
 ```sh
-export GEMINI_API_KEY="your-key"
-export AGENT_MODEL="gemini/gemini-3-pro-preview"
+export GOOGLE_CLOUD_PROJECT="your-project-id"
+export GOOGLE_CLOUD_LOCATION="global"
+export GOOGLE_APPLICATION_CREDENTIALS="/path/to/service-account.json"
+export VERTEXAI_PROJECT="your-vertex-project-id"
+export VERTEXAI_LOCATION="global"
+export AGENT_MODEL="vertex_ai/gemini-3-pro-preview"
 ```
+
+Use `VERTEXAI_PROJECT` for Vertex model calls. Keep `GOOGLE_CLOUD_PROJECT`
+for storage/other GCP services if you need them on a different project.
 
 Endpoints:
 - `POST /agent/sessions` to create a session

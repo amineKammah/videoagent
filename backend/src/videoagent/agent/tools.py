@@ -973,7 +973,7 @@ def _build_tools(
             voice_dir = session_dir / "voice_overs"
             voice_dir.mkdir(parents=True, exist_ok=True)
 
-            semaphore = asyncio.Semaphore(4)
+            semaphore = asyncio.Semaphore(16)
 
             async def _run(scene_id: str) -> VoiceOver:
                 job_start = time.perf_counter()

@@ -25,10 +25,9 @@ class Config:
     ffmpeg_threads: int = 8  # 0 lets ffmpeg auto-select threads
 
     # Gemini LLM settings
-    gemini_api_key: Optional[str] = None
     gemini_model: str = "gemini-3-flash-preview"
     gemini_tts_model: str = "gemini-2.5-flash-tts"
-    agent_model: str = "gemini/gemini-3-flash-preview"
+    agent_model: str = "vertex_ai/gemini-3-pro-preview"
 
     # TTS settings
     tts_voice: str = "Kore"  # Kore, Charon, Fenrir, Aoede, Puck, etc.
