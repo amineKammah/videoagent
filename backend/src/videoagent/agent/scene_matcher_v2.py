@@ -53,8 +53,6 @@ class SceneMatcherV2:
         session_id: str,
         company_id: Optional[str],
         user_id: Optional[str],
-        shortlist_model: Optional[str] = None,
-        deep_model: Optional[str] = None,
     ) -> None:
         self.config = config
         self.storyboard_store = storyboard_store
@@ -62,17 +60,9 @@ class SceneMatcherV2:
         self.session_id = session_id
         self.company_id = company_id
         self.user_id = user_id
-        self.shortlist_model = shortlist_model or os.getenv(
-            "SCENE_MATCHER_V2_SHORTLIST_MODEL",
-            "gemini-3-flash-preview",
-        )
-        self.deep_model = deep_model or os.getenv(
-            "SCENE_MATCHER_V2_DEEP_MODEL",
-            "gemini-3-flash-preview",
-        )
-        self._thinking_budget = self._parse_thinking_budget(
-            os.getenv("SCENE_MATCHER_V2_THINKING_BUDGET", "-1")
-        )
+        self.shortlist_model = "gemini-3-flash-preview"
+        self.deep_model = "gemini-3-flash-preview"
+        self._thinking_budget = 4_096
 
     @staticmethod
     def _parse_thinking_budget(value: str) -> Optional[int]:
@@ -615,7 +605,7 @@ class SceneMatcherV2:
             config["thinking_config"] = types.ThinkingConfig(thinking_budget=self._thinking_budget)
 
         try:
-            response = await client.client.aio.models.generate_content(
+            response = await client.generate_content_async(
                 model=self.shortlist_model,
                 contents=types.Content(
                     role="user",
@@ -983,7 +973,7 @@ Prioritize clips that satisfy all of the following:
 
 
 ### Output
-- Pick at most 5 high-potential review clips.
+- Pick at most 3 high-potential review clips.
 - Each clip must be within one video and <= 120 seconds.
 - Each clip must be STRICTLY longer than the target scene duration.
 - Clips may and often should span multiple adjacent eligible scenes when useful.

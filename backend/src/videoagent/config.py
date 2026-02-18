@@ -28,6 +28,7 @@ class Config:
     gemini_model: str = "gemini-3-flash-preview"
     gemini_tts_model: str = "gemini-2.5-flash-tts"
     agent_model: str = "vertex_ai/gemini-3-pro-preview"
+    session_title_model: str = "gemini-2.5-flash"
 
     # TTS settings
     tts_voice: str = "Kore"  # Kore, Charon, Fenrir, Aoede, Puck, etc.

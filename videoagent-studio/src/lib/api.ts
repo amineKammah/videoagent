@@ -106,6 +106,18 @@ export const api = {
         const data = await handleResponse<{ session_id: string }>(response);
         return data.session_id;
     },
+
+    updateSessionTitle: async (
+        sessionId: string,
+        title: string
+    ): Promise<{ session_id: string; title: string; title_source: string; title_updated_at: string }> => {
+        const response = await fetchWithTimeout(`${API_BASE}/agent/sessions/${sessionId}/title`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ title }),
+        });
+        return handleResponse(response);
+    },
     // Chat - send message to LLM (long timeout)
     sendMessage: async (sessionId: string, message: string): Promise<ChatResponse> => {
         const response = await fetchWithTimeout(

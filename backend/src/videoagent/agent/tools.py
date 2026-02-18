@@ -12,7 +12,6 @@ from pathlib import Path
 from typing import Callable, Optional
 from uuid import uuid4
 
-from opentelemetry import trace
 from agents import function_tool
 
 from videoagent.config import Config
@@ -23,7 +22,7 @@ from videoagent.storage import get_storage_client
 from videoagent.story import _StoryboardScene, SceneCandidate
 from videoagent.db import crud, connection
 from videoagent.voice import VoiceOverGenerator, estimate_speech_duration
-from videoagent.voiceover_v3 import PronunciationGuidance, VoiceOverV3Generator
+from videoagent.voiceover_v3 import VoiceOverV3Generator
 from videoagent.editor import VideoEditor
 
 from .schemas import (
@@ -414,8 +413,6 @@ def _build_tools(
     user_id: Optional[str],
     auto_render_callback: Optional[Callable[[], None]] = None,
 ):
-    tracer = trace.get_tracer(__name__)
-
     def tool_error(name: str):
         def error_fn(ctx, error: Exception):
             error_type = type(error).__name__
@@ -428,26 +425,9 @@ def _build_tools(
             if asyncio.iscoroutinefunction(fn):
                 @functools.wraps(fn)
                 async def wrapped(*args, **kwargs):
-                    with tracer.start_as_current_span(name):
-                        event_store.append(session_id, {"type": "tool_start", "name": name}, user_id=user_id)
-                        try:
-                            result = await fn(*args, **kwargs)
-                            event_store.append(session_id, {"type": "tool_end", "name": name, "status": "ok"}, user_id=user_id)
-                            return result
-                        except Exception as exc:
-                            event_store.append(
-                                session_id,
-                                {"type": "tool_end", "name": name, "status": "error", "error": str(exc)},
-                                user_id=user_id,
-                            )
-                            raise
-                return wrapped
-            @functools.wraps(fn)
-            def wrapped(*args, **kwargs):
-                with tracer.start_as_current_span(name):
                     event_store.append(session_id, {"type": "tool_start", "name": name}, user_id=user_id)
                     try:
-                        result = fn(*args, **kwargs)
+                        result = await fn(*args, **kwargs)
                         event_store.append(session_id, {"type": "tool_end", "name": name, "status": "ok"}, user_id=user_id)
                         return result
                     except Exception as exc:
@@ -457,6 +437,21 @@ def _build_tools(
                             user_id=user_id,
                         )
                         raise
+                return wrapped
+            @functools.wraps(fn)
+            def wrapped(*args, **kwargs):
+                event_store.append(session_id, {"type": "tool_start", "name": name}, user_id=user_id)
+                try:
+                    result = fn(*args, **kwargs)
+                    event_store.append(session_id, {"type": "tool_end", "name": name, "status": "ok"}, user_id=user_id)
+                    return result
+                except Exception as exc:
+                    event_store.append(
+                        session_id,
+                        {"type": "tool_end", "name": name, "status": "error", "error": str(exc)},
+                        user_id=user_id,
+                    )
+                    raise
             return wrapped
         return decorator
 
@@ -863,7 +858,7 @@ def _build_tools(
             voice_dir = session_dir / "voice_overs"
             voice_dir.mkdir(parents=True, exist_ok=True)
 
-            semaphore = asyncio.Semaphore(8)
+            semaphore = asyncio.Semaphore(5)
             async def _run(scene_id: str) -> VoiceOver:
                 job_start = time.perf_counter()
                 scene = scene_map[scene_id]
@@ -906,15 +901,14 @@ def _build_tools(
             generator.cleanup()
 
     @function_tool(failure_error_function=tool_error("generate_voiceover_v3"), strict_mode=True)
-    @log_tool("generate_voiceover")
+    @log_tool("generate_voiceover_v3")
     async def generate_voiceover_v3(payload: GenerateVoiceoverV3Payload) -> str:
         """
-        Generate ElevenLabs v3 voiceovers with optional LLM enhancement.
+        Generate ElevenLabs v3 voiceovers from final rendered per-scene text.
 
         Inputs:
         - `segment_ids`: storyboard scene ids to regenerate.
-        - `notes`: optional global delivery notes.
-        - `scene_notes`: optional scene-specific note overrides.
+        - `rendered_voiceovers`: final ElevenLabs-ready text entries keyed by scene_id.
         """
         event_store.append(session_id, {"type": "video_render_start"}, user_id=user_id)
 
@@ -943,17 +937,37 @@ def _build_tools(
         if missing_script_ids:
             return "Missing script for storyboard scene id(s): " + ", ".join(missing_script_ids)
 
-        scene_notes_map = {
-            item.scene_id: item.note
-            for item in payload.scene_notes
-            if item.scene_id and item.note
-        }
+        rendered_voiceovers_map: dict[str, str] = {}
+        duplicate_rendered_ids: list[str] = []
+        for item in payload.rendered_voiceovers:
+            scene_id = item.scene_id.strip()
+            rendered_text = item.rendered_text.strip()
+            if not scene_id or not rendered_text:
+                continue
+            if scene_id in rendered_voiceovers_map:
+                duplicate_rendered_ids.append(scene_id)
+                continue
+            rendered_voiceovers_map[scene_id] = rendered_text
 
-        pronunciations = [
-            PronunciationGuidance(word=item.word.strip(), phonetic_spelling=item.phonetic_spelling.strip())
-            for item in payload.pronunciations
-            if item.word.strip() and item.phonetic_spelling.strip()
+        if duplicate_rendered_ids:
+            deduped_duplicates = ", ".join(sorted(set(duplicate_rendered_ids)))
+            return "Duplicate rendered voiceover entries for scene id(s): " + deduped_duplicates
+
+        missing_rendered_ids = [
+            scene_id for scene_id in segment_ids if scene_id not in rendered_voiceovers_map
         ]
+        if missing_rendered_ids:
+            return "Missing rendered voiceover text for storyboard scene id(s): " + ", ".join(
+                missing_rendered_ids
+            )
+
+        unexpected_rendered_ids = [
+            scene_id for scene_id in rendered_voiceovers_map if scene_id not in segment_ids
+        ]
+        if unexpected_rendered_ids:
+            return "Rendered voiceover entries must match segment_ids. Unexpected scene id(s): " + ", ".join(
+                unexpected_rendered_ids
+            )
 
         # Look up user preference from DB
         user_voice_preference = None
@@ -980,21 +994,12 @@ def _build_tools(
                 scene = scene_map[scene_id]
                 audio_id = uuid4().hex[:8]
                 output_path = voice_dir / f"vo_{audio_id}.wav"
-
-                note_parts: list[str] = []
-                if payload.notes and payload.notes.strip():
-                    note_parts.append(payload.notes.strip())
-                scene_note = scene_notes_map.get(scene_id)
-                if scene_note and scene_note.strip():
-                    note_parts.append(scene_note.strip())
-                merged_notes = "\n".join(note_parts) if note_parts else None
+                rendered_text = rendered_voiceovers_map[scene_id]
 
                 async with semaphore:
                     voice_over = await generator.generate_voice_over_async(
-                        scene.script,
+                        rendered_text=rendered_text,
                         output_path=output_path,
-                        notes=merged_notes,
-                        pronunciations=pronunciations,
                         voice_id=user_voice_preference,
                     )
                 print(
@@ -1025,13 +1030,9 @@ def _build_tools(
                 f"{time.perf_counter() - step_start:.2f}s"
             )
 
-            notes_applied = int(bool(payload.notes and payload.notes.strip())) + sum(
-                1 for value in scene_notes_map.values() if value and value.strip()
-            )
             return (
                 f"Voiceovers generated for {len(segment_ids)} storyboard scene(s). "
-                f"Pronunciation rules used: {len(pronunciations)}. "
-                f"Notes applied: {notes_applied}."
+                f"Rendered text entries used: {len(rendered_voiceovers_map)}."
             )
         finally:
             # Kept for API compatibility with the original generator lifecycle.
@@ -1046,7 +1047,7 @@ def _build_tools(
         return await scene_matcher.match_scene_to_video(payload)
 
     @function_tool(failure_error_function=tool_error("match_scene_to_video_v2"), strict_mode=False)
-    @log_tool("match_scene_to_video")
+    @log_tool("match_scene_to_video_v2")
     async def match_scene_to_video_v2(payload: SceneMatchV2BatchRequest) -> str:
         """Find candidate clips for one or more VO storyboard scenes using v2 matching."""
         return await scene_matcher_v2.match_scene_to_video_v2(

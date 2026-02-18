@@ -414,7 +414,7 @@ export default function AnnotationsPage() {
                                         >
                                             <div className="flex items-center justify-between mb-1">
                                                 <span className={`font-medium ${isSelected ? 'text-teal-900' : 'text-slate-800'}`}>
-                                                    Session {s.session_id.slice(0, 6)}...
+                                                    {s.title?.trim() || `Session ${s.session_id.slice(0, 6)}...`}
                                                 </span>
                                                 <div className="flex items-center gap-2">
                                                     <span className="text-xs text-slate-400">

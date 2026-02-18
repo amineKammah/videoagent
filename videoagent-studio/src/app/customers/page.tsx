@@ -85,6 +85,7 @@ export default function CustomersPage() {
 
 function CustomerModal({ customer, onClose }: { customer: Customer; onClose: () => void }) {
     const router = useRouter();
+    const createSession = useSessionStore(state => state.createSession);
 
     const handleGenerateVideo = async () => {
         // Format prompt for LLM with ALL details
@@ -116,7 +117,7 @@ function CustomerModal({ customer, onClose }: { customer: Customer; onClose: () 
 
         try {
             // Create a new session first
-            const sessionId = await api.createSession();
+            const sessionId = await createSession();
             router.push(`/studio?sessionId=${sessionId}&initialMessage=${encodedPrompt}`);
         } catch (error) {
             console.error("Failed to create session:", error);

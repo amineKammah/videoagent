@@ -686,7 +686,7 @@ async def _analyze_job_with_prompt(
     contents = types.Content(role="user", parts=[video_part, types.Part(text=prompt)])
     llm_start = time.perf_counter()
     try:
-        response = await client.client.aio.models.generate_content(
+        response = await client.generate_content_async(
             model="gemini-3-flash-preview",
             contents=contents,
             config={

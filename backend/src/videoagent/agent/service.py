@@ -11,42 +11,35 @@ from threading import Lock
 from typing import Optional
 from uuid import uuid4
 
-from opentelemetry import trace
-
 from agents import (
     Agent,
+    ModelSettings,
     RunConfig,
     Runner,
     SQLiteSession,
     set_tracing_export_api_key,
 )
-import agents.tracing.span_data
-
-# Monkeypatch GenerationSpanData.export to remove 'requests' field from usage
-# which causes Tracing client error 400 (unknown parameter).
-# This is necessary because LitellmModel manually constructs the usage dict, bypassing serialize_usage.
-_original_generation_span_export = agents.tracing.span_data.GenerationSpanData.export
-
-def _patched_generation_span_export(self) -> dict:
-    data = _original_generation_span_export(self)
-    if data.get("usage") and "requests" in data["usage"]:
-        # Copy to avoid mutating original state if it matters
-        usage = data["usage"].copy()
-        if "requests" in usage:
-            del usage["requests"]
-        data["usage"] = usage
-    return data
-
-agents.tracing.span_data.GenerationSpanData.export = _patched_generation_span_export
+from agents.model_settings import Reasoning
 from agents.extensions.models.litellm_model import LitellmModel
+from agents.tracing.processors import BackendSpanExporter
+from pydantic import BaseModel, Field
+from tenacity import Retrying, retry_if_exception, stop_after_attempt, wait_exponential
 
 from videoagent.config import Config, default_config
-from videoagent.db import crud, connection, models
-from videoagent.library import VideoLibrary
+from videoagent.company_brief_context import (
+    read_company_brief_context,
+)
+from videoagent.db import connection, crud, models
+from videoagent.gemini import GeminiClient
 from videoagent.models import RenderResult, VideoBrief
 from videoagent.storage import get_storage_client
+from videoagent.testimony_digest_index import (
+    read_testimony_digest_index,
+    read_video_testimony_digest,
+)
 from videoagent.story import PersonalizedStoryGenerator, _StoryboardScene
 
+from .prompts import AGENT_SYSTEM_PROMPT_V2
 from .storage import (
     BriefStore,
     ChatStore,
@@ -57,7 +50,6 @@ from .tools import (
     _build_tools,
     _render_storyboard_scenes,
 )
-from .prompts import AGENT_SYSTEM_PROMPT_V2
 
 
 def _load_env() -> None:
@@ -104,6 +96,56 @@ def _select_model_name(config: Config) -> str:
     return f"vertex_ai/{model_name}"
 
 
+def _is_retryable_rate_limit_error(exc: BaseException) -> bool:
+    if getattr(exc, "status_code", None) == 429:
+        return True
+    detail = getattr(exc, "detail", None)
+    if isinstance(detail, str) and '"code": 429' in detail:
+        return True
+    message = str(exc).lower()
+    return "ratelimiterror" in message and "429" in message
+
+
+class SessionTitleOutput(BaseModel):
+    """Structured output schema for session title generation."""
+    title: str = Field(min_length=1, max_length=120)
+
+
+def _patch_backend_span_exporter_usage_schema() -> None:
+    """
+    Keep tracing payload usage fields compatible with traces ingest.
+
+    Some openai-agents + LiteLLM versions include additional usage keys
+    (e.g. requests/total_tokens/details) that are currently rejected by the
+    tracing ingest schema.
+    """
+    export_fn = BackendSpanExporter.export
+    if getattr(export_fn, "_videoagent_usage_schema_patched", False):
+        return
+
+    original_export = export_fn
+
+    def _patched_export(self, items):
+        for item in items:
+            span_data = getattr(item, "span_data", None)
+            usage = getattr(span_data, "usage", None) if span_data is not None else None
+            if not isinstance(usage, dict):
+                continue
+
+            sanitized: dict[str, int] = {}
+            for key in ("input_tokens", "output_tokens"):
+                value = usage.get(key)
+                if isinstance(value, (int, float)):
+                    sanitized[key] = int(value)
+
+            span_data.usage = sanitized if sanitized else None
+
+        return original_export(self, items)
+
+    setattr(_patched_export, "_videoagent_usage_schema_patched", True)
+    BackendSpanExporter.export = _patched_export
+
+
 class VideoAgentService:
     def __init__(
         self, 
@@ -129,6 +171,9 @@ class VideoAgentService:
         self._render_lock = Lock()
         self._render_executor = ThreadPoolExecutor(max_workers=1)
         self._render_futures: dict[str, object] = {}
+        self._title_executor = ThreadPoolExecutor(max_workers=2)
+        self._title_lock = Lock()
+        self._title_inflight: set[str] = set()
         _load_env()
         self._configure_tracing()
 
@@ -152,28 +197,65 @@ class VideoAgentService:
     def _configure_tracing(self) -> None:
         tracing_key = os.environ.get("OPENAI_API_KEY")
         if tracing_key:
+            _patch_backend_span_exporter_usage_schema()
             set_tracing_export_api_key(tracing_key)
 
     def _build_instructions(self, context_payload: dict) -> str:
-        context_block = json.dumps(context_payload, indent=2)
+        company_brief_content = self._normalize_text(context_payload.get("company_brief_context"))
+        testimony_context = context_payload.get("testimony_digest_context")
+        video_brief = context_payload.get("video_brief")
+        storyboard_scenes = context_payload.get("storyboard_scenes")
+        company_brief_block = company_brief_content
+        testimony_block = json.dumps(testimony_context, separators=(",", ":"))
+        video_brief_block = json.dumps(video_brief, separators=(",", ":"))
+        storyboard_block = json.dumps(storyboard_scenes, separators=(",", ":"))
+        session_state_section = ""
+        if video_brief is not None or storyboard_scenes is not None:
+            session_state_section = (
+                "\n\nCURRENT VIDEO BRIEF (SESSION CONTEXT):\n"
+                f"{video_brief_block}\n\n"
+                "CURRENT STORYBOARD SCENES (SESSION CONTEXT):\n"
+                f"{storyboard_block}"
+            )
         return (
             f"{self._base_instructions}\n\n"
-            "Context for this session (read-only JSON):\n"
-            f"{context_block}"
+            "COMPANY BRIEF INSERT (GLOBAL COMPANY CONTEXT):\n"
+            f"{company_brief_block}\n\n"
+            "TESTIMONY DIGEST INSERT (PRIMARY EVIDENCE CONTEXT - USE THIS INSTEAD OF FULL TRANSCRIPTS):\n"
+            f"{testimony_block}"
+            f"{session_state_section}"
         )
 
     def _build_context_payload(
         self,
         session_id: str,
-        video_transcripts: Optional[list[dict]] = None,
+        testimony_digest_videos: Optional[list[dict]] = None,
+        company_brief_context: Optional[str] = None,
     ) -> dict:
         user_id, company_id = self._resolve_session_owner(session_id)
-        if not video_transcripts:
-            video_transcripts = self._build_video_transcripts(company_id)
+        if testimony_digest_videos is None:
+            testimony_digest_videos = self._build_testimony_digest_videos(company_id)
+        if company_brief_context is None:
+            company_brief_context = self._build_company_brief_context(company_id)
+        testimony_cards_total = sum(
+            len(item.get("testimony_cards") or [])
+            for item in testimony_digest_videos
+            if isinstance(item, dict)
+        )
         storyboard_scenes = self.storyboard_store.load(session_id, user_id=user_id)
         video_brief = self.brief_store.load(session_id, user_id=user_id)
         return {
-            "video_transcripts": video_transcripts,
+            "company_brief_context": company_brief_context,
+            "testimony_digest_context": {
+                "insert_label": "testimony_digest_v1_primary_context",
+                "instruction": (
+                    "Use this testimony digest context instead of full video transcripts. "
+                    "Only videos with valid testimony cards are included."
+                ),
+                "videos_with_valid_testimony_cards_count": len(testimony_digest_videos),
+                "testimony_cards_total": testimony_cards_total,
+                "videos": testimony_digest_videos,
+            },
             "video_brief": video_brief.model_dump(mode="json") if video_brief else None,
             "storyboard_scenes": [
                 scene.model_dump(mode="json")
@@ -187,12 +269,19 @@ class VideoAgentService:
             session_user_id, session_company_id = self._resolve_session_owner(session_id)
             print(session_id, session_user_id, session_company_id)
 
-            video_transcripts: Optional[list[dict]] = None
+            testimony_digest_videos: Optional[list[dict]] = None
+            company_brief_context: Optional[str] = None
 
             def _dynamic_instructions(run_context, agent) -> str:
-                nonlocal video_transcripts
-                payload = self._build_context_payload(session_id, video_transcripts)
-                video_transcripts = payload.get("video_transcripts") or []
+                nonlocal testimony_digest_videos, company_brief_context
+                payload = self._build_context_payload(
+                    session_id,
+                    testimony_digest_videos,
+                    company_brief_context,
+                )
+                testimony_context = payload.get("testimony_digest_context") or {}
+                testimony_digest_videos = testimony_context.get("videos") or []
+                company_brief_context = payload.get("company_brief_context")
                 return self._build_instructions(payload)
 
             _configure_litellm_vertex_env(self.config)
@@ -220,7 +309,7 @@ class VideoAgentService:
                 agent.instructions = _dynamic_instructions
                 return agent
 
-            model = LitellmModel(model=self.model_name)
+            model = LitellmModel(model=self.model_name,)
             
             # Tools need resolved IDs
             tools = _build_tools(
@@ -237,6 +326,9 @@ class VideoAgentService:
                 name="VideoAgent",
                 instructions=_dynamic_instructions,
                 model=model,
+                model_settings=ModelSettings(
+                    reasoning=Reasoning(effort="high"),
+                ),
                 tools=tools,
             )
             self._agents[session_id] = agent
@@ -291,6 +383,120 @@ class VideoAgentService:
         except Exception as e:
             print(f"[_mark_active] Failed to mark session {session_id} active: {e}")
 
+    def _get_session_title_model(self) -> str:
+        configured = (
+            os.environ.get("SESSION_TITLE_MODEL")
+            or self.config.session_title_model
+            or "gemini-2.5-flash"
+        )
+        model_name = configured.strip()
+        return model_name or "gemini-2.5-flash"
+
+    @staticmethod
+    def _normalize_session_title(raw_title: str) -> str:
+        title = " ".join((raw_title or "").split()).strip().strip("\"'")
+        lowered = title.lower()
+        for prefix in ("session title:", "chat title:", "title:", "session:"):
+            if lowered.startswith(prefix):
+                title = title[len(prefix):].strip().strip("\"'")
+                break
+        if len(title) > 120:
+            title = title[:120].rstrip()
+        return title or "New session"
+
+    @staticmethod
+    def _fallback_session_title(first_user_message: str) -> str:
+        normalized = " ".join((first_user_message or "").split()).strip()
+        if not normalized:
+            return "New session"
+        words = normalized.split(" ")
+        title = " ".join(words[:6]).strip()
+        if len(title) > 120:
+            title = title[:120].rstrip()
+        return title or "New session"
+
+    def _schedule_session_title_generation(self, session_id: str) -> None:
+        with self._title_lock:
+            if session_id in self._title_inflight:
+                return
+            self._title_inflight.add(session_id)
+        self._title_executor.submit(self._generate_session_title_job, session_id)
+
+    def _generate_session_title_job(self, session_id: str) -> None:
+        try:
+            self._generate_session_title(session_id)
+        except Exception as exc:
+            print(f"[_generate_session_title_job] Failed for session {session_id}: {exc}")
+        finally:
+            with self._title_lock:
+                self._title_inflight.discard(session_id)
+
+    def _generate_session_title(self, session_id: str) -> None:
+        with connection.get_db_context() as db:
+            session = crud.get_session(db, session_id)
+            if not session:
+                return
+            if session.title or session.title_source == "manual":
+                return
+            first_user_message = crud.get_first_user_message(db, session_id)
+
+        if not first_user_message:
+            return
+
+        prompt = (
+            "Generate a concise title for this chat session.\n"
+            "Requirements:\n"
+            "- Return JSON that matches the schema exactly.\n"
+            "- title must be 2-6 words.\n"
+            "- No quotes, markdown, or prefixes like Title:.\n"
+            "- Preserve key product/company names when present.\n"
+            f"First user message:\n{first_user_message}"
+        )
+
+        title = ""
+        source = "fallback"
+        try:
+            from google.genai import types
+
+            client = GeminiClient(self.config)
+            response = client.generate_content(
+                model=self._get_session_title_model(),
+                contents=[prompt],
+                config=types.GenerateContentConfig(
+                    temperature=0.1,
+                    max_output_tokens=24,
+                    response_mime_type="application/json",
+                    response_schema=SessionTitleOutput,
+                    thinking_config=types.ThinkingConfig(thinking_budget=0),
+                ),
+            )
+            parsed = getattr(response, "parsed", None)
+            if parsed and getattr(parsed, "title", None):
+                title = self._normalize_session_title(parsed.title)
+                source = "auto"
+        except Exception as exc:
+            print(f"[_generate_session_title] Model generation failed for {session_id}: {exc}")
+
+        if not title:
+            title = self._fallback_session_title(first_user_message)
+
+        with connection.get_db_context() as db:
+            updated = crud.set_session_title_if_absent(
+                db,
+                session_id=session_id,
+                title=title,
+                source=source,
+            )
+        if not updated:
+            return
+
+        user_id, _ = self._resolve_session_owner(session_id)
+        self.event_store.append(
+            session_id,
+            {"type": "session_title_updated", "title": title, "source": source},
+            user_id=user_id,
+        )
+
     def save_storyboard(self, session_id: str, scenes: list[_StoryboardScene]) -> None:
         user_id, _ = self._resolve_session_owner(session_id)
         self.storyboard_store.save(session_id, scenes, user_id=user_id)
@@ -306,7 +512,13 @@ class VideoAgentService:
         user_id, _ = self._resolve_session_owner(session_id)
         return self.chat_store.load(session_id, user_id=user_id)
 
-    def append_chat_message(self, session_id: str, role: str, content: str, suggested_actions: list[str] = None) -> None:
+    def append_chat_message(
+        self,
+        session_id: str,
+        role: str,
+        content: str,
+        suggested_actions: list[str] = None,
+    ) -> None:
         """Append a chat message to the session history."""
         user_id, _ = self._resolve_session_owner(session_id)
         self.chat_store.append(session_id, {
@@ -320,22 +532,156 @@ class VideoAgentService:
             self._mark_active(session_id)
 
 
-    def _build_video_transcripts(self, company_id: Optional[str]) -> list[dict]:
-        # Use dynamic company_id
-        video_library = VideoLibrary(self.config, company_id=company_id)
-        video_library.scan_library()
+    @staticmethod
+    def _normalize_text(value: object) -> str:
+        return str(value or "").strip()
 
-        transcripts = []
-        for video in video_library.list_videos():
-            transcripts.append(
+    @classmethod
+    def _is_valid_testimony_card(cls, card: object) -> bool:
+        if not isinstance(card, dict):
+            return False
+        speaker = card.get("speaker")
+        speaker_has_data = False
+        if isinstance(speaker, dict):
+            speaker_has_data = any(
+                cls._normalize_text(speaker.get(field))
+                for field in ("name", "role", "company")
+            )
+
+        proof_claim = cls._normalize_text(card.get("proof_claim"))
+        intro_seed = cls._normalize_text(card.get("intro_seed"))
+        evidence_snippet = cls._normalize_text(card.get("evidence_snippet"))
+
+        metrics_raw = card.get("metrics")
+        metrics_has_data = False
+        if isinstance(metrics_raw, list):
+            for metric in metrics_raw:
+                if not isinstance(metric, dict):
+                    continue
+                metric_name = cls._normalize_text(metric.get("metric"))
+                metric_value = cls._normalize_text(metric.get("value"))
+                if metric_name or metric_value:
+                    metrics_has_data = True
+                    break
+
+        red_flags_raw = card.get("red_flags")
+        red_flags_has_data = False
+        if isinstance(red_flags_raw, list):
+            red_flags_has_data = any(cls._normalize_text(flag) for flag in red_flags_raw)
+
+        return bool(
+            proof_claim
+            or intro_seed
+            or evidence_snippet
+            or speaker_has_data
+            or metrics_has_data
+            or red_flags_has_data
+        )
+
+    @classmethod
+    def _sanitize_testimony_card(cls, card: dict) -> dict:
+        speaker = card.get("speaker")
+        speaker_dict = speaker if isinstance(speaker, dict) else {}
+        metrics_raw = card.get("metrics")
+        metrics_list = metrics_raw if isinstance(metrics_raw, list) else []
+        red_flags_raw = card.get("red_flags")
+        red_flags_list = red_flags_raw if isinstance(red_flags_raw, list) else []
+
+        sanitized_metrics: list[dict[str, str]] = []
+        for metric in metrics_list:
+            if not isinstance(metric, dict):
+                continue
+            metric_name = cls._normalize_text(metric.get("metric"))
+            metric_value = cls._normalize_text(metric.get("value"))
+            if not metric_name and not metric_value:
+                continue
+            sanitized_metrics.append({"metric": metric_name, "value": metric_value})
+
+        sanitized_red_flags = [
+            cls._normalize_text(flag)
+            for flag in red_flags_list
+            if cls._normalize_text(flag)
+        ]
+
+        return {
+            "speaker": {
+                "name": cls._normalize_text(speaker_dict.get("name")) or None,
+                "role": cls._normalize_text(speaker_dict.get("role")) or None,
+                "company": cls._normalize_text(speaker_dict.get("company")) or None,
+            },
+            "proof_claim": cls._normalize_text(card.get("proof_claim")),
+            "metrics": sanitized_metrics,
+            "intro_seed": cls._normalize_text(card.get("intro_seed")),
+            "evidence_snippet": cls._normalize_text(card.get("evidence_snippet")),
+            "red_flags": sanitized_red_flags,
+        }
+
+    def _build_company_brief_context(self, company_id: Optional[str]) -> str:
+        if not company_id:
+            return ""
+        try:
+            storage = get_storage_client(self.config)
+        except Exception:
+            return ""
+
+        context = read_company_brief_context(storage, company_id, max_words=1200)
+        if not isinstance(context, dict):
+            return ""
+        return self._normalize_text(context.get("content"))
+
+    def _build_testimony_digest_videos(self, company_id: Optional[str]) -> list[dict]:
+        if not company_id:
+            return []
+        try:
+            storage = get_storage_client(self.config)
+        except Exception as exc:
+            print(f"[_build_testimony_digest_videos] Unable to initialize storage: {exc}")
+            return []
+
+        index_payload = read_testimony_digest_index(storage, company_id)
+        if not isinstance(index_payload, dict):
+            return []
+        videos = index_payload.get("videos")
+        if not isinstance(videos, list):
+            return []
+
+        testimony_videos: list[dict] = []
+        for entry in videos:
+            if not isinstance(entry, dict):
+                continue
+            has_cards = bool(entry.get("has_testimony_cards"))
+            cards_count = int(entry.get("testimony_cards_count") or 0)
+            if not has_cards or cards_count <= 0:
+                continue
+
+            video_id = self._normalize_text(entry.get("video_id"))
+            if not video_id:
+                continue
+
+            digest_payload = read_video_testimony_digest(storage, company_id, video_id)
+            if not isinstance(digest_payload, dict):
+                continue
+            cards_raw = digest_payload.get("testimony_cards")
+            if not isinstance(cards_raw, list):
+                continue
+
+            valid_cards: list[dict] = []
+            for raw_card in cards_raw:
+                if not self._is_valid_testimony_card(raw_card):
+                    continue
+                if not isinstance(raw_card, dict):
+                    continue
+                valid_cards.append(self._sanitize_testimony_card(raw_card))
+
+            if not valid_cards:
+                continue
+            testimony_videos.append(
                 {
-                    "video_id": video.id,
-                    "filename": video.filename,
-                    "transcript": video.get_full_transcript(),
-                    "duration": video.duration,
+                    "video_id": video_id,
+                    "testimony_cards": valid_cards,
                 }
             )
-        return transcripts
+        return testimony_videos
 
     def _get_run_lock(self, session_id: str) -> Lock:
         with self._run_locks_guard:
@@ -346,120 +692,121 @@ class VideoAgentService:
             return lock
 
     def run_turn(self, session_id: str, user_message: str) -> dict:
-        tracer = trace.get_tracer(__name__)
-        with tracer.start_as_current_span(
-            "run_turn",
-            attributes={
-                "session_id": session_id,
-                "user_message": user_message[:200]
-            }
-        ):
-            agent = self._get_agent(session_id)
+        agent = self._get_agent(session_id)
 
-            session = SQLiteSession(session_id, str(self.session_db_path))
-            ui_update_tools = {
-                "update_storyboard",
-                "update_video_brief",
-            }
-            redacted_args = json.dumps(
-                {"note": "REDACTED TO REDUCE TOKEN USAGE; SEE LATEST STATE IN SYSTEM PROMPT"}
-            )
+        session = SQLiteSession(session_id, str(self.session_db_path))
+        ui_update_tools = {
+            "update_storyboard",
+            "update_video_brief",
+        }
+        redacted_args = json.dumps(
+            {"note": "REDACTED TO REDUCE TOKEN USAGE; SEE LATEST STATE IN SYSTEM PROMPT"}
+        )
 
-            def _scrub_input_item(item):
-                if not isinstance(item, dict):
-                    return item
-                if item.get("type") == "function_call" and item.get("name") in ui_update_tools:
-                    scrubbed = dict(item)
-                    scrubbed["arguments"] = redacted_args
-                    return scrubbed
-                tool_calls = item.get("tool_calls")
-                if isinstance(tool_calls, list):
-                    scrubbed_calls = []
-                    for call in tool_calls:
-                        if not isinstance(call, dict):
-                            scrubbed_calls.append(call)
-                            continue
-                        call_copy = dict(call)
-                        func = call_copy.get("function")
-                        if isinstance(func, dict):
-                            name = func.get("name")
-                            if name in ui_update_tools and "arguments" in func:
-                                func_copy = dict(func)
-                                func_copy["arguments"] = redacted_args
-                                call_copy["function"] = func_copy
-                        scrubbed_calls.append(call_copy)
-                    scrubbed = dict(item)
-                    scrubbed["tool_calls"] = scrubbed_calls
-                    return scrubbed
+        def _scrub_input_item(item):
+            if not isinstance(item, dict):
                 return item
+            if item.get("type") == "function_call" and item.get("name") in ui_update_tools:
+                scrubbed = dict(item)
+                scrubbed["arguments"] = redacted_args
+                return scrubbed
+            tool_calls = item.get("tool_calls")
+            if isinstance(tool_calls, list):
+                scrubbed_calls = []
+                for call in tool_calls:
+                    if not isinstance(call, dict):
+                        scrubbed_calls.append(call)
+                        continue
+                    call_copy = dict(call)
+                    func = call_copy.get("function")
+                    if isinstance(func, dict):
+                        name = func.get("name")
+                        if name in ui_update_tools and "arguments" in func:
+                            func_copy = dict(func)
+                            func_copy["arguments"] = redacted_args
+                            call_copy["function"] = func_copy
+                    scrubbed_calls.append(call_copy)
+                scrubbed = dict(item)
+                scrubbed["tool_calls"] = scrubbed_calls
+                return scrubbed
+            return item
 
-            def _merge_session_input(history, new_input):
-                scrubbed_history = [_scrub_input_item(item) for item in history]
-                return scrubbed_history + new_input
+        def _merge_session_input(history, new_input):
+            scrubbed_history = [_scrub_input_item(item) for item in history]
+            return scrubbed_history + new_input
 
-            run_config = RunConfig(
-                workflow_name="VideoAgent chat",
-                group_id=session_id,
-                session_input_callback=_merge_session_input,
-            )
+        run_config = RunConfig(
+            workflow_name="VideoAgent chat",
+            group_id=session_id,
+            session_input_callback=_merge_session_input,
+        )
+        
+        # Resolve owner for event logging
+        user_id, _ = self._resolve_session_owner(session_id)
+        
+        self.event_store.append(
+            session_id,
+            {"type": "run_start", "message": user_message},
+            user_id=user_id,
+        )
+        
+        # Save user message to chat history
+        self.append_chat_message(session_id, "user", user_message)
+        self._schedule_session_title_generation(session_id)
+        
+        try:
+            with self._get_run_lock(session_id):
+                result = None
+                for attempt in Retrying(
+                    retry=retry_if_exception(_is_retryable_rate_limit_error),
+                    stop=stop_after_attempt(4),  # Initial attempt + up to 3 retries
+                    wait=wait_exponential(multiplier=1, min=1, max=8),
+                    reraise=True,
+                ):
+                    with attempt:
+                        result = Runner.run_sync(
+                            agent,
+                            input=user_message,
+                            session=session,
+                            max_turns=100,
+                            run_config=run_config,
+                        )
+            output = result.final_output
+            if not isinstance(output, str):
+                output = str(output)
             
-            # Resolve owner for event logging
-            user_id, _ = self._resolve_session_owner(session_id)
-            
-            self.event_store.append(
-                session_id,
-                {"type": "run_start", "message": user_message},
-                user_id=user_id,
-            )
-            
-            # Save user message to chat history
-            self.append_chat_message(session_id, "user", user_message)
-            
+            # Try to parse structured JSON response
+            response_text = output
+            suggested_actions = []
             try:
-                with self._get_run_lock(session_id):
-                    result = Runner.run_sync(
-                        agent,
-                        input=user_message,
-                        session=session,
-                        max_turns=100,
-                        run_config=run_config,
-                    )
-                output = result.final_output
-                if not isinstance(output, str):
-                    output = str(output)
+                # Handle markdown code blocks
+                text = output.strip()
+                if text.startswith("```"):
+                    # Remove markdown code fence
+                    lines = text.split("\n")
+                    if lines[0].startswith("```"):
+                        lines = lines[1:]
+                    if lines and lines[-1].strip() == "```":
+                        lines = lines[:-1]
+                    text = "\n".join(lines)
                 
-                # Try to parse structured JSON response
-                response_text = output
-                suggested_actions = []
-                try:
-                    # Handle markdown code blocks
-                    text = output.strip()
-                    if text.startswith("```"):
-                        # Remove markdown code fence
-                        lines = text.split("\n")
-                        if lines[0].startswith("```"):
-                            lines = lines[1:]
-                        if lines and lines[-1].strip() == "```":
-                            lines = lines[:-1]
-                        text = "\n".join(lines)
-                    
-                    parsed = json.loads(text)
-                    if isinstance(parsed, dict) and "response" in parsed:
-                        response_text = parsed.get("response", "")
-                        suggested_actions = parsed.get("suggested_actions", [])
-                except (json.JSONDecodeError, ValueError):
-                    pass
-                
-                # Save assistant response to chat history
-                self.append_chat_message(session_id, "assistant", response_text, suggested_actions)
-                
-                return {
-                    "response": response_text,
-                    "suggested_actions": suggested_actions,
-                }
-            finally:
-                uid, _ = self._resolve_session_owner(session_id)
-                self.event_store.append(session_id, {"type": "run_end"}, user_id=uid)
+                parsed = json.loads(text)
+                if isinstance(parsed, dict) and "response" in parsed:
+                    response_text = parsed.get("response", "")
+                    suggested_actions = parsed.get("suggested_actions", [])
+            except (json.JSONDecodeError, ValueError):
+                pass
+            
+            # Save assistant response to chat history
+            self.append_chat_message(session_id, "assistant", response_text, suggested_actions)
+            
+            return {
+                "response": response_text,
+                "suggested_actions": suggested_actions,
+            }
+        finally:
+            uid, _ = self._resolve_session_owner(session_id)
+            self.event_store.append(session_id, {"type": "run_end"}, user_id=uid)
 
     def get_events(self, session_id: str, cursor: Optional[int]) -> tuple[list[dict], int]:
         user_id, _ = self._resolve_session_owner(session_id)

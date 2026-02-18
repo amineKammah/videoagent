@@ -68,6 +68,10 @@ class Session(Base):
     
     # Flag to track if the session has any meaningful content (chat (except initial), brief, storyboard)
     has_activity = Column(Boolean, default=False)
+    # Optional human-readable session title for chat/session history UIs.
+    title = Column(String(120), nullable=True)
+    title_source = Column(String(20), nullable=True)  # auto | manual | fallback
+    title_updated_at = Column(DateTime, nullable=True)
     
     # Relationships
     company = relationship("Company", back_populates="sessions")

@@ -8,12 +8,9 @@ import os
 from pathlib import Path
 from typing import Optional
 
-from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
-from opentelemetry.instrumentation.asyncio import AsyncioInstrumentor
-
 from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, Request, Header, Query
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from videoagent.agent import VideoAgentService
 from videoagent.config import Config
@@ -75,6 +72,26 @@ class AgentSessionResponse(BaseModel):
 class SessionListItem(BaseModel):
     session_id: str
     created_at: str
+    title: Optional[str] = None
+
+
+class SessionTitleUpdateRequest(BaseModel):
+    title: str = Field(min_length=1, max_length=120)
+
+    @field_validator("title")
+    @classmethod
+    def _normalize_title(cls, value: str) -> str:
+        normalized = " ".join(value.split()).strip()
+        if not normalized:
+            raise ValueError("Title cannot be blank")
+        return normalized
+
+
+class SessionTitleResponse(BaseModel):
+    session_id: str
+    title: str
+    title_source: str
+    title_updated_at: str
 
 
 class SessionListResponse(BaseModel):
@@ -139,6 +156,8 @@ class AgentEvent(BaseModel):
     status: Optional[str] = None
     error: Optional[str] = None
     message: Optional[str] = None
+    title: Optional[str] = None
+    source: Optional[str] = None
 
 
 class AgentEventsResponse(BaseModel):
@@ -172,14 +191,10 @@ async def lifespan(app: FastAPI):
     # Create new multi-tenancy tables if they don't exist
     Base.metadata.create_all(bind=engine)
     
-    # Instrument Asyncio
-    AsyncioInstrumentor().instrument()
-    
     yield
     # Shutdown: Clean up if needed
 
 app = FastAPI(title="VideoAgent API", version="0.1.0", lifespan=lifespan)
-FastAPIInstrumentor.instrument_app(app)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -298,7 +313,8 @@ def list_sessions(
         sessions=[
             SessionListItem(
                 session_id=s.id, 
-                created_at=s.created_at.isoformat() if s.created_at else ""
+                created_at=s.created_at.isoformat() if s.created_at else "",
+                title=s.title,
             ) for s in sessions
         ]
     )
@@ -322,21 +338,55 @@ def create_agent_session(
     return AgentSessionResponse(session_id=session_id)
 
 
+@app.patch("/agent/sessions/{session_id}/title", response_model=SessionTitleResponse)
+def update_session_title(
+    session_id: str,
+    request: SessionTitleUpdateRequest,
+    x_user_id: Optional[str] = Header(None, alias="X-User-Id"),
+    db: DBSession = Depends(get_db),
+) -> SessionTitleResponse:
+    if not x_user_id:
+        raise HTTPException(status_code=400, detail="X-User-Id header required")
+
+    user = get_user(db, x_user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    from videoagent.db.crud import get_session as db_get_session
+    from videoagent.db.crud import update_session_title as db_update_session_title
+
+    session = db_get_session(db, session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+    if session.user_id != user.id:
+        raise HTTPException(status_code=403, detail="Session does not belong to user")
+
+    updated = db_update_session_title(db, session_id=session_id, title=request.title, source="manual")
+    if not updated or not updated.title or not updated.title_updated_at:
+        raise HTTPException(status_code=500, detail="Failed to update session title")
+
+    agent_service.event_store.append(
+        session_id,
+        {"type": "session_title_updated", "title": updated.title, "source": "manual"},
+        user_id=user.id,
+    )
+
+    return SessionTitleResponse(
+        session_id=updated.id,
+        title=updated.title,
+        title_source=updated.title_source or "manual",
+        title_updated_at=updated.title_updated_at.isoformat(),
+    )
+
+
 @app.post("/agent/chat", response_model=AgentChatResponse)
 async def agent_chat(request: AgentChatRequest) -> AgentChatResponse:
     try:
-        # run_turn returns a string (the agent's message)
-        from opentelemetry import context
-        ctx = context.get_current()
-        
-        def _run_with_ctx():
-            token = context.attach(ctx)
-            try:
-                return agent_service.run_turn(request.session_id, request.message)
-            finally:
-                context.detach(token)
-
-        result = await asyncio.to_thread(_run_with_ctx)
+        result = await asyncio.to_thread(
+            agent_service.run_turn,
+            request.session_id,
+            request.message,
+        )
     except Exception as exc:
         raise HTTPException(status_code=400, detail=str(exc))
 
@@ -897,4 +947,3 @@ def reject_annotations_endpoint(request: ResolveAnnotationsRequest, db: DBSessio
     """Mark multiple annotations as rejected (soft delete)."""
     count = db_reject_annotations(db, request.annotation_ids, request.resolved_by)
     return {"rejected_count": count}
-

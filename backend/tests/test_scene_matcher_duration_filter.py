@@ -85,20 +85,14 @@ def test_analyze_job_filters_voice_over_candidates_by_duration() -> None:
         ]
     }
 
-    class _FakeModels:
-        async def generate_content(self, **_kwargs):
+    class _FakeGeminiClient:
+        async def generate_content_async(self, **_kwargs):
             return SimpleNamespace(
                 text=json.dumps(response_payload),
                 usage_metadata=None,
             )
 
-    fake_client = SimpleNamespace(
-        client=SimpleNamespace(
-            aio=SimpleNamespace(
-                models=_FakeModels(),
-            )
-        )
-    )
+    fake_client = _FakeGeminiClient()
 
     result = asyncio.run(
         _analyze_job_with_prompt(
@@ -132,20 +126,14 @@ def test_analyze_job_accepts_hhmmss_timestamps() -> None:
         ]
     }
 
-    class _FakeModels:
-        async def generate_content(self, **_kwargs):
+    class _FakeGeminiClient:
+        async def generate_content_async(self, **_kwargs):
             return SimpleNamespace(
                 text=json.dumps(response_payload),
                 usage_metadata=None,
             )
 
-    fake_client = SimpleNamespace(
-        client=SimpleNamespace(
-            aio=SimpleNamespace(
-                models=_FakeModels(),
-            )
-        )
-    )
+    fake_client = _FakeGeminiClient()
 
     result = asyncio.run(
         _analyze_job_with_prompt(

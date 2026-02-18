@@ -12,7 +12,8 @@ export type EventType =
     | 'storyboard_update'
     | 'video_render_start'
     | 'video_render_complete'
-    | 'video_brief_update';
+    | 'video_brief_update'
+    | 'session_title_updated';
 
 export interface AgentEvent {
     ts: string;
@@ -21,6 +22,8 @@ export interface AgentEvent {
     status?: 'ok' | 'error';
     error?: string;
     message?: string;
+    title?: string;
+    source?: string;
     output?: string;
     input?: unknown;
 }
@@ -71,6 +74,7 @@ export interface Session {
     companyId?: string;
     userId?: string;
     createdAt: Date;
+    title?: string | null;
 }
 
 export interface StoryboardScene {
@@ -169,6 +173,7 @@ export interface HealthResponse {
 export interface SessionListItem {
     session_id: string;
     created_at: string;
+    title?: string | null;
 }
 
 export interface SessionListResponse {

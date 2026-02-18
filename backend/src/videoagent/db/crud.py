@@ -10,7 +10,16 @@ from typing import Optional
 
 from sqlalchemy.orm import Session as DBSession
 
-from .models import Company, User, Session, CustomerProfile, Annotation, Pronunciation, Feedback
+from .models import (
+    Annotation,
+    Company,
+    CustomerProfile,
+    Feedback,
+    Pronunciation,
+    Session,
+    SessionChatMessage,
+    User,
+)
 
 
 # ============================================================================
@@ -299,6 +308,69 @@ def mark_session_active(db: DBSession, session_id: str) -> Optional[Session]:
     return session
 
 
+def update_session_title(
+    db: DBSession,
+    session_id: str,
+    title: str,
+    source: str = "manual",
+) -> Optional[Session]:
+    """Update a session title and metadata."""
+    session = get_session(db, session_id)
+    if not session:
+        return None
+
+    session.title = title
+    session.title_source = source
+    session.title_updated_at = datetime.utcnow()
+    db.commit()
+    db.refresh(session)
+    return session
+
+
+def set_session_title_if_absent(
+    db: DBSession,
+    session_id: str,
+    title: str,
+    source: str = "auto",
+) -> bool:
+    """Set a session title only when the session currently has no title."""
+    rows_updated = (
+        db.query(Session)
+        .filter(
+            Session.id == session_id,
+            Session.title.is_(None),
+        )
+        .update(
+            {
+                Session.title: title,
+                Session.title_source: source,
+                Session.title_updated_at: datetime.utcnow(),
+            },
+            synchronize_session=False,
+        )
+    )
+    if rows_updated:
+        db.commit()
+        return True
+    return False
+
+
+def get_first_user_message(db: DBSession, session_id: str) -> Optional[str]:
+    """Return the first user-authored chat message content for a session."""
+    row = (
+        db.query(SessionChatMessage.content)
+        .filter(
+            SessionChatMessage.session_id == session_id,
+            SessionChatMessage.role == "user",
+        )
+        .order_by(SessionChatMessage.id.asc())
+        .first()
+    )
+    if not row:
+        return None
+    return str(row[0]).strip()
+
+
 
 # ============================================================================
 # CustomerProfile CRUD
@@ -549,5 +621,3 @@ def delete_feedback(db: DBSession, feedback_id: str, user_id: str) -> bool:
     db.delete(feedback)
     db.commit()
     return True
-
-

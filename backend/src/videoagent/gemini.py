@@ -9,14 +9,14 @@ import sqlite3
 import tempfile
 import time
 from pathlib import Path
-from typing import Optional, TypeVar, Union
-
-from pydantic import BaseModel
+from typing import Any, Awaitable, Callable, Optional, TypeVar, Union
 
 from videoagent.config import Config, default_config
 from videoagent.gcp import build_vertex_client_kwargs
 
-T = TypeVar("T", bound=BaseModel)
+R = TypeVar("R")
+_RETRY_MAX_ATTEMPTS = 3
+_RETRY_BASE_DELAY_SECONDS = 1.0
 
 
 class GeminiClient:
@@ -176,6 +176,76 @@ class GeminiClient:
             self._tts_client = self._create_client()
         return self._tts_client
 
+    @staticmethod
+    def _is_retryable_rate_limit_error(error: BaseException) -> bool:
+        if getattr(error, "status_code", None) == 429:
+            return True
+        detail = getattr(error, "detail", None)
+        if isinstance(detail, str) and '"code": 429' in detail:
+            return True
+        message = str(error).lower()
+        return "ratelimiterror" in message and "429" in message
+
+    def _run_with_retry(
+        self,
+        operation: Callable[[], R],
+        *,
+        operation_name: str,
+        max_attempts: int = _RETRY_MAX_ATTEMPTS,
+    ) -> R:
+        last_error: Optional[Exception] = None
+        for attempt in range(1, max_attempts + 1):
+            try:
+                return operation()
+            except Exception as exc:
+                last_error = exc
+                if not self._is_retryable_rate_limit_error(exc):
+                    raise
+                if attempt == max_attempts:
+                    break
+                delay_seconds = _RETRY_BASE_DELAY_SECONDS * (2 ** (attempt - 1))
+                print(
+                    f"[GeminiClient] {operation_name} failed "
+                    f"(attempt {attempt}/{max_attempts}): {exc}. "
+                    f"Retrying in {delay_seconds:.1f}s."
+                )
+                time.sleep(delay_seconds)
+        if last_error is None:
+            raise RuntimeError(f"{operation_name} failed without an exception.")
+        raise RuntimeError(
+            f"{operation_name} failed after {max_attempts} attempts."
+        ) from last_error
+
+    async def _run_with_retry_async(
+        self,
+        operation: Callable[[], Awaitable[R]],
+        *,
+        operation_name: str,
+        max_attempts: int = _RETRY_MAX_ATTEMPTS,
+    ) -> R:
+        last_error: Optional[Exception] = None
+        for attempt in range(1, max_attempts + 1):
+            try:
+                return await operation()
+            except Exception as exc:
+                last_error = exc
+                if not self._is_retryable_rate_limit_error(exc):
+                    raise
+                if attempt == max_attempts:
+                    break
+                delay_seconds = _RETRY_BASE_DELAY_SECONDS * (2 ** (attempt - 1))
+                print(
+                    f"[GeminiClient] {operation_name} failed "
+                    f"(attempt {attempt}/{max_attempts}): {exc}. "
+                    f"Retrying in {delay_seconds:.1f}s."
+                )
+                await asyncio.sleep(delay_seconds)
+        if last_error is None:
+            raise RuntimeError(f"{operation_name} failed without an exception.")
+        raise RuntimeError(
+            f"{operation_name} failed after {max_attempts} attempts."
+        ) from last_error
+
     @property
     def client(self):
         """Get the underlying genai client."""
@@ -303,10 +373,29 @@ class GeminiClient:
         Returns:
             Response object
         """
-        return self._get_content_client().models.generate_content(
-            model=model,
-            contents=contents,
-            config=config,
+        return self._run_with_retry(
+            lambda: self._get_content_client().models.generate_content(
+                model=model,
+                contents=contents,
+                config=config,
+            ),
+            operation_name="generate_content",
+        )
+
+    async def generate_content_async(
+        self,
+        model: str,
+        contents: list,
+        config: Optional[dict] = None,
+    ) -> Any:
+        """Generate content using Gemini async API with retries."""
+        return await self._run_with_retry_async(
+            lambda: self._get_content_client().aio.models.generate_content(
+                model=model,
+                contents=contents,
+                config=config,
+            ),
+            operation_name="generate_content_async",
         )
 
     async def generate_contents_parallel(
@@ -321,7 +410,7 @@ class GeminiClient:
 
         async def _run(contents):
             async with semaphore:
-                return await self._get_content_client().aio.models.generate_content(
+                return await self.generate_content_async(
                     model=model,
                     contents=contents,
                     config=config,
@@ -338,19 +427,22 @@ class GeminiClient:
         """Generate speech audio using Gemini TTS (async)."""
         from google.genai import types
 
-        response = await self._get_tts_client().aio.models.generate_content(
-            model=self.config.gemini_tts_model,
-            contents=text,
-            config=types.GenerateContentConfig(
-                response_modalities=["AUDIO"],
-                speech_config=types.SpeechConfig(
-                    voice_config=types.VoiceConfig(
-                        prebuilt_voice_config=types.PrebuiltVoiceConfig(
-                            voice_name=voice,
+        response = await self._run_with_retry_async(
+            lambda: self._get_tts_client().aio.models.generate_content(
+                model=self.config.gemini_tts_model,
+                contents=text,
+                config=types.GenerateContentConfig(
+                    response_modalities=["AUDIO"],
+                    speech_config=types.SpeechConfig(
+                        voice_config=types.VoiceConfig(
+                            prebuilt_voice_config=types.PrebuiltVoiceConfig(
+                                voice_name=voice,
+                            )
                         )
-                    )
+                    ),
                 ),
             ),
+            operation_name="generate_speech_async",
         )
 
         if not response.candidates:
@@ -397,19 +489,22 @@ class GeminiClient:
         """
         from google.genai import types
 
-        response = self._get_tts_client().models.generate_content(
-            model=self.config.gemini_tts_model,
-            contents=text,
-            config=types.GenerateContentConfig(
-                response_modalities=["AUDIO"],
-                speech_config=types.SpeechConfig(
-                    voice_config=types.VoiceConfig(
-                        prebuilt_voice_config=types.PrebuiltVoiceConfig(
-                            voice_name=voice,
+        response = self._run_with_retry(
+            lambda: self._get_tts_client().models.generate_content(
+                model=self.config.gemini_tts_model,
+                contents=text,
+                config=types.GenerateContentConfig(
+                    response_modalities=["AUDIO"],
+                    speech_config=types.SpeechConfig(
+                        voice_config=types.VoiceConfig(
+                            prebuilt_voice_config=types.PrebuiltVoiceConfig(
+                                voice_name=voice,
+                            )
                         )
-                    )
+                    ),
                 ),
             ),
+            operation_name="generate_speech",
         )
 
         if not response.candidates:

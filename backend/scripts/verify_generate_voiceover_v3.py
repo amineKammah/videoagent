@@ -14,7 +14,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 from videoagent.config import default_config
-from videoagent.voiceover_v3 import PronunciationGuidance, VoiceOverV3Generator
+from videoagent.voiceover_v3 import VoiceOverV3Generator
 
 
 async def main() -> int:
@@ -28,11 +28,10 @@ async def main() -> int:
     run_dir = Path("output/voiceover_v3_verify") / run_stamp
     run_dir.mkdir(parents=True, exist_ok=True)
 
-    script = (
+    rendered_text = (
         "At Navan, our RevOps team partnered with HubSpot and Salesforce "
         "to reduce handoff delays by 28 percent in six weeks."
     )
-    notes = "Add short pauses after each company name."
     output_path = run_dir / "verify_voiceover_v3.wav"
     text_path = run_dir / "verify_voiceover_v3.text_sent_to_elevenlabs.txt"
 
@@ -40,14 +39,9 @@ async def main() -> int:
     try:
         start = time.perf_counter()
         voice_over = await generator.generate_voice_over_async(
-            script=script,
+            rendered_text=rendered_text,
             output_path=output_path,
-            notes=notes,
-            pronunciations=[
-                PronunciationGuidance(word="Navan", phonetic_spelling="Navaaan"),
-                PronunciationGuidance(word="RevOps", phonetic_spelling="REV-ops"),
-            ],
-            enhanced_text_output_path=text_path,
+            rendered_text_output_path=text_path,
         )
         elapsed = time.perf_counter() - start
     finally:

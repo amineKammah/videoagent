@@ -210,18 +210,14 @@ class SetSceneCandidatesPayload(BaseModel):
     scenes: list[SceneCandidatesItem] = Field(description="List of scenes with their candidates.")
 
 
-class SceneNoteItem(BaseModel):
-    """Scene-specific voiceover direction note."""
+class RenderedVoiceoverItem(BaseModel):
+    """Final rendered text for a storyboard scene voiceover."""
     model_config = ConfigDict(extra="forbid")
-    scene_id: str = Field(description="Storyboard scene ID to apply the note to.")
-    note: str = Field(description="Delivery direction for the specific scene.")
-
-
-class PronunciationItem(BaseModel):
-    """Resolved pronunciation guidance item."""
-    model_config = ConfigDict(extra="forbid")
-    word: str = Field(description="Original text token to guide pronunciation for.")
-    phonetic_spelling: str = Field(description="Phonetic hint for the target token.")
+    scene_id: str = Field(description="Storyboard scene ID for this rendered voiceover text.")
+    rendered_text: str = Field(
+        min_length=1,
+        description="Final ElevenLabs-ready text to synthesize for the scene.",
+    )
 
 
 class GenerateVoiceoverV3Payload(BaseModel):
@@ -230,22 +226,10 @@ class GenerateVoiceoverV3Payload(BaseModel):
     segment_ids: list[str] = Field(
         description="Storyboard scene IDs that should get regenerated voiceovers."
     )
-    notes: Optional[str] = Field(
-        default=None,
+    rendered_voiceovers: list[RenderedVoiceoverItem] = Field(
+        min_length=1,
         description=(
-            "Optional global direction notes for delivery style. "
-            "Example: 'Make the first sentence whisper-like and dramatic.'"
-        ),
-    )
-    scene_notes: list[SceneNoteItem] = Field(
-        default_factory=list,
-        description=(
-            "Optional scene-specific direction notes."
-        ),
-    )
-    pronunciations: list[PronunciationItem] = Field(
-        default_factory=list,
-        description=(
-            "Resolved pronunciation hints passed from upstream context."
+            "Final rendered text per scene. Each entry must include scene_id and "
+            "the exact text that should be sent to ElevenLabs."
         ),
     )

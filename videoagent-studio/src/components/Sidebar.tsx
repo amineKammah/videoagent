@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSessionStore } from '@/store/session';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { api } from '@/lib/api';
@@ -11,6 +11,7 @@ export function Sidebar() {
     const session = useSessionStore(state => state.session);
     const user = useSessionStore(state => state.user);
     const apiHealthy = useSessionStore(state => state.apiHealthy);
+    const messageCount = useSessionStore(state => state.messages.length);
     const createSession = useSessionStore(state => state.createSession);
     const loadSession = useSessionStore(state => state.loadSession);
 
@@ -18,6 +19,7 @@ export function Sidebar() {
     const [isCreating, setIsCreating] = useState(false);
     const [isCollapsed, setIsCollapsed] = useState(true);
     const [sessions, setSessions] = useState<SessionListItem[]>([]);
+    const titleRefreshAttemptsRef = useRef(0);
 
     const searchParams = useSearchParams();
     const router = useRouter();
@@ -26,26 +28,62 @@ export function Sidebar() {
         router.push(`/studio?sessionId=${encodeURIComponent(sessionId)}`);
     }, [router]);
 
-    // Check API health on mount
-
-
-    // Fetch sessions when API becomes healthy or user changes
-    useEffect(() => {
-        if (apiHealthy && user) {
-            fetchSessions();
-        } else {
-            setSessions([]);
-        }
-    }, [apiHealthy, user]);
-
-    const fetchSessions = async () => {
+    const fetchSessions = useCallback(async () => {
         try {
             const response = await api.listSessions();
             setSessions(response.sessions);
         } catch (error) {
             console.error('Failed to fetch sessions:', error);
         }
-    };
+    }, []);
+
+    // Fetch sessions when API/user/session state changes.
+    useEffect(() => {
+        if (apiHealthy && user) {
+            void fetchSessions();
+        } else {
+            setSessions([]);
+        }
+    }, [apiHealthy, user, messageCount, session?.id, fetchSessions]);
+
+    // If the current session is missing from the list (e.g. just created),
+    // retry shortly so it appears without a full page refresh.
+    useEffect(() => {
+        if (!apiHealthy || !user || !session?.id) return;
+        if (sessions.some(s => s.session_id === session.id)) return;
+
+        const retryTimer = setTimeout(() => {
+            void fetchSessions();
+        }, 1200);
+
+        return () => clearTimeout(retryTimer);
+    }, [apiHealthy, user, session?.id, sessions, fetchSessions]);
+
+    // Session titles are generated asynchronously on the backend.
+    // Retry session list fetch a few times after the first messages so
+    // the auto-generated title appears without manual refresh.
+    useEffect(() => {
+        if (!apiHealthy || !user || !session?.id) return;
+        if (messageCount === 0) return;
+
+        const currentSession = sessions.find(s => s.session_id === session.id);
+        if (!currentSession) return;
+
+        const hasTitle = Boolean(currentSession.title?.trim());
+        if (hasTitle) {
+            titleRefreshAttemptsRef.current = 0;
+            return;
+        }
+
+        if (titleRefreshAttemptsRef.current >= 8) return;
+
+        const retryTimer = setTimeout(() => {
+            titleRefreshAttemptsRef.current += 1;
+            void fetchSessions();
+        }, 1500);
+
+        return () => clearTimeout(retryTimer);
+    }, [apiHealthy, user, session?.id, sessions, messageCount, fetchSessions]);
 
     // Load session from URL if present
     useEffect(() => {
@@ -93,6 +131,28 @@ export function Sidebar() {
             minute: '2-digit'
         });
     };
+
+    const formatSessionLabel = (sessionItem: SessionListItem) => {
+        const title = sessionItem.title?.trim();
+        if (title) return title;
+        return `${sessionItem.session_id.slice(0, 12)}...`;
+    };
+
+    const visibleSessions = useMemo(() => {
+        if (!session) return sessions;
+        if (sessions.some(s => s.session_id === session.id)) return sessions;
+
+        return [
+            {
+                session_id: session.id,
+                created_at: session.createdAt?.toISOString?.() ?? new Date().toISOString(),
+                title: session.title ?? 'New session',
+            },
+            ...sessions,
+        ];
+    }, [session, sessions]);
+
+    const currentSessionItem = visibleSessions.find(s => s.session_id === session?.id);
 
     if (isCollapsed) {
         return (
@@ -165,8 +225,8 @@ export function Sidebar() {
                 {session && (
                     <div className="bg-slate-50 rounded-lg p-3 mb-3">
                         <p className="text-xs text-slate-500">Current Session</p>
-                        <p className="text-sm font-mono text-slate-700 truncate">
-                            {session.id.slice(0, 12)}...
+                        <p className="text-sm text-slate-700 truncate" title={currentSessionItem?.title || undefined}>
+                            {currentSessionItem ? formatSessionLabel(currentSessionItem) : `${session.id.slice(0, 12)}...`}
                         </p>
                     </div>
                 )}
@@ -191,13 +251,13 @@ export function Sidebar() {
                     </h2>
                 </div>
                 <div className="flex-1 overflow-y-auto px-2">
-                    {sessions.length === 0 ? (
+                    {visibleSessions.length === 0 ? (
                         <p className="text-xs text-slate-400 px-2 py-4 text-center">
                             No previous sessions
                         </p>
                     ) : (
                         <div className="space-y-1">
-                            {sessions.map((s) => (
+                            {visibleSessions.map((s) => (
                                 <button
                                     key={s.session_id}
                                     onClick={() => handleSelectSession(s.session_id)}
@@ -206,8 +266,8 @@ export function Sidebar() {
                                         : 'hover:bg-slate-100 text-slate-600'
                                         }`}
                                 >
-                                    <p className="font-mono text-xs truncate">
-                                        {s.session_id.slice(0, 12)}...
+                                    <p className="text-xs truncate" title={s.title || undefined}>
+                                        {formatSessionLabel(s)}
                                     </p>
                                     <p className="text-xs text-slate-400 mt-0.5">
                                         {formatDate(s.created_at)}

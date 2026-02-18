@@ -35,7 +35,7 @@ def generate_phonetic_spelling(
         """
         
         # Generate content with structured output
-        response = client.client.models.generate_content(
+        response = client.generate_content(
             model=client.config.gemini_model,
             contents=[
                 types.Part.from_bytes(data=audio_data, mime_type=mime_type),
