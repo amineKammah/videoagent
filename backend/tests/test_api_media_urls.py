@@ -44,13 +44,13 @@ def test_sign_if_gcs_signs_gs_uri_and_passthrough_http(monkeypatch: pytest.Monke
 
     assert api_module._sign_if_gcs("https://cdn.example/video.mp4") == "https://cdn.example/video.mp4"
     assert api_module._sign_if_gcs("http://cdn.example/video.mp4") == "http://cdn.example/video.mp4"
-    assert api_module._sign_if_gcs("gs://videoagent-assets/companies/c1/videos/clip.mp4") == "https://signed.example/clip.mp4"
+    assert api_module._sign_if_gcs("gs://bink_video_storage_alpha/companies/c1/videos/clip.mp4") == "https://signed.example/clip.mp4"
     assert api_module._sign_if_gcs("/tmp/local.mp4") is None
-    assert calls == ["gs://videoagent-assets/companies/c1/videos/clip.mp4"]
+    assert calls == ["gs://bink_video_storage_alpha/companies/c1/videos/clip.mp4"]
 
 
 def test_hydrate_scene_media_urls_signs_voice_over_without_mutating_input(monkeypatch: pytest.MonkeyPatch):
-    scene = _make_scene(audio_path="gs://videoagent-assets/companies/c1/generated/audio.wav")
+    scene = _make_scene(audio_path="gs://bink_video_storage_alpha/companies/c1/generated/audio.wav")
     scene_without_audio = _make_scene(scene_id="scene-2", audio_path=None)
 
     monkeypatch.setattr(
@@ -88,7 +88,7 @@ def test_get_video_metadata_for_generated_video_reads_sidecar_and_signs(monkeypa
             }
 
         def to_gs_uri(self, path: str) -> str:
-            return f"gs://videoagent-assets/{path}"
+            return f"gs://bink_video_storage_alpha/{path}"
 
         def get_url(self, path: str) -> str:
             return f"https://signed.example/{path}"
@@ -103,7 +103,7 @@ def test_get_video_metadata_for_generated_video_reads_sidecar_and_signs(monkeypa
     )
 
     assert response.id == "generated:session-1:clip.mp4"
-    assert response.path == "gs://videoagent-assets/companies/company-1/generated/scenes/session-1/clip.mp4"
+    assert response.path == "gs://bink_video_storage_alpha/companies/company-1/generated/scenes/session-1/clip.mp4"
     assert response.url == "https://signed.example/companies/company-1/generated/scenes/session-1/clip.mp4"
     assert response.filename == "clip.mp4"
     assert response.duration == pytest.approx(8.5)
@@ -134,7 +134,7 @@ def test_get_video_metadata_for_library_video_uses_signed_url(monkeypatch: pytes
         def get_video(self, video_id: str):
             return SimpleNamespace(
                 id=video_id,
-                path="gs://videoagent-assets/companies/company-1/videos/clip.mp4",
+                path="gs://bink_video_storage_alpha/companies/company-1/videos/clip.mp4",
                 filename="clip.mp4",
                 duration=6.0,
                 resolution=(1920, 1080),
@@ -157,7 +157,7 @@ def test_get_video_metadata_for_library_video_uses_signed_url(monkeypatch: pytes
 
     assert captured_company_id["value"] == "company-1"
     assert response.id == "video-abc"
-    assert response.path == "gs://videoagent-assets/companies/company-1/videos/clip.mp4"
+    assert response.path == "gs://bink_video_storage_alpha/companies/company-1/videos/clip.mp4"
     assert response.url == "https://signed.example/clip.mp4"
 
 

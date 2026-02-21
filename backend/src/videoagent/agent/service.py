@@ -19,7 +19,6 @@ from agents import (
     SQLiteSession,
     set_tracing_export_api_key,
 )
-from agents.model_settings import Reasoning
 from agents.extensions.models.litellm_model import LitellmModel
 from agents.tracing.processors import BackendSpanExporter
 from pydantic import BaseModel, Field
@@ -326,9 +325,7 @@ class VideoAgentService:
                 name="VideoAgent",
                 instructions=_dynamic_instructions,
                 model=model,
-                model_settings=ModelSettings(
-                    reasoning=Reasoning(effort="high"),
-                ),
+                model_settings=ModelSettings(),
                 tools=tools,
             )
             self._agents[session_id] = agent
@@ -467,7 +464,7 @@ class VideoAgentService:
                     max_output_tokens=24,
                     response_mime_type="application/json",
                     response_schema=SessionTitleOutput,
-                    thinking_config=types.ThinkingConfig(thinking_budget=0),
+                    thinking_config=types.ThinkingConfig(thinking_budget=512),
                 ),
             )
             parsed = getattr(response, "parsed", None)

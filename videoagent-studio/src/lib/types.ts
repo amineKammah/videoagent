@@ -90,6 +90,8 @@ export interface StoryboardScene {
     matched_scene_candidates?: SceneCandidate[];
     selected_candidate_id?: string | null;
     matched_scene_history?: SelectionHistoryEntry[];
+    // Animation overlay
+    animation?: string | null;
 }
 
 export interface MatchedScene {

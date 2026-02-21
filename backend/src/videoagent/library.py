@@ -114,6 +114,7 @@ class VideoLibrary:
         self.company_id = company_id
         self.storage: GCSStorageClient = get_storage_client(self.config)
         self.index = VideoLibraryIndex()
+        self._legacy_id_resolution_cache: dict[str, Optional[str]] = {}
 
         if company_id:
             base_prefix = f"companies/{company_id}"
@@ -332,6 +333,41 @@ class VideoLibrary:
         if not self.index.videos:
             self.scan_library()
         return self.index.get_video(video_id)
+
+    def resolve_legacy_video_id(self, video_id: str) -> Optional[str]:
+        """Resolve a stale video_id to the current id for the same blob path.
+
+        This is used after cross-bucket copies where object generation changes.
+        """
+        if not video_id:
+            return None
+        if video_id in self._legacy_id_resolution_cache:
+            return self._legacy_id_resolution_cache[video_id]
+
+        resolved: Optional[str] = None
+        try:
+            metadata_key = self._metadata_key_for_video(video_id)
+            if not self.storage.exists(metadata_key):
+                self._legacy_id_resolution_cache[video_id] = None
+                return None
+            metadata_payload = self.storage.read_json(metadata_key)
+            source_path = metadata_payload.get("path")
+            if not isinstance(source_path, str) or not source_path.strip():
+                self._legacy_id_resolution_cache[video_id] = None
+                return None
+            blob_meta = self.storage.get_metadata(source_path)
+            blob_path = str(blob_meta.get("blob_path") or "").strip()
+            if blob_path:
+                resolved = get_video_id(
+                    blob_path,
+                    generation=blob_meta.get("generation"),
+                    size=blob_meta.get("size"),
+                )
+        except Exception:
+            resolved = None
+
+        self._legacy_id_resolution_cache[video_id] = resolved
+        return resolved
 
     def get_video_by_path(self, path: str | Path) -> Optional[VideoMetadata]:
         if not self.index.videos:

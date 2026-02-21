@@ -233,3 +233,14 @@ class GenerateVoiceoverV3Payload(BaseModel):
             "the exact text that should be sent to ElevenLabs."
         ),
     )
+
+
+class SetSceneAnimationPayload(BaseModel):
+    """Payload for setting an animation overlay on a scene."""
+
+    model_config = ConfigDict(extra="forbid")
+    scene_id: str = Field(description="Scene ID to set the animation for.")
+    html_content: str = Field(
+        min_length=1,
+        description="Self-contained HTML/CSS/JS animation code to overlay on the video.",
+    )

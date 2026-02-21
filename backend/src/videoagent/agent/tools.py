@@ -35,6 +35,7 @@ from .schemas import (
     SceneMatchV2BatchRequest,
     SetSceneCandidatesPayload,
     GenerateVoiceoverV3Payload,
+    SetSceneAnimationPayload,
 )
 from .scene_matcher import SceneMatcher
 from .scene_matcher_v2 import SceneMatcherV2
@@ -181,12 +182,23 @@ def _render_storyboard_scenes(
                 )
         
         # Handle regular library videos
+        original_video_id = video_id
         metadata = library.get_video(video_id)
+        if not metadata:
+            resolved_video_id = library.resolve_legacy_video_id(video_id)
+            if resolved_video_id and resolved_video_id != video_id:
+                resolved_metadata = library.get_video(resolved_video_id)
+                if resolved_metadata:
+                    matched_scene.source_video_id = resolved_video_id
+                    video_id = resolved_video_id
+                    metadata = resolved_metadata
+                    if video_id in video_paths:
+                        continue
         if not metadata:
             return RenderResult(
                 success=False,
                 error_message=(
-                    "Video id(s) not found: " + video_id
+                    "Video id(s) not found: " + original_video_id
                 ),
             )
         source_ref = metadata.path
@@ -490,10 +502,12 @@ def _build_tools(
             # Preserve existing specialized fields if scene exists
             voice_over = None
             matched_scene = None
+            animation = None
             if update.scene_id in old_scene_map:
                 existing = old_scene_map[update.scene_id]
                 voice_over = existing.voice_over
                 matched_scene = existing.matched_scene
+                animation = existing.animation
             
             new_scene = _StoryboardScene(
                 scene_id=update.scene_id,
@@ -504,6 +518,7 @@ def _build_tools(
                 order=update.order,
                 voice_over=voice_over,
                 matched_scene=matched_scene,
+                animation=animation,
             )
             new_scenes.append(new_scene)
             
@@ -540,7 +555,8 @@ def _build_tools(
                     use_voice_over=payload.scene.use_voice_over,
                     order=payload.scene.order,
                     voice_over=scene.voice_over,      # PRESERVE
-                    matched_scene=scene.matched_scene # PRESERVE
+                    matched_scene=scene.matched_scene, # PRESERVE
+                    animation=scene.animation,         # PRESERVE
                 )
                 updated_scenes.append(updated_scene)
                 target_found = True
@@ -1049,7 +1065,7 @@ def _build_tools(
     @function_tool(failure_error_function=tool_error("match_scene_to_video_v2"), strict_mode=False)
     @log_tool("match_scene_to_video_v2")
     async def match_scene_to_video_v2(payload: SceneMatchV2BatchRequest) -> str:
-        """Find candidate clips for one or more VO storyboard scenes using v2 matching."""
+        """Find candidate clips for one or more VO storyboard scenes using v2 matching. can only be called once VOICE OVERS ARE GENERATED"""
         return await scene_matcher_v2.match_scene_to_video_v2(
             payload=payload,
         )
@@ -1437,6 +1453,34 @@ def _build_tools(
                 "error": error_msg,
             })
 
+    @function_tool(failure_error_function=tool_error("set_scene_animation"), strict_mode=True)
+    @log_tool("set_scene_animation")
+    def set_scene_animation(payload: SetSceneAnimationPayload) -> str:
+        """Set an HTML/CSS/JS animation overlay for a storyboard scene.
+
+        The animation code should be self-contained HTML that will be rendered
+        in an iframe overlaid on the video. Use GSAP (loaded via CDN) for
+        animations. The animation will be synced with video playback
+        (pause/resume/seek).
+        """
+        scenes = storyboard_store.load(session_id, user_id=user_id) or []
+        if not scenes:
+            return "No storyboard scenes found. Create a storyboard first."
+
+        target = None
+        for scene in scenes:
+            if scene.scene_id == payload.scene_id:
+                target = scene
+                break
+
+        if not target:
+            return f"Scene ID not found: {payload.scene_id}"
+
+        target.animation = payload.html_content
+        storyboard_store.save(session_id, scenes, user_id=user_id)
+        event_store.append(session_id, {"type": "storyboard_update"}, user_id=user_id)
+        return f"Animation overlay set for scene '{target.title}' ({payload.scene_id})."
+
     return [
         update_storyboard,
         update_storyboard_scene,
@@ -1447,4 +1491,5 @@ def _build_tools(
         match_scene_to_video_v2,
         generate_voiceover_v3,
         generate_scene,
+        set_scene_animation,
     ]

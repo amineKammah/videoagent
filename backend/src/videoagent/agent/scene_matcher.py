@@ -250,10 +250,22 @@ def _validate_and_build_jobs(
     all_candidate_ids = {
         video_id for request in requests for video_id in request.candidate_video_ids
     }
+    remapped_candidate_ids: dict[str, str] = {}
     video_map = {
         video_id: video_library.get_video(video_id)
         for video_id in all_candidate_ids
     }
+    for video_id, metadata in list(video_map.items()):
+        if metadata:
+            continue
+        resolved_video_id = video_library.resolve_legacy_video_id(video_id)
+        if not resolved_video_id or resolved_video_id == video_id:
+            continue
+        resolved_metadata = video_library.get_video(resolved_video_id)
+        if resolved_metadata:
+            remapped_candidate_ids[video_id] = resolved_video_id
+            video_map[video_id] = resolved_metadata
+            video_map[resolved_video_id] = resolved_metadata
 
     jobs: list[SceneMatchJob] = []
     errors: list[dict] = []
@@ -288,9 +300,19 @@ def _validate_and_build_jobs(
             )
             continue
 
+        normalized_candidate_video_ids: list[str] = []
+        for candidate_video_id in request.candidate_video_ids:
+            resolved_video_id = remapped_candidate_ids.get(candidate_video_id, candidate_video_id)
+            if resolved_video_id != candidate_video_id:
+                warnings_by_scene_id.setdefault(request.scene_id, []).append(
+                    f"Remapped stale video id '{candidate_video_id}' -> '{resolved_video_id}'."
+                )
+            normalized_candidate_video_ids.append(resolved_video_id)
+        normalized_candidate_video_ids = list(dict.fromkeys(normalized_candidate_video_ids))
+
         invalid_ids = [
             video_id
-            for video_id in request.candidate_video_ids
+            for video_id in normalized_candidate_video_ids
             if not video_map.get(video_id)
         ]
         if invalid_ids:
@@ -367,7 +389,7 @@ def _validate_and_build_jobs(
                 _build_voice_over_jobs(
                     request=request,
                     scene=scene,
-                    candidate_ids=request.candidate_video_ids,
+                    candidate_ids=normalized_candidate_video_ids,
                     video_map=video_map,
                     duration_section=duration_section,
                     target_duration=target_duration,
@@ -380,7 +402,7 @@ def _validate_and_build_jobs(
                 _build_original_audio_jobs(
                     request=request,
                     scene=scene,
-                    candidate_ids=request.candidate_video_ids,
+                    candidate_ids=normalized_candidate_video_ids,
                     video_map=video_map,
                     duration_section=duration_section,
                     target_duration=target_duration,
@@ -444,53 +466,42 @@ The original audio of the source video will be removed.
 Scene Title: {job.scene.title}
 Scene Purpose: {job.scene.purpose}
 {scene_text}
-Agent Notes: {job.notes}
-
-### 2. STRICT VISUAL RULES (CRITICAL)
-Since this is a background for a voice-over:
-- [ ] NO TALKING HEADS: Do NOT select clips where people are speaking to the camera.
-- [ ] NO EDGE CASES: Be mindful of clips where there is a camera recording of a
-person speaking to the camera on the edge of the frame.
-- [ ] NO SUBTITLES: Do NOT select clips with burnt-in subtitles.
-- [ ] COMPATIBLE WITH SCRIPT: You should not include scenes with text overs and
-widgets that don’t match the scene script. Ensure the selected clip is compatible
-with the scene script.
-- [ ] NO STATIC SCENES: Do NOT select clips where there is a static frame for the entire duration of the clip.
 
 ### 3. YOUR MISSION
 Evaluate the single video provided below.
 1. Find a continuous clip that matches the Voice-Over Script and Agent Notes.
 2. {job.duration_section}
-3. Only perfect matches**: Pay very careful attention to the candidate visual description and ensure it works perfectly with the voiceover.
-    * If the clip only matches visually part of the script, Do NOT return it.
-    * E.g. If the voice over script talks about a product, but the clip shows a similar but different product, discard it.
-    * E.g. If the voice over script talks about a painpoint, but the clip shows the solution, discard it.
-    * E.g. If the script talks about integration with company X, and the clip shows a generic office environment, DO NOT return it.
-    * E.g. If the video has a logo that has nothing to do with the voice over, you should not include this video.
-    * We need to hold an extremely high bar for the produced videos. If you are not 100% sure that the clip works with the voiceover, discard it.
-4. This video will be used a B2B sales video. The quality bar is very high. If there is no perfect matches, DO NOT return it. 
+3. This video will be used a B2B sales video. The quality bar is very high. If there is no perfect matches, DO NOT return it. 
 
-### 4. Scene-Specific Priorities
-- **Intro:** Highest bar in the video; must be specific, authentic, and immediately engaging. Avoid product demos at this stage.
+
+### 4 Scene-Specific Priorities
+
+- **Intro:** PAY SPECIAL ATTENTION TO NOT USE solution clips when this scene showcases a PAIN. Things like showing footage from the new platform, or the solution logo are not allowed.
+- **Solution scenes:** 
+  - Any Product demos MUST be showcasing exactly what is being said in the voice over. 
+  - Never show logos or company names completely unrelated to the product, customer or the testimony scene. 
+  - If you mention a certification or an integration with a specific product, you must find a scene that explicitely shows the certification/product logo, or generate that scene. Similar product logos are not allowed.
+- **Testimonies:** Context about the testimony must always be introduced in the previous scene. It also must use the same language as the rest of the video.
 - **Closing:** Must clearly show the company logo and feel brand-authentic.
 
-
 ### 5 Hard Rejection Checklist (Non-Negotiable)
+
 Reject immediately if any condition is true:
+0. PAIN POINT VS SOLUTION MISMATCH: The voice over talks about a pain point but the visual shows the solution, or vice versa. This is the most important rule.
 1. Visual is adjacent but not exact to script meaning.
 2. Wrong industry context/environment cues.
-3. Competitor brand/logo/UI appears when a specific brand is referenced.
+3. Completely irrelevant brand/logo/UI appears when a specific brand is referenced.
 4. Shows the solution LOGO when a pain is being discussed in the voice over.
 5. Voice over talks about Pain but visual shows a solution, or vice versa.
 6. Technical-function mismatch (e.g., analytics visuals for compliance/reporting claim).
 7. Script has multiple key points but visual supports only part.
-8. VO scene has speaking talking head or obvious mouth-sync conflict.
-9. Burned-in subtitles/captions/[MUSIC] tags/conflicting overlays.
-10. Language mismatch for original-audio scenes.
-11. Intro feels generic or weak.
-15. Personalization cues in early scenes are not visually supported.
-17. Style/quality breaks continuity of the full video.
-18. Confidence is below perfect-match bar.
+8. Product demo shown in clip does not perfectly address the point spoken about in the voice over.
+9. VO scene has speaking talking head or obvious mouth-sync conflict.
+10. Burned-in subtitles/captions/[MUSIC] tags/conflicting overlays.
+11. Language mismatch for original-audio scenes.
+12. Intro feels generic or weak.
+13. Personalization cues in early scenes are not visually supported.
+14. Style/quality breaks continuity of the full video.
 
 
 ### VIDEO TO EVALUATE
@@ -500,9 +511,8 @@ Reject immediately if any condition is true:
 {window_section}
 
 ### OUTPUT INSTRUCTIONS
+- Only return candidates that STRICTLY match all the rules above. If there is no perfect match, return an empty list. If multiple candidates are a perfect match, return the best 3
 - Make sure each candidate clip is -/+1second of the target duration.
-- Return up to 3 candidate clips, RANKED from best to worst.
-- The first candidate should be your top recommendation.
 - Return EXACTLY the `video_id` provided above.
 - Include a detailed visual description for each candidate. This description MUST include all the logos, text, and any other elements that are present in the clip.
 - Include rationale proving visual-rules compliance.
@@ -687,12 +697,12 @@ async def _analyze_job_with_prompt(
     llm_start = time.perf_counter()
     try:
         response = await client.generate_content_async(
-            model="gemini-3-flash-preview",
+            model="gemini-3-pro-preview",
             contents=contents,
             config={
                 "response_mime_type": "application/json",
                 "response_json_schema": _response_schema_for_mode(job),
-                "thinking_config": types.ThinkingConfig(thinking_budget=6024),
+                "thinking_config": types.ThinkingConfig(thinking_budget=1024),
             },
         )
     except Exception as exc:

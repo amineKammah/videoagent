@@ -19,6 +19,7 @@ from videoagent.gcp import build_storage_client_kwargs
 
 
 PathLike = Union[str, Path]
+_LEGACY_BUCKET_ALIASES = frozenset({"videoagent_assets", "videoagent-assets"})
 
 
 class GCSStorageClient:
@@ -38,6 +39,9 @@ class GCSStorageClient:
         self.client = storage.Client(**build_storage_client_kwargs())
         self.bucket = self.client.bucket(bucket)
         self.bucket.reload()
+        self._accepted_alias_buckets = frozenset(
+            alias for alias in _LEGACY_BUCKET_ALIASES if alias and alias != self.bucket.name
+        )
         self.bucket_location = (self.bucket.location or "").lower()
         if expected_location:
             expected = expected_location.lower()
@@ -66,7 +70,7 @@ class GCSStorageClient:
             bucket_name, sep, blob_path = without_scheme.partition("/")
             if not sep or not blob_path:
                 raise ValueError(f"Invalid GCS URI: {raw}")
-            if bucket_name != self.bucket.name:
+            if bucket_name != self.bucket.name and bucket_name not in self._accepted_alias_buckets:
                 raise ValueError(
                     f"Path bucket '{bucket_name}' does not match configured bucket '{self.bucket.name}'."
                 )

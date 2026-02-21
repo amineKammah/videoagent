@@ -62,7 +62,7 @@ class SceneMatcherV2:
         self.user_id = user_id
         self.shortlist_model = "gemini-3-flash-preview"
         self.deep_model = "gemini-3-flash-preview"
-        self._thinking_budget = 4_096
+        self._thinking_budget = 1_000
 
     @staticmethod
     def _parse_thinking_budget(value: str) -> Optional[int]:
@@ -966,6 +966,8 @@ Prioritize clips that satisfy all of the following:
 - Visually compatible with the script and notes.
 - Avoid static visuals that stay unchanged for the entire clip.
 
+
+
 ### SHORTLISTING MISSION
 - Hold a very high bar for the candidates. Only select it if it has HIGH relevant to the scene voice over.
 - For example, if a scene script highlights the easy integration with company X. If a scene describes the easy integration with company Y, this is not a good fit and it should NOT be shortlisted.
@@ -974,7 +976,7 @@ Prioritize clips that satisfy all of the following:
 
 ### Output
 - Pick at most 3 high-potential review clips.
-- Each clip must be within one video and <= 120 seconds.
+- Each clip must be within one video and <= 60 seconds.
 - Each clip must be STRICTLY longer than the target scene duration.
 - Clips may and often should span multiple adjacent eligible scenes when useful.
 - Treat each shortlisted clip as a broad review window for the next refinement step.
@@ -996,10 +998,7 @@ Prioritize clips that satisfy all of the following:
 
 ### HARD CONSTRAINTS
 - max review_clips: 5
-- each clip span: <= 120 seconds
-- each clip span: > target_duration_seconds (strictly greater)
-- start_time >= 0
-- end_time > start_time
+- clip span <= 120 seconds and clip span >= 30 seconds
 - use only `eligible_scenes`
 - do not use `excluded_scenes` content
 

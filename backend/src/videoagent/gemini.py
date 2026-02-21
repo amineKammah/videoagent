@@ -229,8 +229,6 @@ class GeminiClient:
                 return await operation()
             except Exception as exc:
                 last_error = exc
-                if not self._is_retryable_rate_limit_error(exc):
-                    raise
                 if attempt == max_attempts:
                     break
                 delay_seconds = _RETRY_BASE_DELAY_SECONDS * (2 ** (attempt - 1))

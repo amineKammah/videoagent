@@ -59,7 +59,7 @@ const baseScene: StoryboardScene = {
 
 const signedMetadata: VideoMetadata = {
   id: 'video-1',
-  path: 'gs://videoagent-assets/companies/company-1/videos/clip.mp4',
+  path: 'gs://bink_video_storage_alpha/companies/company-1/videos/clip.mp4',
   url: 'https://signed.example/video-1.mp4',
   filename: 'clip.mp4',
   duration: 10,
@@ -104,7 +104,7 @@ describe('VideoPlayer media behavior', () => {
   it('resolves only safe browser-playable media URLs', () => {
     expect(resolveMediaSource('https://cdn.example/video.mp4')).toBe('https://cdn.example/video.mp4');
     expect(resolveMediaSource('blob:https://app.example/id-123')).toBe('blob:https://app.example/id-123');
-    expect(resolveMediaSource('gs://videoagent-assets/companies/c1/videos/a.mp4')).toBeNull();
+    expect(resolveMediaSource('gs://bink_video_storage_alpha/companies/c1/videos/a.mp4')).toBeNull();
     expect(resolveMediaSource('/local/path.mp4')).toBeNull();
 
     expect(resolveMetadataVideoSource(signedMetadata)).toBe('https://signed.example/video-1.mp4');

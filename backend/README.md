@@ -35,9 +35,9 @@ streamlit run backend/streamlit_app.py
 The UI expects the FastAPI server running at `http://localhost:8000` by default.
 It will auto-create a session when the API is reachable.
 
-## Agent SDK (Gemini)
+## Agent SDK (Gemini on Vertex)
 
-The agent runtime uses the OpenAI Agents SDK with Gemini via LiteLLM.
+The agent runtime uses the OpenAI Agents SDK with Gemini via LiteLLM on Vertex AI.
 
 Required environment variables:
 

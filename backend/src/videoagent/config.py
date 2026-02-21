@@ -24,10 +24,10 @@ class Config:
     output_resolution: tuple = (1920, 1080)
     ffmpeg_threads: int = 8  # 0 lets ffmpeg auto-select threads
 
-    # Gemini LLM settings
+    # LLM settings
     gemini_model: str = "gemini-3-flash-preview"
     gemini_tts_model: str = "gemini-2.5-flash-tts"
-    agent_model: str = "vertex_ai/gemini-3-pro-preview"
+    agent_model: str = "vertex_ai/gemini-3.1-pro-preview"
     session_title_model: str = "gemini-2.5-flash"
 
     # TTS settings
@@ -36,27 +36,6 @@ class Config:
     # GCP settings for Transcoder API
     gcp_project_id: Optional[str] = None
     gcp_location: str = "europe-west2"
-
-    # Intro analysis settings
-    intro_duration_seconds: float = 5.0
-    intro_candidates_count: int = 3
-
-    # Static scene defaults
-    default_scene_duration: float = 3.0
-    default_font_size: int = 60
-    default_bg_color: str = "#000000"
-    default_text_color: str = "#FFFFFF"
-
-    # Voice over timing handling
-    # "extend_frame" - freeze last frame if VO is longer
-    # "truncate_audio" - cut audio if longer than video
-    # "speed_up_audio" - speed up audio to fit video
-    vo_longer_strategy: str = "extend_frame"
-
-    # "pad_silence" - add silence at end
-    # "loop_video" - loop video segment
-    # "slow_down_audio" - slow down audio (within limits)
-    vo_shorter_strategy: str = "pad_silence"
 
     def __post_init__(self):
         """Ensure paths are Path objects and create directories."""

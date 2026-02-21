@@ -5,6 +5,7 @@ import { useSessionStore } from '@/store/session';
 import { api } from '@/lib/api';
 import { VideoMetadata, StoryboardScene } from '@/lib/types';
 import { SceneTimeline } from './SceneTimeline';
+import { SceneAnimation } from './SceneAnimation';
 
 interface FeedbackNote {
     id: string;
@@ -997,6 +998,18 @@ export const VideoPlayer = forwardRef<VideoPlayerRef, VideoPlayerProps>(function
                             setError("Failed to load video file. It may be missing or inaccessible.");
                         }}
                     />
+
+                    {/* Scene Animation Overlay */}
+                    {activeScene?.animation && (
+                        <SceneAnimation
+                            htmlContent={activeScene.animation}
+                            isPlaying={isPlaying}
+                            currentTime={currentTime - segmentStarts[currentSceneIndex]}
+                        />
+                    )}
+
+                    {/* External Overlay (e.g. annotation markers) */}
+                    {overlay}
 
                     {error && (
                         <div className="absolute inset-0 bg-black/80 flex items-center justify-center text-white z-30">

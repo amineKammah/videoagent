@@ -169,6 +169,10 @@ class _StoryboardScene(BaseModel):
         default_factory=list,
         description="History of selection changes for this scene.",
     )
+    animation: Optional[str] = Field(
+        default=None,
+        description="Optional HTML/CSS/JS animation code (e.g. GSAP) to overlay on the video.",
+    )
 
     @model_validator(mode="after")
     def _enforce_invariants(self) -> "_StoryboardScene":

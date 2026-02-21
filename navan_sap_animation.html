@@ -1,0 +1,381 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Navan + SAP Integration</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background: #090a0f;
+            background-image: radial-gradient(circle at 50% 50%, #1b2735 0%, #090a0f 80%);
+            height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-family: 'Inter', sans-serif;
+            overflow: hidden;
+            color: #ffffff;
+        }
+
+        .container {
+            position: relative;
+            width: 900px;
+            height: 600px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .integration-wrapper {
+            position: relative;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            width: 650px;
+            z-index: 2;
+        }
+
+        .card {
+            width: 200px;
+            height: 200px;
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border-radius: 28px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+            position: relative;
+            transform: scale(0.9);
+            opacity: 0;
+        }
+
+        .card.navan {
+            transform: translateX(-120px);
+        }
+
+        .card.sap {
+            transform: translateX(120px);
+        }
+
+        .logo {
+            max-width: 130px;
+            max-height: 70px;
+            object-fit: contain;
+            filter: brightness(0) invert(1);
+            opacity: 0.9;
+        }
+
+        /* Connecting Line Container */
+        .connection-line-container {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 150px;
+            height: 4px;
+            z-index: 1;
+            opacity: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .connection-line {
+            width: 100%;
+            height: 2px;
+            background: rgba(255, 255, 255, 0.1);
+            position: relative;
+            border-radius: 2px;
+            overflow: hidden;
+        }
+
+        .data-particle {
+            position: absolute;
+            width: 40px;
+            height: 2px;
+            background: linear-gradient(90deg, transparent, #00d2ff, transparent);
+            top: 0;
+            left: -40px;
+            opacity: 0;
+        }
+
+        /* Connecting Plus */
+        .plus-icon {
+            position: absolute;
+            font-size: 24px;
+            font-weight: 400;
+            color: rgba(255, 255, 255, 0.3);
+            z-index: 3;
+            background: #0e141e;
+            width: 40px;
+            height: 40px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 50%;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            opacity: 0;
+            scale: 0.5;
+        }
+
+        .title-container {
+            margin-top: 80px;
+            text-align: center;
+            opacity: 0;
+            transform: translateY(20px);
+            z-index: 5;
+        }
+
+        .title {
+            font-size: 38px;
+            font-weight: 800;
+            letter-spacing: -1px;
+            background: linear-gradient(135deg, #ffffff 0%, #a5b4fc 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin: 0 0 12px 0;
+        }
+
+        .subtitle {
+            font-size: 18px;
+            color: #8b949e;
+            font-weight: 400;
+            margin: 0;
+            letter-spacing: 0.5px;
+        }
+
+        /* Abstract ambient glows */
+        .ambient-glow {
+            position: absolute;
+            width: 300px;
+            height: 300px;
+            border-radius: 50%;
+            filter: blur(100px);
+            z-index: 0;
+            opacity: 0;
+        }
+
+        .glow-left {
+            background: rgba(99, 102, 241, 0.2);
+            left: -50px;
+            top: 50%;
+            transform: translateY(-50%);
+        }
+
+        .glow-right {
+            background: rgba(0, 210, 255, 0.2);
+            right: -50px;
+            top: 50%;
+            transform: translateY(-50%);
+        }
+
+        .success-ring {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 500px;
+            height: 500px;
+            border: 1px solid rgba(0, 210, 255, 0.4);
+            border-radius: 50%;
+            z-index: 0;
+            opacity: 0;
+            scale: 0.8;
+        }
+
+    </style>
+</head>
+<body>
+
+    <div class="ambient-glow glow-left"></div>
+    <div class="ambient-glow glow-right"></div>
+    
+    <div class="success-ring"></div>
+
+    <div class="container">
+        
+        <div class="integration-wrapper">
+            <!-- Navan Card -->
+            <div class="card navan">
+                <img src="https://upload.wikimedia.org/wikipedia/commons/6/69/Navan%2C_Inc._Logo.svg" alt="Navan" class="logo"> 
+            </div>
+
+            <!-- Connection -->
+            <div class="connection-line-container">
+                <div class="connection-line">
+                    <div class="data-particle"></div>
+                </div>
+            </div>
+            
+            <div class="plus-icon">+</div>
+
+            <!-- SAP Card -->
+            <div class="card sap">
+                <img src="https://upload.wikimedia.org/wikipedia/commons/5/59/SAP_2011_logo.svg" alt="SAP" class="logo">
+            </div>
+        </div>
+
+        <!-- Text -->
+        <div class="title-container">
+            <h1 class="title">Seamlessly Integrated</h1>
+            <p class="subtitle">Navan and SAP working together in perfect harmony</p>
+        </div>
+
+    </div>
+
+    <script>
+        // GSAP Animation Timeline
+        const tl = gsap.timeline({ repeat: -1, repeatDelay: 1 }); // Loops for a seamless video export
+
+        // 1. Initial State Setup
+        gsap.set(".card", { opacity: 0, scale: 0.8, y: 40 });
+        gsap.set(".connection-line-container", { width: 0, opacity: 0 });
+        gsap.set(".data-particle", { opacity: 0, left: "-40px" });
+        gsap.set(".plus-icon", { opacity: 0, scale: 0.5 });
+        gsap.set(".ambient-glow", { opacity: 0, scale: 0.5 });
+        gsap.set(".title-container", { opacity: 0, y: 30 });
+        gsap.set(".success-ring", { opacity: 0, scale: 0.5 });
+        
+        // 2. Play sequence
+        
+        // Ambient Glows
+        tl.to(".ambient-glow", { opacity: 1, scale: 1, duration: 2.5, ease: "power2.out", stagger: 0.2 }, "+=0.5");
+        
+        // Cards slide up and fade in
+        tl.to(".card", { 
+            opacity: 1, 
+            scale: 1, 
+            y: 0, 
+            duration: 1.4, 
+            ease: "back.out(1.4)", 
+            stagger: 0.2 
+        }, "-=2.0");
+
+        // Small base reflection added to cards
+        tl.to(".card", {
+            boxShadow: "0 20px 40px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.3), 0 0 20px rgba(255,255,255,0.05)",
+            duration: 0.8,
+            stagger: 0.2
+        }, "-=1.0");
+
+        // The plus icon appears
+        tl.to(".plus-icon", {
+            opacity: 1,
+            scale: 1,
+            duration: 0.8,
+            ease: "elastic.out(1, 0.5)"
+        }, "-=0.5");
+
+        // Connection line expands out from between cards
+        tl.to(".plus-icon", { opacity: 0, scale: 0.5, duration: 0.3 }, "+=0.5");
+
+        tl.to(".connection-line-container", {
+            width: "200px",
+            opacity: 1,
+            duration: 1.2,
+            ease: "power3.inOut"
+        }, "-=0.3");
+
+        // Data particle shoots across (Navan -> SAP)
+        tl.to(".data-particle", { opacity: 1, duration: 0.1 }, "+=0.2");
+        tl.to(".data-particle", { 
+            left: "100%", 
+            duration: 0.8, 
+            ease: "power1.inOut" 
+        });
+        
+        // SAP receives data layer validation
+        tl.to(".card.sap", {
+            boxShadow: "0 20px 40px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.4), 0 0 40px rgba(0,210,255,0.4)",
+            borderColor: "rgba(0, 210, 255, 0.5)",
+            duration: 0.3
+        });
+        tl.to(".card.sap", {
+            boxShadow: "0 20px 40px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.1), 0 0 0px rgba(0,210,255,0)",
+            borderColor: "rgba(255, 255, 255, 0.08)",
+            duration: 0.8
+        });
+
+        // Reset particle for return trip
+        tl.set(".data-particle", { left: "100%", background: "linear-gradient(-90deg, transparent, #6366f1, transparent)" });
+        
+        // Reverse particle (SAP -> Navan)
+        tl.to(".data-particle", { 
+            left: "-40px", 
+            duration: 0.8, 
+            ease: "power1.inOut" 
+        }, "-=0.2");
+        
+        // Navan receives data layer validation
+        tl.to(".card.navan", {
+            boxShadow: "0 20px 40px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.4), 0 0 40px rgba(99,102,241,0.4)",
+            borderColor: "rgba(99, 102, 241, 0.5)",
+            duration: 0.3
+        });
+        tl.to(".card.navan", {
+            boxShadow: "0 20px 40px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.1), 0 0 0px rgba(99,102,241,0)",
+            borderColor: "rgba(255, 255, 255, 0.08)",
+            duration: 0.8
+        });
+
+        // Hide particle
+        tl.to(".data-particle", { opacity: 0, duration: 0.1 });
+
+        // Connection line pulses and becomes solid gradient indicating success
+        tl.to(".connection-line", {
+            background: "linear-gradient(90deg, rgba(99, 102, 241, 1) 0%, rgba(0, 210, 255, 1) 100%)",
+            boxShadow: "0 0 15px rgba(0, 210, 255, 0.4)",
+            height: "4px",
+            duration: 0.6
+        });
+
+        // Success ring ripples outward
+        tl.to(".success-ring", {
+            opacity: 1,
+            scale: 1.1,
+            duration: 0.3,
+            ease: "power1.out"
+        }, "-=0.3");
+        tl.to(".success-ring", {
+            opacity: 0,
+            scale: 1.6,
+            duration: 1.5,
+            ease: "power2.out"
+        });
+
+        // Text fades in smoothly
+        tl.to(".title-container", {
+            opacity: 1,
+            y: 0,
+            duration: 1.2,
+            ease: "power3.out"
+        }, "-=1.5");
+
+        // Gentle floating effect to hold the viewer's attention
+        tl.to(".card", {
+            y: "-=8",
+            duration: 2.5,
+            yoyo: true,
+            repeat: 1,
+            ease: "sine.inOut"
+        }, "-=1.0");
+
+        // Outro scale down & fade for smooth looping
+        tl.to([".card", ".connection-line-container", ".title-container", ".ambient-glow", ".connection-line"], {
+            opacity: 0,
+            scale: 0.9,
+            duration: 1.5,
+            ease: "power2.inOut"
+        }, "+=1.5");
+
+    </script>
+</body>
+</html>
