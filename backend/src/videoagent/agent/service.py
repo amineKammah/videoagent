@@ -8,9 +8,10 @@ import os
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from threading import Lock
-from typing import Optional
+from typing import Any, Iterable, Optional
 from uuid import uuid4
 
+import litellm
 from agents import (
     Agent,
     ModelSettings,
@@ -30,6 +31,7 @@ from videoagent.company_brief_context import (
 )
 from videoagent.db import connection, crud, models
 from videoagent.gemini import GeminiClient
+from videoagent.library import VideoLibrary
 from videoagent.models import RenderResult, VideoBrief
 from videoagent.storage import get_storage_client
 from videoagent.testimony_digest_index import (
@@ -39,6 +41,7 @@ from videoagent.testimony_digest_index import (
 from videoagent.story import PersonalizedStoryGenerator, _StoryboardScene
 
 from .prompts import AGENT_SYSTEM_PROMPT_V2
+from .scene_analysis_index import to_voiceless_path
 from .storage import (
     BriefStore,
     ChatStore,
@@ -49,6 +52,11 @@ from .tools import (
     _build_tools,
     _render_storyboard_scenes,
 )
+
+litellm._turn_on_debug()
+
+
+_SCENE_CLIP_CONTEXT_MARKER = "[SCENE_CLIP_CONTEXT]"
 
 
 def _load_env() -> None:
@@ -64,7 +72,7 @@ def _load_env() -> None:
 
 
 def _configure_litellm_vertex_env(config: Config) -> None:
-    """Mirror standard GCP env vars into LiteLLM Vertex env vars."""
+    """Mirror standard GCP env vars into LiteLLM Vertex env vars when available."""
     project = (
         os.environ.get("VERTEXAI_PROJECT")
         or os.environ.get("GOOGLE_CLOUD_PROJECT")
@@ -84,15 +92,14 @@ def _configure_litellm_vertex_env(config: Config) -> None:
 def _select_model_name(config: Config) -> str:
     configured = os.environ.get("AGENT_MODEL") or config.agent_model or config.gemini_model
     model_name = configured.strip()
-    if model_name.startswith("vertex_ai/"):
+    if model_name.startswith("vertex_ai/") or model_name.startswith("gemini/"):
         return model_name
-    if model_name.startswith("gemini/"):
-        return f"vertex_ai/{model_name.split('/', 1)[1]}"
     if "/" in model_name:
         raise ValueError(
-            f"Unsupported AGENT_MODEL '{model_name}'. Vertex-only mode requires a 'vertex_ai/' model."
+            f"Unsupported AGENT_MODEL '{model_name}'. Use 'gemini/<model>' or 'vertex_ai/<model>'."
         )
-    return f"vertex_ai/{model_name}"
+    # Default to Gemini direct provider so API-key auth works without project/location.
+    return f"gemini/{model_name}"
 
 
 def _is_retryable_rate_limit_error(exc: BaseException) -> bool:
@@ -145,6 +152,71 @@ def _patch_backend_span_exporter_usage_schema() -> None:
     BackendSpanExporter.export = _patched_export
 
 
+def _patch_agents_input_file_passthrough() -> None:
+    """
+    Preserve provider-specific input_file fields through openai-agents conversion.
+
+    openai-agents currently drops non-standard input_file keys (e.g. format,
+    video_metadata). LiteLLM/Gemini uses those keys for video clip offsets.
+    """
+    try:
+        from agents.models.chatcmpl_converter import Converter
+    except Exception:
+        return
+
+    extract_fn = Converter.extract_all_content
+    if getattr(extract_fn, "_videoagent_input_file_patched", False):
+        return
+
+    original_extract = extract_fn
+
+    @classmethod
+    def _patched_extract_all_content(
+        cls,
+        content: str | Iterable[dict[str, Any]],
+    ) -> str | list[dict[str, Any]]:
+        if isinstance(content, str):
+            return content
+
+        out: list[dict[str, Any]] = []
+        for item in content:
+            if isinstance(item, dict) and item.get("type") == "input_file":
+                file_data = item.get("file_data")
+                if not file_data:
+                    raise ValueError(f"input_file is missing file_data: {item}")
+
+                file_obj: dict[str, Any] = {"file_data": file_data}
+                filename = item.get("filename")
+                if filename:
+                    file_obj["filename"] = filename
+
+                file_format = item.get("format")
+                if file_format:
+                    file_obj["format"] = file_format
+
+                detail = item.get("detail")
+                if detail:
+                    file_obj["detail"] = detail
+
+                video_metadata = item.get("video_metadata")
+                if isinstance(video_metadata, dict) and video_metadata:
+                    file_obj["video_metadata"] = video_metadata
+
+                out.append({"type": "file", "file": file_obj})
+                continue
+
+            converted = original_extract(content=[item])  # type: ignore[arg-type]
+            if isinstance(converted, str):
+                out.append({"type": "text", "text": converted})
+            else:
+                out.extend(converted)
+
+        return out
+
+    setattr(_patched_extract_all_content, "_videoagent_input_file_patched", True)
+    Converter.extract_all_content = _patched_extract_all_content
+
+
 class VideoAgentService:
     def __init__(
         self, 
@@ -174,6 +246,7 @@ class VideoAgentService:
         self._title_lock = Lock()
         self._title_inflight: set[str] = set()
         _load_env()
+        _patch_agents_input_file_passthrough()
         self._configure_tracing()
 
         self._base_instructions = AGENT_SYSTEM_PROMPT_V2
@@ -283,7 +356,6 @@ class VideoAgentService:
                 company_brief_context = payload.get("company_brief_context")
                 return self._build_instructions(payload)
 
-            _configure_litellm_vertex_env(self.config)
             self.model_name = _select_model_name(self.config)
             provider_model = self.model_name
             provider_name = "unknown"
@@ -297,11 +369,13 @@ class VideoAgentService:
                 raise ValueError(
                     f"Unable to resolve LiteLLM provider for AGENT_MODEL '{self.model_name}': {exc}"
                 ) from exc
-            if provider_name != "vertex_ai":
+            if provider_name not in {"vertex_ai", "gemini"}:
                 raise ValueError(
                     f"AGENT_MODEL '{self.model_name}' resolved to provider '{provider_name}' "
-                    f"(provider model: '{provider_model}'). Vertex-only mode requires 'vertex_ai'."
+                    f"(provider model: '{provider_model}'). Supported providers: 'gemini' and 'vertex_ai'."
                 )
+            if provider_name == "vertex_ai":
+                _configure_litellm_vertex_env(self.config)
 
             agent = self._agents.get(session_id)
             if agent and self._agent_model_names.get(session_id) == self.model_name:
@@ -688,6 +762,162 @@ class VideoAgentService:
                 self._run_locks[session_id] = lock
             return lock
 
+    @staticmethod
+    def _infer_video_mime_type(path: str) -> str:
+        suffix = Path(path.split("?", 1)[0]).suffix.lower()
+        if suffix == ".mp4":
+            return "video/mp4"
+        if suffix == ".mov":
+            return "video/mov"
+        if suffix == ".webm":
+            return "video/webm"
+        if suffix == ".avi":
+            return "video/avi"
+        if suffix == ".mkv":
+            return "video/x-matroska"
+        return "video/mp4"
+
+    @staticmethod
+    def _format_offset_seconds(value: float) -> str:
+        return f"{float(value):.3f}s"
+
+    def _resolve_generated_video_uri(
+        self,
+        source_video_id: str,
+        company_id: Optional[str],
+    ) -> Optional[str]:
+        if not source_video_id.startswith("generated:"):
+            return None
+
+        parts = source_video_id.split(":", 2)
+        if len(parts) != 3:
+            return None
+        _, gen_session_id, filename = parts
+
+        try:
+            storage = get_storage_client(self.config)
+        except Exception:
+            return None
+
+        company_scope = company_id or "global"
+        key = f"companies/{company_scope}/generated/scenes/{gen_session_id}/{filename}"
+        try:
+            if not storage.exists(key):
+                return None
+        except Exception:
+            return None
+        return f"gs://{storage.bucket_name}/{key}"
+
+    def _build_scene_clip_context_content(
+        self,
+        session_id: str,
+        user_message: str,
+    ) -> str | list[dict[str, Any]]:
+        user_id, company_id = self._resolve_session_owner(session_id)
+        scenes = self.storyboard_store.load(session_id, user_id=user_id) or []
+
+        matched_scenes: list[_StoryboardScene] = []
+        for scene in scenes:
+            matched = scene.matched_scene
+            if not matched:
+                continue
+            if not matched.source_video_id:
+                continue
+            if matched.start_time is None or matched.end_time is None:
+                continue
+            if float(matched.end_time) <= float(matched.start_time):
+                continue
+            matched_scenes.append(scene)
+
+        if not matched_scenes:
+            return user_message
+
+        library = VideoLibrary(self.config, company_id=company_id)
+        try:
+            library.scan_library()
+        except Exception as exc:
+            print(f"[_build_scene_clip_context_content] Failed to scan video library: {exc}")
+            return user_message
+
+        content: list[dict[str, Any]] = [{"type": "input_text", "text": user_message}]
+        content.append(
+            {
+                "type": "input_text",
+                "text": (
+                    f"{_SCENE_CLIP_CONTEXT_MARKER} Attached matched scene clips. "
+                    "Use each clip as primary visual evidence for its scene_id."
+                ),
+            }
+        )
+
+        attached_count = 0
+        for scene in matched_scenes:
+            matched = scene.matched_scene
+            if not matched:
+                continue
+            source_video_id = str(matched.source_video_id).strip()
+            if not source_video_id:
+                continue
+
+            is_voice_over_scene = bool(scene.use_voice_over)
+            audio_mode = "voice_over" if is_voice_over_scene else "testimony_or_original_audio"
+            start_seconds = float(matched.start_time)
+            end_seconds = float(matched.end_time)
+
+            filename = "clip.mp4"
+            file_uri: Optional[str]
+
+            if source_video_id.startswith("generated:"):
+                file_uri = self._resolve_generated_video_uri(source_video_id, company_id)
+            else:
+                metadata = library.get_video(source_video_id)
+                if metadata is None:
+                    continue
+                filename = str(metadata.filename or filename)
+                base_path = str(metadata.path)
+                # Requirement: VO scenes use voiceless source, testimony/original-audio scenes use voice source.
+                file_uri = to_voiceless_path(base_path) if is_voice_over_scene else base_path
+
+            if not file_uri:
+                continue
+            if not (
+                file_uri.startswith("gs://")
+                or file_uri.startswith("https://")
+                or file_uri.startswith("http://")
+                or file_uri.startswith("data:")
+            ):
+                continue
+
+            content.append(
+                {
+                    "type": "input_text",
+                    "text": (
+                        f"{_SCENE_CLIP_CONTEXT_MARKER} "
+                        f"scene_id={scene.scene_id} "
+                        f"audio_mode={audio_mode} "
+                    ),
+                }
+            )
+            content.append(
+                {
+                    "type": "input_file",
+                    "file_data": file_uri,
+                    "filename": filename,
+                    "format": self._infer_video_mime_type(file_uri),
+                    "video_metadata": {
+                        "fps": 5,
+                        "start_offset": self._format_offset_seconds(start_seconds),
+                        "end_offset": self._format_offset_seconds(end_seconds),
+                    },
+                }
+            )
+            attached_count += 1
+
+        if attached_count == 0:
+            return user_message
+
+        return [{"type": "message", "role": "user", "content": content}]
+
     def run_turn(self, session_id: str, user_message: str) -> dict:
         agent = self._get_agent(session_id)
 
@@ -703,6 +933,28 @@ class VideoAgentService:
         def _scrub_input_item(item):
             if not isinstance(item, dict):
                 return item
+            if item.get("type") == "message" and item.get("role") == "user":
+                content = item.get("content")
+                if isinstance(content, list):
+                    scrubbed_content: list[dict[str, Any]] = []
+                    for part in content:
+                        if not isinstance(part, dict):
+                            scrubbed_content.append(part)
+                            continue
+                        if part.get("type") == "input_file":
+                            scrubbed_content.append(
+                                {"type": "input_text", "text": "[SCENE_CLIP_FILE_REDACTED]"}
+                            )
+                            continue
+                        if part.get("type") == "input_text" and _SCENE_CLIP_CONTEXT_MARKER in str(part.get("text", "")):
+                            scrubbed_content.append(
+                                {"type": "input_text", "text": "[SCENE_CLIP_CONTEXT_REDACTED]"}
+                            )
+                            continue
+                        scrubbed_content.append(part)
+                    scrubbed_message = dict(item)
+                    scrubbed_message["content"] = scrubbed_content
+                    return scrubbed_message
             if item.get("type") == "function_call" and item.get("name") in ui_update_tools:
                 scrubbed = dict(item)
                 scrubbed["arguments"] = redacted_args
@@ -750,6 +1002,7 @@ class VideoAgentService:
         # Save user message to chat history
         self.append_chat_message(session_id, "user", user_message)
         self._schedule_session_title_generation(session_id)
+        run_input = self._build_scene_clip_context_content(session_id, user_message)
         
         try:
             with self._get_run_lock(session_id):
@@ -763,7 +1016,7 @@ class VideoAgentService:
                     with attempt:
                         result = Runner.run_sync(
                             agent,
-                            input=user_message,
+                            input=run_input,
                             session=session,
                             max_turns=100,
                             run_config=run_config,

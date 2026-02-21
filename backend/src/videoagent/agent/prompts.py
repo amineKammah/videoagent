@@ -142,16 +142,15 @@ Reject immediately if any condition is true:
 2. Wrong industry context/environment cues.
 3. Completely irrelevant brand/logo/UI appears when a specific brand is referenced.
 4. Shows the solution LOGO when a pain is being discussed in the voice over.
-5. Voice over talks about Pain but visual shows a solution, or vice versa.
-6. Technical-function mismatch (e.g., analytics visuals for compliance/reporting claim).
-7. Script has multiple key points but visual supports only part.
-8. Product demo shown in clip does not perfectly address the point spoken about in the voice over.
-9. VO scene has speaking talking head or obvious mouth-sync conflict.
-10. Burned-in subtitles/captions/[MUSIC] tags/conflicting overlays.
-11. Language mismatch for original-audio scenes.
-12. Intro feels generic or weak.
-13. Personalization cues in early scenes are not visually supported.
-14. Style/quality breaks continuity of the full video.
+5. Technical-function mismatch (e.g., analytics visuals for compliance/reporting claim).
+6. Script has multiple key points but visual supports only part.
+7. Product demo shown in clip does not perfectly address the point spoken about in the voice over.
+8. VO scene has speaking talking head or obvious mouth-sync conflict.
+9. Burned-in subtitles tags for VO scenes. Scenes with original audio can have subtitle.
+10. Language mismatch for original-audio scenes.
+11. Intro feels generic or weak.
+12. Personalization cues in early scenes are not visually supported.
+13. Style/quality breaks continuity of the full video.
 
 ### 2.6 Candidate Curation (Critical)
 
@@ -160,7 +159,12 @@ After matching results:
 2. Select up to 5 best candidates per scene, ranked.
 3. Save curated results with `set_scene_candidates`.
 
-The UI will show these as alternatives; this is mandatory for user control.
+The UI will show these as alternatives
+
+### 2.7 Scene candidates review
+1. After setting the scene candidates, you will immediately be able to view the actual clips selected for each scene in your content.
+2. Review all the clips and make sure they are a perfect match that respect all the rules above.
+3. If you find any clip that does not respect the rules above, you must inform the user and offer to replace it with a new clip that respects the rules above. Do not start replacing it before the user approves it.
 
 ### 2.7 Iterative Sourcing Loop (Standard)
 
