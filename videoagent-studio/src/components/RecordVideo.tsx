@@ -34,6 +34,12 @@ export function RecordVideo({ sessionId, sceneId, onComplete, onCancel }: Record
     const startRecordingRef = useRef<() => void>(() => { });
     const pendingStreamRef = useRef<MediaStream | null>(null);
 
+    // PiP compositing refs
+    const canvasRef = useRef<HTMLCanvasElement | null>(null);
+    const webcamVideoRef = useRef<HTMLVideoElement | null>(null);
+    const screenVideoRef = useRef<HTMLVideoElement | null>(null);
+    const pipAnimFrameRef = useRef<number | null>(null);
+
     // Cleanup on unmount
     useEffect(() => {
         return () => {
@@ -44,7 +50,23 @@ export function RecordVideo({ sessionId, sceneId, onComplete, onCancel }: Record
         };
     }, [recordedUrl]);
 
+    const stopPipLoop = useCallback(() => {
+        if (pipAnimFrameRef.current) {
+            cancelAnimationFrame(pipAnimFrameRef.current);
+            pipAnimFrameRef.current = null;
+        }
+        if (webcamVideoRef.current) {
+            webcamVideoRef.current.srcObject = null;
+            webcamVideoRef.current = null;
+        }
+        if (screenVideoRef.current) {
+            screenVideoRef.current.srcObject = null;
+            screenVideoRef.current = null;
+        }
+    }, []);
+
     const stopAllStreams = useCallback(() => {
+        stopPipLoop();
         streamsRef.current.forEach(stream => {
             stream.getTracks().forEach(track => track.stop());
         });
@@ -53,7 +75,7 @@ export function RecordVideo({ sessionId, sceneId, onComplete, onCancel }: Record
         if (liveVideoRef.current) {
             liveVideoRef.current.srcObject = null;
         }
-    }, []);
+    }, [stopPipLoop]);
 
     // Attach the pending stream to the video element once it renders
     useEffect(() => {
@@ -100,7 +122,7 @@ export function RecordVideo({ sessionId, sceneId, onComplete, onCancel }: Record
                     }
                 };
             } else {
-                // Both: webcam + screen
+                // Both: webcam + screen — use Canvas compositing for PiP
                 const [webcamStream, screenStream] = await Promise.all([
                     navigator.mediaDevices.getUserMedia({
                         video: { width: { ideal: 320 }, height: { ideal: 240 }, facingMode: 'user' },
@@ -113,9 +135,81 @@ export function RecordVideo({ sessionId, sceneId, onComplete, onCancel }: Record
                 ]);
                 streamsRef.current = [webcamStream, screenStream];
 
-                // Use screen as main, webcam audio
+                // Create hidden video elements to feed the canvas
+                const screenVid = document.createElement('video');
+                screenVid.srcObject = screenStream;
+                screenVid.muted = true;
+                screenVid.playsInline = true;
+                await screenVid.play();
+                screenVideoRef.current = screenVid;
+
+                const webcamVid = document.createElement('video');
+                webcamVid.srcObject = webcamStream;
+                webcamVid.muted = true;
+                webcamVid.playsInline = true;
+                await webcamVid.play();
+                webcamVideoRef.current = webcamVid;
+
+                // Create canvas for compositing
+                const canvas = document.createElement('canvas');
+                canvas.width = 1920;
+                canvas.height = 1080;
+                canvasRef.current = canvas;
+                const ctx = canvas.getContext('2d')!;
+
+                // Animation loop: draw screen + webcam PiP
+                const drawFrame = () => {
+                    // Draw screen capture (full canvas)
+                    ctx.drawImage(screenVid, 0, 0, canvas.width, canvas.height);
+
+                    // Draw webcam PiP (bottom-right corner, ~20% of canvas width)
+                    const pipW = Math.round(canvas.width * 0.2);
+                    const pipH = Math.round(pipW * (webcamVid.videoHeight / (webcamVid.videoWidth || 1)));
+                    const pipX = canvas.width - pipW - 20;
+                    const pipY = canvas.height - pipH - 20;
+
+                    // Draw rounded border
+                    ctx.save();
+                    const radius = 12;
+                    ctx.beginPath();
+                    ctx.moveTo(pipX + radius, pipY);
+                    ctx.lineTo(pipX + pipW - radius, pipY);
+                    ctx.quadraticCurveTo(pipX + pipW, pipY, pipX + pipW, pipY + radius);
+                    ctx.lineTo(pipX + pipW, pipY + pipH - radius);
+                    ctx.quadraticCurveTo(pipX + pipW, pipY + pipH, pipX + pipW - radius, pipY + pipH);
+                    ctx.lineTo(pipX + radius, pipY + pipH);
+                    ctx.quadraticCurveTo(pipX, pipY + pipH, pipX, pipY + pipH - radius);
+                    ctx.lineTo(pipX, pipY + radius);
+                    ctx.quadraticCurveTo(pipX, pipY, pipX + radius, pipY);
+                    ctx.closePath();
+                    ctx.clip();
+                    ctx.drawImage(webcamVid, pipX, pipY, pipW, pipH);
+                    ctx.restore();
+
+                    // Draw thin border around PiP
+                    ctx.strokeStyle = 'rgba(255,255,255,0.6)';
+                    ctx.lineWidth = 2;
+                    ctx.beginPath();
+                    ctx.moveTo(pipX + radius, pipY);
+                    ctx.lineTo(pipX + pipW - radius, pipY);
+                    ctx.quadraticCurveTo(pipX + pipW, pipY, pipX + pipW, pipY + radius);
+                    ctx.lineTo(pipX + pipW, pipY + pipH - radius);
+                    ctx.quadraticCurveTo(pipX + pipW, pipY + pipH, pipX + pipW - radius, pipY + pipH);
+                    ctx.lineTo(pipX + radius, pipY + pipH);
+                    ctx.quadraticCurveTo(pipX, pipY + pipH, pipX, pipY + pipH - radius);
+                    ctx.lineTo(pipX, pipY + radius);
+                    ctx.quadraticCurveTo(pipX, pipY, pipX + radius, pipY);
+                    ctx.closePath();
+                    ctx.stroke();
+
+                    pipAnimFrameRef.current = requestAnimationFrame(drawFrame);
+                };
+                pipAnimFrameRef.current = requestAnimationFrame(drawFrame);
+
+                // Create combined stream from canvas video + webcam audio
+                const canvasStream = canvas.captureStream(30);
                 const tracks = [
-                    ...screenStream.getVideoTracks(),
+                    ...canvasStream.getVideoTracks(),
                     ...webcamStream.getAudioTracks(),
                 ];
                 combinedStream = new MediaStream(tracks);
@@ -369,6 +463,26 @@ export function RecordVideo({ sessionId, sceneId, onComplete, onCancel }: Record
                             playsInline
                             muted
                         />
+
+                        {/* Live webcam PiP overlay (only during preview/recording in 'both' mode) */}
+                        {mode === 'both' && webcamVideoRef.current && (
+                            <div className="absolute bottom-5 right-5 w-[20%] rounded-xl overflow-hidden border-2 border-white/60 shadow-lg">
+                                <video
+                                    ref={el => {
+                                        if (el && webcamVideoRef.current) {
+                                            el.srcObject = webcamVideoRef.current.srcObject;
+                                            el.muted = true;
+                                            el.playsInline = true;
+                                            el.play().catch(() => { });
+                                        }
+                                    }}
+                                    className="w-full h-full object-cover"
+                                    autoPlay
+                                    playsInline
+                                    muted
+                                />
+                            </div>
+                        )}
 
                         {/* Countdown overlay */}
                         {state === 'countdown' && (
