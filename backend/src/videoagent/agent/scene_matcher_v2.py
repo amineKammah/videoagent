@@ -592,6 +592,88 @@ class SceneMatcherV2:
                 return f"Shortlist rejected: span > 120s at position {idx}."
         return None
 
+    def _get_shortlist_prompt_cached_content_name(
+        self,
+        *,
+        client: GeminiClient,
+        shared_prompt_prefix: str,
+        scene_id: Optional[str] = None,
+    ) -> Optional[str]:
+        if self._shortlist_prompt_cache_ttl_seconds <= 0:
+            return None
+
+        cache_key = hashlib.sha256(
+            f"{self.shortlist_model}\n{shared_prompt_prefix}".encode("utf-8")
+        ).hexdigest()
+        cache_display_name = f"scene_matcher_v2_shortlist_{cache_key[:12]}"
+
+        try:
+            return client.get_or_create_text_cached_content(
+                model=self.shortlist_model,
+                cache_key=cache_key,
+                text=shared_prompt_prefix,
+                ttl_seconds=self._shortlist_prompt_cache_ttl_seconds,
+                display_name=cache_display_name,
+            )
+        except Exception as exc:
+            scope = f"scene_id={scene_id}: " if scene_id else ""
+            self._print_issue(
+                "shortlist_prompt_cache",
+                f"{scope}explicit cache unavailable, falling back to full prompt. error={exc}",
+            )
+            return None
+
+    def warm_shortlist_prompt_cache(self) -> bool:
+        if self._shortlist_prompt_cache_ttl_seconds <= 0:
+            return False
+        if not self.company_id:
+            self._print_issue(
+                "shortlist_cache_warmup",
+                "Skipped shortlist prompt cache warmup: missing company_id.",
+            )
+            return False
+
+        storage = get_storage_client(self.config)
+        index_payload = read_scene_index(storage, self.company_id)
+        if not index_payload:
+            self._print_issue(
+                "shortlist_cache_warmup",
+                f"Skipped shortlist prompt cache warmup: missing scene index for company_id={self.company_id}.",
+            )
+            return False
+
+        library = VideoLibrary(self.config, company_id=self.company_id)
+        try:
+            library.scan_library()
+        except Exception as exc:
+            self._print_issue(
+                "shortlist_cache_warmup",
+                f"Skipped shortlist prompt cache warmup: failed library scan: {exc}",
+            )
+            return False
+        video_map = {video.id: video for video in library.list_videos()}
+        shortlist_index_payload, _ = self._prepare_shortlist_index_payload(
+            index_payload=index_payload,
+            video_map=video_map,
+        )
+        shared_prompt_prefix = self._build_shortlist_prompt_shared_prefix(
+            index_payload=shortlist_index_payload,
+        )
+
+        client = GeminiClient(self.config)
+        client.use_vertexai = True
+        cached_content_name = self._get_shortlist_prompt_cached_content_name(
+            client=client,
+            shared_prompt_prefix=shared_prompt_prefix,
+        )
+        if not cached_content_name:
+            return False
+        self._print_issue(
+            "shortlist_cache_warmup",
+            f"Prepared shortlist prompt cache: {cached_content_name}",
+        )
+        return True
+
     async def _shortlist_review_clips(
         self,
         *,
@@ -622,32 +704,15 @@ class SceneMatcherV2:
 
         request_text = prompt
         used_prompt_cache = False
-        if self._shortlist_prompt_cache_ttl_seconds > 0:
-            cache_key = hashlib.sha256(
-                f"{self.shortlist_model}\n{shared_prompt_prefix}".encode("utf-8")
-            ).hexdigest()
-            cache_display_name = f"scene_matcher_v2_shortlist_{cache_key[:12]}"
-            try:
-                cached_content_name = client.get_or_create_text_cached_content(
-                    model=self.shortlist_model,
-                    cache_key=cache_key,
-                    text=shared_prompt_prefix,
-                    ttl_seconds=self._shortlist_prompt_cache_ttl_seconds,
-                    display_name=cache_display_name,
-                )
-            except Exception as exc:
-                self._print_issue(
-                    "shortlist_prompt_cache",
-                    (
-                        f"scene_id={scene.scene_id}: explicit cache unavailable, "
-                        f"falling back to full prompt. error={exc}"
-                    ),
-                )
-            else:
-                if cached_content_name:
-                    config.cached_content = cached_content_name
-                    request_text = target_block
-                    used_prompt_cache = True
+        cached_content_name = self._get_shortlist_prompt_cached_content_name(
+            client=client,
+            shared_prompt_prefix=shared_prompt_prefix,
+            scene_id=scene.scene_id,
+        )
+        if cached_content_name:
+            config.cached_content = cached_content_name
+            request_text = target_block
+            used_prompt_cache = True
 
         response = None
         try:

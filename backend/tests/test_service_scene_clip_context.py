@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import patch
 
 from agents.models.chatcmpl_converter import Converter
 
@@ -143,3 +145,34 @@ def test_select_model_name_keeps_explicit_provider(monkeypatch) -> None:
 
     monkeypatch.setenv("AGENT_MODEL", "gemini/gemini-3-pro-preview")
     assert _select_model_name(default_config) == "gemini/gemini-3-pro-preview"
+
+
+def test_run_turn_schedules_shortlist_cache_warmup(monkeypatch, tmp_path: Path) -> None:
+    service = VideoAgentService(base_dir=tmp_path / "agent_sessions")
+
+    calls = {"title": 0, "cache": 0}
+
+    def _record_title(session_id: str) -> None:
+        calls["title"] += 1
+
+    def _record_cache(session_id: str) -> None:
+        calls["cache"] += 1
+
+    monkeypatch.setattr(service, "_get_agent", lambda session_id: object())
+    monkeypatch.setattr(service, "_resolve_session_owner", lambda session_id: ("user_1", "company_1"))
+    monkeypatch.setattr(service, "_schedule_session_title_generation", _record_title)
+    monkeypatch.setattr(service, "_schedule_shortlist_cache_warmup", _record_cache)
+    monkeypatch.setattr(service, "_build_scene_clip_context_message", lambda session_id: None)
+    monkeypatch.setattr(service.event_store, "append", lambda *args, **kwargs: None)
+    monkeypatch.setattr(service, "append_chat_message", lambda *args, **kwargs: None)
+
+    with patch.object(
+        service_module.Runner,
+        "run_sync",
+        return_value=SimpleNamespace(final_output="ok"),
+    ):
+        result = service.run_turn("session_1", "hello")
+
+    assert result["response"] == "ok"
+    assert calls["title"] == 1
+    assert calls["cache"] == 1

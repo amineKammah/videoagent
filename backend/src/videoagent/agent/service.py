@@ -42,6 +42,7 @@ from videoagent.story import PersonalizedStoryGenerator, _StoryboardScene
 
 from .prompts import AGENT_SYSTEM_PROMPT_V2
 from .scene_analysis_index import to_voiceless_path
+from .scene_matcher_v2 import SceneMatcherV2
 from .storage import (
     BriefStore,
     ChatStore,
@@ -242,6 +243,9 @@ class VideoAgentService:
         self._title_executor = ThreadPoolExecutor(max_workers=2)
         self._title_lock = Lock()
         self._title_inflight: set[str] = set()
+        self._shortlist_cache_warmup_lock = Lock()
+        self._shortlist_cache_warmup_inflight: set[str] = set()
+        self._shortlist_cache_warmup_ready: set[str] = set()
         _load_env()
         _patch_agents_input_file_passthrough()
         self._configure_tracing()
@@ -489,6 +493,43 @@ class VideoAgentService:
                 return
             self._title_inflight.add(session_id)
         self._title_executor.submit(self._generate_session_title_job, session_id)
+
+    def _schedule_shortlist_cache_warmup(self, session_id: str) -> None:
+        with self._shortlist_cache_warmup_lock:
+            if (
+                session_id in self._shortlist_cache_warmup_inflight
+                or session_id in self._shortlist_cache_warmup_ready
+            ):
+                return
+            self._shortlist_cache_warmup_inflight.add(session_id)
+        self._title_executor.submit(self._warm_shortlist_cache_job, session_id)
+
+    def _warm_shortlist_cache_job(self, session_id: str) -> None:
+        ready = False
+        try:
+            ready = self._warm_shortlist_cache(session_id)
+        except Exception as exc:
+            print(f"[_warm_shortlist_cache_job] Failed for session {session_id}: {exc}")
+        finally:
+            with self._shortlist_cache_warmup_lock:
+                self._shortlist_cache_warmup_inflight.discard(session_id)
+                if ready:
+                    self._shortlist_cache_warmup_ready.add(session_id)
+
+    def _warm_shortlist_cache(self, session_id: str) -> bool:
+        user_id, company_id = self._resolve_session_owner(session_id)
+        if not company_id:
+            return False
+
+        matcher = SceneMatcherV2(
+            self.config,
+            self.storyboard_store,
+            self.event_store,
+            session_id,
+            company_id=company_id,
+            user_id=user_id,
+        )
+        return matcher.warm_shortlist_prompt_cache()
 
     def _generate_session_title_job(self, session_id: str) -> None:
         try:
@@ -1017,6 +1058,7 @@ class VideoAgentService:
         # Save user message to chat history
         self.append_chat_message(session_id, "user", user_message)
         self._schedule_session_title_generation(session_id)
+        self._schedule_shortlist_cache_warmup(session_id)
         
         try:
             with self._get_run_lock(session_id):
