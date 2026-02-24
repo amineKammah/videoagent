@@ -56,9 +56,6 @@ from .tools import (
 litellm._turn_on_debug()
 
 
-_SCENE_CLIP_CONTEXT_MARKER = "[SCENE_CLIP_CONTEXT]"
-
-
 def _load_env() -> None:
     try:
         from dotenv import load_dotenv
@@ -778,6 +775,13 @@ class VideoAgentService:
         return "video/mp4"
 
     @staticmethod
+    def _infer_video_extension(path: str) -> str:
+        suffix = Path(path.split("?", 1)[0]).suffix.lower()
+        if suffix in {".mp4", ".mov", ".webm", ".avi", ".mkv"}:
+            return suffix
+        return ".mp4"
+
+    @staticmethod
     def _format_offset_seconds(value: float) -> str:
         return f"{float(value):.3f}s"
 
@@ -808,11 +812,33 @@ class VideoAgentService:
             return None
         return f"gs://{storage.bucket_name}/{key}"
 
-    def _build_scene_clip_context_content(
+    @staticmethod
+    def _is_scene_clip_context_message(item: object) -> bool:
+        if not isinstance(item, dict):
+            return False
+        if item.get("type") != "message" or item.get("role") != "user":
+            return False
+
+        content = item.get("content")
+        if not isinstance(content, list) or not content:
+            return False
+
+        for part in content:
+            if not isinstance(part, dict):
+                return False
+            if part.get("type") != "input_file":
+                return False
+            video_metadata = part.get("video_metadata")
+            if not isinstance(video_metadata, dict):
+                return False
+            if "start_offset" not in video_metadata or "end_offset" not in video_metadata:
+                return False
+        return True
+
+    def _build_scene_clip_context_message(
         self,
         session_id: str,
-        user_message: str,
-    ) -> str | list[dict[str, Any]]:
+    ) -> Optional[dict[str, Any]]:
         user_id, company_id = self._resolve_session_owner(session_id)
         scenes = self.storyboard_store.load(session_id, user_id=user_id) or []
 
@@ -830,25 +856,16 @@ class VideoAgentService:
             matched_scenes.append(scene)
 
         if not matched_scenes:
-            return user_message
+            return None
 
         library = VideoLibrary(self.config, company_id=company_id)
         try:
             library.scan_library()
         except Exception as exc:
-            print(f"[_build_scene_clip_context_content] Failed to scan video library: {exc}")
-            return user_message
+            print(f"[_build_scene_clip_context_message] Failed to scan video library: {exc}")
+            return None
 
-        content: list[dict[str, Any]] = [{"type": "input_text", "text": user_message}]
-        content.append(
-            {
-                "type": "input_text",
-                "text": (
-                    f"{_SCENE_CLIP_CONTEXT_MARKER} Attached matched scene clips. "
-                    "Use each clip as primary visual evidence for its scene_id."
-                ),
-            }
-        )
+        content: list[dict[str, Any]] = []
 
         attached_count = 0
         for scene in matched_scenes:
@@ -860,11 +877,10 @@ class VideoAgentService:
                 continue
 
             is_voice_over_scene = bool(scene.use_voice_over)
-            audio_mode = "voice_over" if is_voice_over_scene else "testimony_or_original_audio"
             start_seconds = float(matched.start_time)
             end_seconds = float(matched.end_time)
 
-            filename = "clip.mp4"
+            source_filename = "clip.mp4"
             file_uri: Optional[str]
 
             if source_video_id.startswith("generated:"):
@@ -873,7 +889,7 @@ class VideoAgentService:
                 metadata = library.get_video(source_video_id)
                 if metadata is None:
                     continue
-                filename = str(metadata.filename or filename)
+                source_filename = str(metadata.filename or source_filename)
                 base_path = str(metadata.path)
                 # Requirement: VO scenes use voiceless source, testimony/original-audio scenes use voice source.
                 file_uri = to_voiceless_path(base_path) if is_voice_over_scene else base_path
@@ -888,21 +904,15 @@ class VideoAgentService:
             ):
                 continue
 
-            content.append(
-                {
-                    "type": "input_text",
-                    "text": (
-                        f"{_SCENE_CLIP_CONTEXT_MARKER} "
-                        f"scene_id={scene.scene_id} "
-                        f"audio_mode={audio_mode} "
-                    ),
-                }
-            )
+            extension = self._infer_video_extension(source_filename)
+            if extension == ".mp4":
+                extension = self._infer_video_extension(file_uri)
+
             content.append(
                 {
                     "type": "input_file",
                     "file_data": file_uri,
-                    "filename": filename,
+                    "filename": f"{scene.scene_id}{extension}",
                     "format": self._infer_video_mime_type(file_uri),
                     "video_metadata": {
                         "fps": 5,
@@ -914,9 +924,9 @@ class VideoAgentService:
             attached_count += 1
 
         if attached_count == 0:
-            return user_message
+            return None
 
-        return [{"type": "message", "role": "user", "content": content}]
+        return {"type": "message", "role": "user", "content": content}
 
     def run_turn(self, session_id: str, user_message: str) -> dict:
         agent = self._get_agent(session_id)
@@ -944,11 +954,6 @@ class VideoAgentService:
                         if part.get("type") == "input_file":
                             scrubbed_content.append(
                                 {"type": "input_text", "text": "[SCENE_CLIP_FILE_REDACTED]"}
-                            )
-                            continue
-                        if part.get("type") == "input_text" and _SCENE_CLIP_CONTEXT_MARKER in str(part.get("text", "")):
-                            scrubbed_content.append(
-                                {"type": "input_text", "text": "[SCENE_CLIP_CONTEXT_REDACTED]"}
                             )
                             continue
                         scrubbed_content.append(part)
@@ -981,8 +986,18 @@ class VideoAgentService:
             return item
 
         def _merge_session_input(history, new_input):
-            scrubbed_history = [_scrub_input_item(item) for item in history]
-            return scrubbed_history + new_input
+            scrubbed_history = [
+                _scrub_input_item(item)
+                for item in history
+                if not self._is_scene_clip_context_message(item)
+            ]
+            merged: list[dict[str, Any]] = []
+            scene_clip_context_message = self._build_scene_clip_context_message(session_id)
+            if scene_clip_context_message is not None:
+                merged.append(scene_clip_context_message)
+            merged.extend(scrubbed_history)
+            merged.extend(new_input)
+            return merged
 
         run_config = RunConfig(
             workflow_name="VideoAgent chat",
@@ -1002,7 +1017,6 @@ class VideoAgentService:
         # Save user message to chat history
         self.append_chat_message(session_id, "user", user_message)
         self._schedule_session_title_generation(session_id)
-        run_input = self._build_scene_clip_context_content(session_id, user_message)
         
         try:
             with self._get_run_lock(session_id):
@@ -1016,7 +1030,7 @@ class VideoAgentService:
                     with attempt:
                         result = Runner.run_sync(
                             agent,
-                            input=run_input,
+                            input=user_message,
                             session=session,
                             max_turns=100,
                             run_config=run_config,

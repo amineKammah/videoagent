@@ -430,9 +430,13 @@ export const VideoPlayer = forwardRef<VideoPlayerRef, VideoPlayerProps>(function
 
     const [failedIds, setFailedIds] = useState<Set<string>>(new Set());
     const sourceRetryRef = useRef<Record<string, number>>({});
+    const autoResumeRef = useRef<boolean>(false);
 
-    const refreshMetadataForVideo = useCallback(async (videoId: string) => {
+    const refreshMetadataForVideo = useCallback(async (videoId: string, autoResume: boolean = false) => {
         try {
+            if (autoResume) {
+                autoResumeRef.current = true;
+            }
             const latest = await api.getVideoMetadata(videoId);
             setMetadata(prev => ({ ...prev, [videoId]: latest }));
             setFailedIds(prev => {
@@ -445,6 +449,11 @@ export const VideoPlayer = forwardRef<VideoPlayerRef, VideoPlayerProps>(function
         } catch (err) {
             console.error(`Failed to refresh metadata for ${videoId}`, err);
         }
+    }, []);
+
+    const [debugLogs, setDebugLogs] = useState<string[]>([]);
+    const logDebug = useCallback((msg: string) => {
+        setDebugLogs(prev => [...prev.slice(-4), msg]);
     }, []);
 
     // Fetch Metadata
@@ -507,9 +516,11 @@ export const VideoPlayer = forwardRef<VideoPlayerRef, VideoPlayerProps>(function
 
     // Playback Logic
     const playSegment = useCallback(async (sceneIndex: number, shouldPlay: boolean = true, reason: string = "unknown") => {
+        logDebug(`playSeg: idx=${sceneIndex} play=${shouldPlay} rsn=${reason}`);
         console.log(`[playSegment] Transitioning to scene ${sceneIndex}. Reason: ${reason}`);
         const scene = scenes[sceneIndex];
         if (!scene || !scene.matched_scene) {
+            logDebug(`playSeg: NO scene or matched_scene`);
             if (sceneIndex < scenes.length - 1) {
                 playSegment(sceneIndex + 1, shouldPlay, "skip-empty-scene");
             } else {
@@ -528,17 +539,27 @@ export const VideoPlayer = forwardRef<VideoPlayerRef, VideoPlayerProps>(function
             const meta = metadata[scene.matched_scene.source_video_id];
             const videoEl = videoRef.current;
             const audioEl = audioRef.current;
-            if (!meta || !videoEl) return;
+            if (!meta || !videoEl) {
+                logDebug(`playSeg: MISSING meta or videoEl for ${scene.matched_scene.source_video_id}`);
+                console.log(`[playSegment] Bailing out because meta or videoEl is missing. meta:`, !!meta, `videoEl:`, !!videoEl, `videoId:`, scene.matched_scene.source_video_id);
+                return;
+            }
 
             setCurrentSceneIndex(sceneIndex);
 
             const audioSrc = resolveSceneAudioSource(scene);
-            const shouldUseVoiceOver = Boolean(scene.use_voice_over && audioSrc && audioEl);
+
+            // Force disable voiceover if the source is a user recording
+            const isRecording = scene.matched_scene.source_video_id?.startsWith('recording:');
+            const shouldUseVoiceOver = Boolean(!isRecording && scene.use_voice_over && audioSrc && audioEl);
             const voiceOverSrc = shouldUseVoiceOver ? (audioSrc as string) : null;
+
+            logDebug(`playSeg: UseVoiceOver=${shouldUseVoiceOver} (isRec=${isRecording})`);
 
             // Load Video
             const videoSrc = resolveMetadataVideoSource(meta);
             if (!videoSrc) {
+                logDebug(`playSeg: resolveMetadataVideoSource failed`);
                 setError('Video source is unavailable. Refreshing metadata may be required.');
                 return;
             }
@@ -547,6 +568,7 @@ export const VideoPlayer = forwardRef<VideoPlayerRef, VideoPlayerProps>(function
                 readinessPromises.push(waitForMediaReady(audioEl));
             }
             if (videoEl.getAttribute('src') !== videoSrc) {
+                logDebug(`playSeg: Setting videoSrc`);
                 videoEl.src = videoSrc;
                 videoEl.load();
             }
@@ -557,11 +579,16 @@ export const VideoPlayer = forwardRef<VideoPlayerRef, VideoPlayerProps>(function
             // Set Start Time
             // Only reset start time if we are not just toggling play on the same scene
             if (reason !== "toggle-play" || sceneIndex !== currentSceneIndex) {
-                videoEl.currentTime = scene.matched_scene.start_time;
+                try {
+                    videoEl.currentTime = scene.matched_scene.start_time;
+                    logDebug(`playSeg: Set currentTime=${scene.matched_scene.start_time}`);
+                } catch (e: any) {
+                    logDebug(`playSeg: ERROR setting currentTime: ${e.message}`);
+                }
             }
 
             // Handle Voice Over
-            if (shouldUseVoiceOver && audioEl) {
+            if (shouldUseVoiceOver && audioEl && voiceOverSrc) {
                 if (audioEl.getAttribute('src') !== voiceOverSrc) {
                     audioEl.src = voiceOverSrc;
                     audioEl.load();
@@ -596,6 +623,9 @@ export const VideoPlayer = forwardRef<VideoPlayerRef, VideoPlayerProps>(function
                 if (shouldPlay) {
                     await Promise.all(readinessPromises);
 
+                    // Successfully loaded and ready - reset retry counter
+                    sourceRetryRef.current[scene.matched_scene.source_video_id] = 0;
+
                     if (shouldUseVoiceOver && audioEl) {
                         const relativeTime = Math.max(0, videoEl.currentTime - scene.matched_scene.start_time);
                         const audioTime = relativeTime * (audioEl.playbackRate || 1);
@@ -608,13 +638,23 @@ export const VideoPlayer = forwardRef<VideoPlayerRef, VideoPlayerProps>(function
                     await videoEl.play();
                     setIsPlaying(true);
                     setPlaybackState('video');
+                    logDebug(`playSeg: Video playing`);
                 } else {
+                    // Try to wait for media anyway to ensure it's not totally broken before resetting retry
+                    try {
+                        await waitForMediaReady(videoEl);
+                        sourceRetryRef.current[scene.matched_scene.source_video_id] = 0;
+                    } catch (e) {
+                        // Ignoring error for paused media, it'll throw on next play
+                    }
                     videoEl.pause();
                     audioEl?.pause();
                     setIsPlaying(false);
+                    logDebug(`playSeg: Video paused (shouldPlay=false)`);
                 }
-            } catch (e) {
+            } catch (e: any) {
                 console.error("Media play failed", e);
+                logDebug(`playSeg: CATCH: ${e.message}`);
                 setIsPlaying(false);
             }
         } finally {
@@ -640,9 +680,16 @@ export const VideoPlayer = forwardRef<VideoPlayerRef, VideoPlayerProps>(function
             if (!expectedSrc) return;
             const currentSrc = videoRef.current.getAttribute('src');
 
+            // Check Audio Source
+            const isRecording = scene.matched_scene?.source_video_id?.startsWith('recording:');
+            const expectedAudioSrc = (!isRecording && scene.use_voice_over) ? resolveSceneAudioSource(scene) : null;
+            const currentAudioSrc = audioRef.current?.getAttribute('src') || null;
+
             // If source changed, reload. preserve playing state.
-            if (currentSrc !== expectedSrc) {
-                playSegment(currentSceneIndex, isPlaying, "source-changed");
+            if (currentSrc !== expectedSrc || currentAudioSrc !== expectedAudioSrc) {
+                const shouldPlay = autoResumeRef.current ? true : isPlaying;
+                autoResumeRef.current = false;
+                playSegment(currentSceneIndex, shouldPlay, "source-changed");
             }
         }
     }, [scenes, currentSceneIndex, metadata, isPlaying, playSegment]);
@@ -684,7 +731,9 @@ export const VideoPlayer = forwardRef<VideoPlayerRef, VideoPlayerProps>(function
                 const audio = audioRef.current;
                 let audioStillPlaying = false;
 
-                if (scene.use_voice_over && audio) {
+                const isRecording = scene.matched_scene?.source_video_id?.startsWith('recording:');
+
+                if (!isRecording && scene.use_voice_over && audio) {
                     const isAudioPaused = audio.paused;
                     const isAudioEnded = audio.ended;
                     const audioTimeLeft = (audio.duration || 0) - audio.currentTime;
@@ -756,11 +805,14 @@ export const VideoPlayer = forwardRef<VideoPlayerRef, VideoPlayerProps>(function
                 const audio = audioRef.current;
                 let audioStillPlaying = false;
 
-                if (scene?.use_voice_over && audio) {
-                    const isAudioEnded = audio.ended;
-                    const audioTimeLeft = (audio.duration || 0) - audio.currentTime;
-                    audioStillPlaying = !isAudioEnded && (audioTimeLeft > 0.2);
-                    console.log(`[handleVideoEnded] Audio State: Ended=${isAudioEnded}, TimeLeft=${audioTimeLeft?.toFixed(2)}, Waiting=${audioStillPlaying}`);
+                if (scene) {
+                    const isRecording = scene.matched_scene?.source_video_id?.startsWith('recording:');
+                    if (!isRecording && scene.use_voice_over && audio) {
+                        const isAudioEnded = audio.ended;
+                        const audioTimeLeft = (audio.duration || 0) - audio.currentTime;
+                        audioStillPlaying = !isAudioEnded && (audioTimeLeft > 0.2);
+                        console.log(`[handleVideoEnded] Audio State: Ended=${isAudioEnded}, TimeLeft=${audioTimeLeft?.toFixed(2)}, Waiting=${audioStillPlaying}`);
+                    }
                 }
 
                 if (audioStillPlaying) {
@@ -991,7 +1043,7 @@ export const VideoPlayer = forwardRef<VideoPlayerRef, VideoPlayerProps>(function
                                 if (retries < 1) {
                                     sourceRetryRef.current[videoId] = retries + 1;
                                     setError("Refreshing secure video URL...");
-                                    void refreshMetadataForVideo(videoId);
+                                    void refreshMetadataForVideo(videoId, isPlaying);
                                     return;
                                 }
                             }
@@ -1191,27 +1243,27 @@ export const VideoPlayer = forwardRef<VideoPlayerRef, VideoPlayerProps>(function
                                         return (
                                             <button
                                                 key={candidate.candidate_id}
-                                                onClick={async () => {
-                                                    if (isSelected || !session || isBusy) return;
-                                                    setCandidateSwitchingId(candidate.candidate_id);
-                                                    try {
-                                                        const updatedScene = await api.selectCandidate(
-                                                            session.id,
-                                                            activeScene.scene_id,
-                                                            candidate.candidate_id,
-                                                            'User selected via video player'
-                                                        );
-                                                        // Update scenes in store
-                                                        const newScenes = [...scenes];
-                                                        newScenes[currentSceneIndex] = updatedScene;
-                                                        setScenes(newScenes);
-                                                        // Reload the scene with new video
-                                                        playSegment(currentSceneIndex, false, "candidate-switch");
-                                                    } catch (error) {
-                                                        console.error('Failed to select candidate:', error);
-                                                    } finally {
-                                                        setCandidateSwitchingId(null);
-                                                    }
+                                                onClick={() => {
+                                                    if (isSelected || !session) return;
+                                                    // Directly swap matched_scene from candidate data — no API call
+                                                    const newScenes = scenes.map((s, i) => {
+                                                        if (i !== currentSceneIndex) return s;
+                                                        return {
+                                                            ...s,
+                                                            selected_candidate_id: candidate.candidate_id,
+                                                            matched_scene: {
+                                                                source_video_id: candidate.source_video_id,
+                                                                start_time: candidate.start_time,
+                                                                end_time: candidate.end_time,
+                                                                description: candidate.description || '',
+                                                                keep_original_audio: candidate.keep_original_audio ?? false,
+                                                                segment_type: 'video_clip' as const,
+                                                            },
+                                                        };
+                                                    });
+                                                    setScenes(newScenes);
+                                                    // Reload scene with the new video
+                                                    playSegment(currentSceneIndex, false, "candidate-switch");
                                                 }}
                                                 disabled={isSelected || !session || isBusy}
                                                 aria-pressed={isSelected}

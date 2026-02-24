@@ -106,19 +106,22 @@ def test_scene_clip_context_routes_voiceless_and_voice(monkeypatch, tmp_path: Pa
         lambda session_id, user_id=None: [scene_vo, scene_testimony],
     )
 
-    run_input = service._build_scene_clip_context_content("sess_1", "hello")
-    assert isinstance(run_input, list)
-    content = run_input[0]["content"]
+    clip_message = service._build_scene_clip_context_message("sess_1")
+    assert isinstance(clip_message, dict)
+    content = clip_message["content"]
+    assert all(isinstance(part, dict) and part.get("type") == "input_file" for part in content)
     files = [part for part in content if isinstance(part, dict) and part.get("type") == "input_file"]
     assert len(files) == 2
 
     # VO scene -> voiceless path.
     assert files[0]["file_data"] == "gs://bucket/videos_voiceless/vo.mp4"
+    assert files[0]["filename"] == "scene_vo.mp4"
     assert files[0]["video_metadata"]["start_offset"] == "12.500s"
     assert files[0]["video_metadata"]["end_offset"] == "18.750s"
 
     # Testimony/original-audio scene -> original voice path.
     assert files[1]["file_data"] == "gs://bucket/videos/testimony.mp4"
+    assert files[1]["filename"] == "scene_testimony.mp4"
     assert files[1]["video_metadata"]["start_offset"] == "3.000s"
     assert files[1]["video_metadata"]["end_offset"] == "9.000s"
 

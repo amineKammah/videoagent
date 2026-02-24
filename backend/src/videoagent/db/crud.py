@@ -16,6 +16,7 @@ from .models import (
     CustomerProfile,
     Feedback,
     Pronunciation,
+    ClonedVoice,
     Session,
     SessionChatMessage,
     User,
@@ -548,6 +549,76 @@ def delete_pronunciation(db: DBSession, pronunciation_id: str, user_id: str) -> 
         return False
         
     db.delete(pronunciation)
+    db.commit()
+    return True
+
+
+# ============================================================================
+# ClonedVoice CRUD
+# ============================================================================
+
+def create_cloned_voice(
+    db: DBSession,
+    company_id: str,
+    created_by_user_id: str,
+    elevenlabs_voice_id: str,
+    name: str,
+    description: Optional[str] = None,
+    preview_url: Optional[str] = None,
+) -> ClonedVoice:
+    """Create a new cloned voice record."""
+    voice = ClonedVoice(
+        id=str(uuid.uuid4()),
+        company_id=company_id,
+        created_by_user_id=created_by_user_id,
+        elevenlabs_voice_id=elevenlabs_voice_id,
+        name=name,
+        description=description,
+        preview_url=preview_url,
+        is_company_default=False,
+    )
+    db.add(voice)
+    db.commit()
+    db.refresh(voice)
+    return voice
+
+
+def get_cloned_voice(db: DBSession, voice_id: str) -> Optional[ClonedVoice]:
+    """Get a cloned voice by ID."""
+    return db.query(ClonedVoice).filter(ClonedVoice.id == voice_id).first()
+
+
+def list_cloned_voices(
+    db: DBSession,
+    company_id: str,
+    user_id: str,
+) -> list[ClonedVoice]:
+    """
+    List cloned voices available to the user.
+    Includes:
+    - Company defaults
+    - Cloned voices created by this user
+    """
+    from sqlalchemy import or_
+    
+    filters = [
+        (ClonedVoice.company_id == company_id) & (ClonedVoice.is_company_default == True),
+        (ClonedVoice.created_by_user_id == user_id),
+    ]
+        
+    return db.query(ClonedVoice).filter(or_(*filters)).all()
+
+
+def delete_cloned_voice(db: DBSession, voice_id: str, user_id: str) -> bool:
+    """Delete a cloned voice if owned by the user."""
+    voice = get_cloned_voice(db, voice_id)
+    if not voice or voice.created_by_user_id != user_id:
+        return False
+    
+    if voice.is_company_default:
+        return False
+        
+    db.delete(voice)
     db.commit()
     return True
 

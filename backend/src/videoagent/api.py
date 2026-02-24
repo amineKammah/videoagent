@@ -5,10 +5,13 @@ from __future__ import annotations
 
 import asyncio
 import os
+import subprocess
+import tempfile
+import uuid
 from pathlib import Path
 from typing import Optional
 
-from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, Request, Header, Query
+from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, Request, Header, Query, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -223,6 +226,11 @@ def _generated_scene_blob_key(company_id: Optional[str], session_id: str, filena
     return f"companies/{company_scope}/generated/scenes/{session_id}/{filename}"
 
 
+def _recording_blob_key(company_id: Optional[str], session_id: str, filename: str) -> str:
+    company_scope = company_id or "global"
+    return f"companies/{company_scope}/recordings/{session_id}/{filename}"
+
+
 def _sign_if_gcs(path: Optional[str]) -> Optional[str]:
     if not path:
         return None
@@ -290,12 +298,38 @@ def list_customers(
 
 
 @app.get("/voices")
-def list_voices():
-    """Return available TTS voice options with sample audio URLs."""
+def list_voices(
+    x_company_id: Optional[str] = Header(None, alias="X-Company-ID"),
+    x_user_id: Optional[str] = Header(None, alias="X-User-ID"),
+    db: DBSession = Depends(get_db),
+):
+    """Return available TTS voice options (premade + cloned) with sample audio URLs."""
     from videoagent.voice_options import ELEVENLABS_VOICES
-    return {"voices": ELEVENLABS_VOICES}
-
-
+    
+    # Start with premade voices
+    all_voices = [
+        {**voice, "category": "premade"} 
+        for voice in ELEVENLABS_VOICES
+    ]
+    
+    # If authenticated, add user's cloned voices
+    if x_company_id and x_user_id:
+        try:
+            from videoagent.db.crud import list_cloned_voices
+            cloned_voices = list_cloned_voices(db, company_id=x_company_id, user_id=x_user_id)
+            for cv in cloned_voices:
+                all_voices.insert(0, {
+                    "id": cv.elevenlabs_voice_id,
+                    "db_id": cv.id, # Internal DB ID for deletion
+                    "name": cv.name,
+                    "gender": "Unknown", # Cloned voices don't have a specific gender mapped
+                    "sample_url": cv.preview_url or "",
+                    "category": "cloned",
+                })
+        except Exception as e:
+            print(f"Error fetching cloned voices: {e}")
+            
+    return {"voices": all_voices}
 @app.get("/agent/sessions", response_model=SessionListResponse)
 def list_sessions(
     x_user_id: Optional[str] = Header(None, alias="X-User-Id"),
@@ -546,6 +580,235 @@ def render_agent_plan(session_id: str) -> AgentRenderResponse:
     return AgentRenderResponse(session_id=session_id, render_result=result)
 
 
+# ============================================================================
+# Video Recording Upload Endpoints
+# ============================================================================
+
+
+def _ffprobe_video_metadata(file_path: Path) -> dict:
+    """Extract duration, resolution, and fps from a video file using ffprobe."""
+    try:
+        result = subprocess.run(
+            [
+                "ffprobe", "-v", "quiet",
+                "-print_format", "json",
+                "-show_format", "-show_streams",
+                str(file_path),
+            ],
+            capture_output=True, text=True, timeout=30,
+        )
+        if result.returncode != 0:
+            return {}
+        import json as _json
+        data = _json.loads(result.stdout)
+        video_stream = next(
+            (s for s in data.get("streams", []) if s.get("codec_type") == "video"),
+            None,
+        )
+        duration = float(data.get("format", {}).get("duration", 0.0))
+        width = int(video_stream.get("width", 1920)) if video_stream else 1920
+        height = int(video_stream.get("height", 1080)) if video_stream else 1080
+        fps_raw = video_stream.get("r_frame_rate", "30/1") if video_stream else "30/1"
+        try:
+            num, den = fps_raw.split("/")
+            fps = float(num) / float(den)
+        except (ValueError, ZeroDivisionError):
+            fps = 30.0
+        return {
+            "duration": round(duration, 3),
+            "resolution": [width, height],
+            "fps": round(fps, 2),
+        }
+    except Exception as exc:
+        print(f"ffprobe failed for {file_path}: {exc}")
+        return {}
+
+
+class UploadRecordingResponse(BaseModel):
+    video_id: str
+    duration: float
+    resolution: tuple[int, int]
+    fps: float
+    url: str
+
+
+@app.post("/agent/sessions/{session_id}/upload-recording", response_model=UploadRecordingResponse)
+async def upload_recording(
+    session_id: str,
+    file: UploadFile = File(...),
+    x_user_id: Optional[str] = Header(None, alias="X-User-Id"),
+    db: DBSession = Depends(get_db),
+) -> UploadRecordingResponse:
+    """Upload a user-recorded video and store it in GCS."""
+    if not x_user_id:
+        raise HTTPException(status_code=400, detail="X-User-Id header required")
+
+    user = get_user(db, x_user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    company_id = user.company_id
+
+    # Determine filename
+    original_name = file.filename or "recording.webm"
+    ext = Path(original_name).suffix or ".webm"
+    unique_filename = f"rec_{uuid.uuid4().hex[:8]}{ext}"
+
+    # Save to temp file
+    with tempfile.NamedTemporaryFile(suffix=ext, delete=False) as tmp:
+        contents = await file.read()
+        tmp.write(contents)
+        tmp.flush()
+        original_tmp_path = Path(tmp.name)
+
+    fixed_tmp_path = original_tmp_path.with_name(f"fixed_{original_tmp_path.name}")
+    try:
+        # Browser WebM recordings often lack duration metadata. 
+        # Remuxing with ffmpeg fixes the EBML header so ffprobe can read the duration correctly.
+        try:
+            subprocess.run(
+                [
+                    "ffmpeg", "-y", "-i", str(original_tmp_path), 
+                    "-c", "copy", str(fixed_tmp_path)
+                ],
+                check=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE
+            )
+            # Use the fixed file for probing and uploading
+            tmp_path = fixed_tmp_path
+        except subprocess.CalledProcessError as e:
+            print(f"ffmpeg remux failed: {e.stderr.decode()}")
+            # Fallback to original file if ffmpeg fails
+            tmp_path = original_tmp_path
+
+        # Probe metadata
+        probe = _ffprobe_video_metadata(tmp_path)
+        duration = probe.get("duration", 0.0)
+        resolution_list = probe.get("resolution", [1920, 1080])
+        resolution = (int(resolution_list[0]), int(resolution_list[1]))
+        fps = probe.get("fps", 30.0)
+
+        # Upload to GCS
+        storage = get_storage_client(agent_config)
+        gcs_key = _recording_blob_key(company_id, session_id, unique_filename)
+        storage.upload_from_filename(gcs_key, tmp_path, content_type=file.content_type or "video/webm")
+
+        # Write sidecar metadata
+        sidecar_key = f"{gcs_key}.metadata.json"
+        storage.write_json(sidecar_key, {
+            "duration": duration,
+            "resolution": list(resolution),
+            "fps": fps,
+            "original_filename": original_name,
+            "content_type": file.content_type or "video/webm",
+        })
+
+        video_id = f"recording:{session_id}:{unique_filename}"
+        signed_url = storage.get_url(gcs_key)
+
+        return UploadRecordingResponse(
+            video_id=video_id,
+            duration=duration,
+            resolution=resolution,
+            fps=fps,
+            url=signed_url,
+        )
+    finally:
+        original_tmp_path.unlink(missing_ok=True)
+        fixed_tmp_path.unlink(missing_ok=True)
+
+
+class SetRecordingRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    video_id: str = Field(description="The recording: video ID from upload-recording.")
+    start_time: float = Field(default=0.0, description="Start time in the recording (seconds).")
+    end_time: Optional[float] = Field(default=None, description="End time in the recording (seconds). Defaults to full duration.")
+
+
+@app.post("/agent/sessions/{session_id}/scenes/{scene_id}/set-recording")
+async def set_scene_recording(
+    session_id: str,
+    scene_id: str,
+    request: SetRecordingRequest,
+    x_user_id: Optional[str] = Header(None, alias="X-User-Id"),
+    db: DBSession = Depends(get_db),
+) -> dict:
+    """Assign an uploaded recording to a storyboard scene."""
+    if not x_user_id:
+        raise HTTPException(status_code=400, detail="X-User-Id header required")
+
+    user = get_user(db, x_user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    if not request.video_id.startswith("recording:"):
+        raise HTTPException(status_code=400, detail="video_id must use the recording: prefix")
+
+    scenes = agent_service.get_storyboard(session_id)
+    if not scenes:
+        raise HTTPException(status_code=404, detail=f"Storyboard not found for session {session_id}")
+
+    scene = next((s for s in scenes if s.scene_id == scene_id), None)
+    if not scene:
+        raise HTTPException(status_code=404, detail=f"Scene {scene_id} not found")
+
+    # Resolve end_time from recording metadata if not provided
+    end_time = request.end_time
+    if end_time is None:
+        try:
+            company_id = user.company_id
+            parts = request.video_id.split(":", 2)
+            if len(parts) == 3:
+                _, rec_session_id, filename = parts
+                storage = get_storage_client(agent_config)
+                gcs_key = _recording_blob_key(company_id, rec_session_id, filename)
+                sidecar_key = f"{gcs_key}.metadata.json"
+                if storage.exists(sidecar_key):
+                    sidecar = storage.read_json(sidecar_key)
+                    end_time = float(sidecar.get("duration", 10.0))
+        except Exception:
+            end_time = 10.0
+
+    from videoagent.story import _MatchedScene, SceneCandidate, SelectionHistoryEntry
+
+    scene.matched_scene = _MatchedScene(
+        source_video_id=request.video_id,
+        start_time=request.start_time,
+        end_time=end_time,
+        description="User-recorded video",
+        keep_original_audio=True,
+    )
+
+    # Instead of clearing candidates, we create a new one for the recording
+    # and prepend it to the list so the user can easily revert back to old options
+    new_candidate = SceneCandidate(
+        source_video_id=request.video_id,
+        start_time=request.start_time,
+        end_time=end_time,
+        description="User-recorded video",
+        rationale="Recorded directly in the studio",
+        keep_original_audio=True,
+    )
+    
+    scene.matched_scene_candidates.insert(0, new_candidate)
+    scene.selected_candidate_id = new_candidate.candidate_id
+    
+    history_entry = SelectionHistoryEntry(
+        candidate_id=new_candidate.candidate_id,
+        changed_by="user",
+        reason="User recorded a new video for this scene"
+    )
+    scene.matched_scene_history.insert(0, history_entry)
+
+    agent_service.save_storyboard(session_id, scenes)
+    agent_service.event_store.append(session_id, {"type": "storyboard_update"}, user_id=x_user_id)
+
+    hydrated = _hydrate_scene_media_urls([scene])
+    return {"scene": (hydrated[0] if hydrated else scene).model_dump()}
+
+
+
 @app.get("/agent/sessions/{session_id}/chat", response_model=ChatHistoryResponse)
 def get_chat_history(session_id: str) -> ChatHistoryResponse:
     messages = agent_service.get_chat_history(session_id)
@@ -647,16 +910,21 @@ def get_video_metadata(
     company_id = user.company_id
     
     # Handle generated videos (format: "generated:<session_id>:<filename>")
-    if video_id.startswith("generated:"):
+    # and recordings (format: "recording:<session_id>:<filename>")
+    if video_id.startswith("generated:") or video_id.startswith("recording:"):
+        prefix = "generated" if video_id.startswith("generated:") else "recording"
         parts = video_id.split(":", 2)
         if len(parts) != 3:
-            raise HTTPException(status_code=400, detail=f"Invalid generated video_id format: {video_id}")
+            raise HTTPException(status_code=400, detail=f"Invalid {prefix} video_id format: {video_id}")
         
         _, session_id, filename = parts
 
-        gcs_key = _generated_scene_blob_key(company_id, session_id, filename)
+        if prefix == "generated":
+            gcs_key = _generated_scene_blob_key(company_id, session_id, filename)
+        else:
+            gcs_key = _recording_blob_key(company_id, session_id, filename)
         if not storage.exists(gcs_key):
-            raise HTTPException(status_code=404, detail=f"Generated video not found: {video_id}")
+            raise HTTPException(status_code=404, detail=f"{prefix.title()} video not found: {video_id}")
 
         sidecar = {}
         sidecar_key = f"{gcs_key}.metadata.json"
@@ -664,7 +932,7 @@ def get_video_metadata(
             try:
                 sidecar = storage.read_json(sidecar_key)
             except Exception as exc:
-                print(f"Failed to read generated video sidecar for {video_id}: {exc}")
+                print(f"Failed to read {prefix} video sidecar for {video_id}: {exc}")
 
         resolution_raw = sidecar.get("resolution", [1920, 1080])
         if isinstance(resolution_raw, list) and len(resolution_raw) == 2:

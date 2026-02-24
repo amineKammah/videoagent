@@ -15,6 +15,7 @@ from .schemas import (
     UserCreate, UserUpdate, UserResponse,
     CustomerProfileCreate, CustomerProfileUpdate, CustomerProfileResponse,
     PronunciationCreate, PronunciationUpdate, PronunciationResponse, PronunciationGenerationResponse,
+    ClonedVoiceCreate, ClonedVoiceResponse,
     FeedbackCreate, FeedbackResponse,
 )
 from ..gemini import GeminiClient
@@ -22,6 +23,9 @@ import tempfile
 import shutil
 from pathlib import Path
 from google.genai import types
+import requests
+import os
+from fastapi import Form
 
 router = APIRouter(tags=["multi-tenancy"])
 
@@ -365,6 +369,120 @@ async def generate_pronunciation(
     except Exception as e:
         print(f"Error generating pronunciation: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# ============================================================================
+# Cloned Voice Endpoints
+# ============================================================================
+
+@router.post("/voices/clone", response_model=ClonedVoiceResponse)
+async def clone_voice(
+    name: str = Form(...),
+    description: Optional[str] = Form(None),
+    files: list[UploadFile] = File(...),
+    x_company_id: str = Header(..., alias="X-Company-ID"),
+    x_user_id: str = Header(..., alias="X-User-ID"),
+    db: DBSession = Depends(get_db),
+):
+    """Clone a voice using ElevenLabs API and save to user's profile."""
+    # Ensure ELEVENLABS_API_KEY is available
+    api_key = os.getenv("ELEVENLABS_API_KEY")
+    if not api_key:
+        raise HTTPException(status_code=500, detail="ElevenLabs API key not configured")
+
+    # Read files for ElevenLabs upload
+    file_tuples = []
+    try:
+        for file in files:
+            content = await file.read()
+            # ElevenLabs expects: ('files', (filename, file_content, content_type))
+            file_tuples.append(("files", (file.filename, content, file.content_type)))
+        
+        # Call ElevenLabs API
+        url = "https://api.elevenlabs.io/v1/voices/add"
+        headers = {"xi-api-key": api_key}
+        data = {
+            "name": name,
+        }
+        if description:
+            data["description"] = description
+            
+        print(f"Sending request to ElevenLabs API: {url}")
+        response = requests.post(url, headers=headers, data=data, files=file_tuples)
+        
+        if not response.ok:
+            error_msg = f"ElevenLabs API error: {response.status_code} {response.text}"
+            print(error_msg)
+            raise HTTPException(status_code=response.status_code, detail=error_msg)
+            
+        response_data = response.json()
+        elevenlabs_voice_id = response_data.get("voice_id")
+        
+        if not elevenlabs_voice_id:
+            raise HTTPException(status_code=500, detail="Failed to retrieve voice_id from ElevenLabs")
+            
+        # Optional: Grab voice details (like preview URL) if needed by fetching specific voice 
+        # But to keep it faster, we just save what we have
+            
+        return crud.create_cloned_voice(
+            db=db,
+            company_id=x_company_id,
+            created_by_user_id=x_user_id,
+            elevenlabs_voice_id=elevenlabs_voice_id,
+            name=name,
+            description=description,
+        )
+        
+    except Exception as e:
+        print(f"Error cloning voice: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+        
+
+@router.get("/voices/cloned", response_model=list[ClonedVoiceResponse])
+def list_cloned_voices(
+    x_company_id: str = Header(..., alias="X-Company-ID"),
+    x_user_id: str = Header(..., alias="X-User-ID"),
+    db: DBSession = Depends(get_db),
+):
+    """List cloned voices for the current user and company defaults."""
+    return crud.list_cloned_voices(
+        db=db,
+        company_id=x_company_id,
+        user_id=x_user_id,
+    )
+
+
+@router.delete("/voices/cloned/{voice_id}")
+def delete_cloned_voice(
+    voice_id: str,
+    x_user_id: str = Header(..., alias="X-User-ID"),
+    db: DBSession = Depends(get_db),
+):
+    """Delete a cloned voice."""
+    
+    # Get the voice to potentially delete it from ElevenLabs as well
+    voice = crud.get_cloned_voice(db, voice_id)
+    if not voice or voice.created_by_user_id != x_user_id:
+        raise HTTPException(status_code=404, detail="Voice not found or unauthorized")
+        
+    elevenlabs_voice_id = voice.elevenlabs_voice_id
+
+    # Delete from local DB
+    if not crud.delete_cloned_voice(db, voice_id, x_user_id):
+        raise HTTPException(status_code=404, detail="Voice not found or unauthorized to delete")
+        
+    # Attempt to delete from ElevenLabs (best effort)
+    api_key = os.getenv("ELEVENLABS_API_KEY")
+    if api_key:
+        try:
+            requests.delete(
+                f"https://api.elevenlabs.io/v1/voices/{elevenlabs_voice_id}",
+                headers={"xi-api-key": api_key}
+            )
+        except Exception as e:
+            print(f"Failed to delete voice {elevenlabs_voice_id} from ElevenLabs: {e}")
+            
+    return {"status": "deleted"}
 
 
 # ============================================================================

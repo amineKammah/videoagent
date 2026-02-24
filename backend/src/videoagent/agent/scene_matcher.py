@@ -124,7 +124,7 @@ class SceneMatcher:
         analysis_results = await _execute_analysis_jobs(client, jobs, uploaded_files)
 
         # 4. Processing Results
-        results_by_scene_id, notes_by_scene_id = _process_analysis_results(
+        results_by_scene_id, _notes_by_scene_id = _process_analysis_results(
             jobs,
             analysis_results,
             errors,
@@ -133,8 +133,6 @@ class SceneMatcher:
         response_payload = {
             "results": list(results_by_scene_id.values()),
         }
-        if notes_by_scene_id:
-            response_payload["notes"] = notes_by_scene_id
         if warnings_by_scene_id:
             final_warnings = {k: v for k, v in warnings_by_scene_id.items() if v}
             if final_warnings:

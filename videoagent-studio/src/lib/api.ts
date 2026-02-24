@@ -22,6 +22,8 @@ import {
     VoiceOption,
     Pronunciation,
     CreatePronunciationRequest,
+    UploadRecordingResponse,
+    ClonedVoice,
     Feedback,
     UpsertFeedbackRequest,
 } from './types';
@@ -445,6 +447,29 @@ export const api = {
         return data.voices;
     },
 
+    cloneVoice: async (name: string, files: File[], description?: string): Promise<ClonedVoice> => {
+        const formData = new FormData();
+        formData.append('name', name);
+        if (description) {
+            formData.append('description', description);
+        }
+        files.forEach((file) => {
+            formData.append('files', file);
+        });
+
+        const opts = {
+            method: 'POST',
+            body: formData,
+        };
+
+        const res = await fetchWithTimeout(`${API_BASE}/api/v1/voices/clone`, opts);
+        return handleResponse<ClonedVoice>(res);
+    },
+
+    deleteClonedVoice: async (voiceId: string): Promise<void> => {
+        await fetchWithTimeout(`${API_BASE}/api/v1/voices/cloned/${voiceId}`, { method: 'DELETE' });
+    },
+
     updateUserSettings: async (userId: string, settings: Record<string, any>): Promise<User> => {
         const response = await fetchWithTimeout(`${API_BASE}/api/v1/users/${userId}`, {
             method: 'PATCH',
@@ -519,5 +544,46 @@ export const api = {
         await fetchWithTimeout(`${API_BASE}/api/v1/feedback/${id}`, {
             method: 'DELETE',
         });
+    },
+
+    // ========================================================================
+    // Video Recording
+    // ========================================================================
+
+    uploadRecording: async (sessionId: string, file: Blob, filename?: string): Promise<UploadRecordingResponse> => {
+        const formData = new FormData();
+        formData.append('file', file, filename || 'recording.webm');
+
+        const response = await fetchWithTimeout(
+            `${API_BASE}/agent/sessions/${sessionId}/upload-recording`,
+            {
+                method: 'POST',
+                body: formData,
+            },
+            120_000 // 2 minute timeout for upload
+        );
+        return handleResponse<UploadRecordingResponse>(response);
+    },
+
+    setSceneRecording: async (
+        sessionId: string,
+        sceneId: string,
+        videoId: string,
+        startTime: number = 0,
+        endTime?: number
+    ): Promise<{ scene: StoryboardScene }> => {
+        const response = await fetchWithTimeout(
+            `${API_BASE}/agent/sessions/${sessionId}/scenes/${sceneId}/set-recording`,
+            {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    video_id: videoId,
+                    start_time: startTime,
+                    ...(endTime !== undefined ? { end_time: endTime } : {}),
+                }),
+            }
+        );
+        return handleResponse<{ scene: StoryboardScene }>(response);
     },
 };

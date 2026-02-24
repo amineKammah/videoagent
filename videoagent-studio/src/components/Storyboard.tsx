@@ -5,21 +5,35 @@ import { useSessionStore } from '@/store/session';
 import { StoryboardScene, Feedback } from '@/lib/types';
 import { api } from '@/lib/api';
 import { FeedbackControl } from './FeedbackControl';
+import { RecordVideo } from './RecordVideo';
 
 const GENERATED_SOURCE_PREFIX = 'generated:';
+const RECORDING_SOURCE_PREFIX = 'recording:';
 
 function isGeneratedScene(scene: StoryboardScene): boolean {
     const sourceVideoId = scene.matched_scene?.source_video_id ?? '';
     return sourceVideoId.startsWith(GENERATED_SOURCE_PREFIX);
 }
 
-function getSceneMatchLabel(scene: StoryboardScene): 'Generated' | 'Matched' {
+function isRecordedScene(scene: StoryboardScene): boolean {
+    const sourceVideoId = scene.matched_scene?.source_video_id ?? '';
+    return sourceVideoId.startsWith(RECORDING_SOURCE_PREFIX);
+}
+
+function getSceneMatchLabel(scene: StoryboardScene): 'Generated' | 'Matched' | 'Recorded' {
+    if (isRecordedScene(scene)) return 'Recorded';
     return isGeneratedScene(scene) ? 'Generated' : 'Matched';
 }
 
 function formatMatchedSource(sourceVideoId: string): string {
     if (!sourceVideoId) {
         return '';
+    }
+
+    if (sourceVideoId.startsWith(RECORDING_SOURCE_PREFIX)) {
+        const [, , assetName = ''] = sourceVideoId.split(':');
+        const safeName = assetName || 'recording.webm';
+        return `recording/${safeName.length > 48 ? safeName.slice(0, 45) + '...' : safeName}`;
     }
 
     if (sourceVideoId.startsWith(GENERATED_SOURCE_PREFIX)) {
@@ -249,12 +263,14 @@ function SceneModal({ scenes, currentIndex, onClose, onNavigate, feedbackMap, on
     const scene = scenes[currentIndex];
     const sceneMatchLabel = getSceneMatchLabel(scene);
     const isGenerated = sceneMatchLabel === 'Generated';
+    const isRecorded = sceneMatchLabel === 'Recorded';
     const canGoPrev = currentIndex > 0;
     const canGoNext = currentIndex < scenes.length - 1;
 
     const [isEditing, setIsEditing] = useState(false);
     const [editedScene, setEditedScene] = useState<StoryboardScene>(scene);
     const [isSaving, setIsSaving] = useState(false);
+    const [showRecording, setShowRecording] = useState(false);
 
     useEffect(() => {
         setEditedScene(scene);
@@ -326,9 +342,11 @@ function SceneModal({ scenes, currentIndex, onClose, onNavigate, feedbackMap, on
                         </span>
                         {scene.matched_scene && (
                             <span
-                                className={`text-xs px-2 py-1 rounded ${isGenerated
-                                    ? 'bg-cyan-100 text-cyan-700'
-                                    : 'bg-green-100 text-green-700'
+                                className={`text-xs px-2 py-1 rounded ${isRecorded
+                                    ? 'bg-purple-100 text-purple-700'
+                                    : isGenerated
+                                        ? 'bg-cyan-100 text-cyan-700'
+                                        : 'bg-green-100 text-green-700'
                                     }`}
                             >
                                 {sceneMatchLabel}
@@ -337,7 +355,18 @@ function SceneModal({ scenes, currentIndex, onClose, onNavigate, feedbackMap, on
                     </div>
 
                     <div className="flex items-center gap-2">
-                        {!isEditing && (
+                        {!isEditing && !showRecording && session && (
+                            <button
+                                onClick={() => setShowRecording(true)}
+                                className="p-2 hover:bg-slate-200 rounded-lg transition-colors text-slate-500 hover:text-purple-600"
+                                title="Record Video for this Scene"
+                            >
+                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5">
+                                    <path d="M3.25 4A2.25 2.25 0 001 6.25v7.5A2.25 2.25 0 003.25 16h7.5A2.25 2.25 0 0013 13.75v-7.5A2.25 2.25 0 0010.75 4h-7.5zM19 4.75a.75.75 0 00-1.28-.53l-3 3a.75.75 0 00-.22.53v4.5c0 .199.079.39.22.53l3 3A.75.75 0 0019 15.25v-10.5z" />
+                                </svg>
+                            </button>
+                        )}
+                        {!isEditing && !showRecording && (
                             <button
                                 onClick={() => setIsEditing(true)}
                                 className="p-2 hover:bg-slate-200 rounded-lg transition-colors text-slate-500 hover:text-teal-600"
@@ -362,7 +391,23 @@ function SceneModal({ scenes, currentIndex, onClose, onNavigate, feedbackMap, on
 
                 {/* Content */}
                 <div className="flex-1 overflow-y-auto p-6 pb-16 space-y-4 relative">
-                    {isEditing ? (
+                    {showRecording && session ? (
+                        <RecordVideo
+                            sessionId={session.id}
+                            sceneId={scene.scene_id}
+                            onComplete={async () => {
+                                setShowRecording(false);
+                                // Refresh storyboard to get updated scene
+                                try {
+                                    const result = await api.getStoryboard(session.id);
+                                    setScenes(result.scenes);
+                                } catch (err) {
+                                    console.error('Failed to refresh storyboard:', err);
+                                }
+                            }}
+                            onCancel={() => setShowRecording(false)}
+                        />
+                    ) : isEditing ? (
                         <div className="space-y-4">
                             <div>
                                 <label className="block text-xs font-medium text-slate-500 uppercase tracking-wide mb-1">Title</label>
@@ -449,31 +494,43 @@ function SceneModal({ scenes, currentIndex, onClose, onNavigate, feedbackMap, on
                             )}
 
                             {scene.matched_scene && (
-                                <div className={`rounded-lg p-4 border ${isGenerated
-                                    ? 'bg-cyan-50 border-cyan-100'
-                                    : 'bg-green-50 border-green-100'
+                                <div className={`rounded-lg p-4 border ${isRecorded
+                                    ? 'bg-purple-50 border-purple-100'
+                                    : isGenerated
+                                        ? 'bg-cyan-50 border-cyan-100'
+                                        : 'bg-green-50 border-green-100'
                                     }`}>
-                                    <p className={`text-xs font-medium uppercase tracking-wide mb-2 ${isGenerated
-                                        ? 'text-cyan-700'
-                                        : 'text-green-700'
+                                    <p className={`text-xs font-medium uppercase tracking-wide mb-2 ${isRecorded
+                                        ? 'text-purple-700'
+                                        : isGenerated
+                                            ? 'text-cyan-700'
+                                            : 'text-green-700'
                                         }`}>
                                         {sceneMatchLabel} Clip
                                     </p>
-                                    <div className={`space-y-1 text-sm ${isGenerated
-                                        ? 'text-cyan-800'
-                                        : 'text-green-800'
+                                    <div className={`space-y-1 text-sm ${isRecorded
+                                        ? 'text-purple-800'
+                                        : isGenerated
+                                            ? 'text-cyan-800'
+                                            : 'text-green-800'
                                         }`}>
                                         <p>
-                                            <span className={isGenerated ? 'text-cyan-600' : 'text-green-600'}>Source:</span>{' '}
+                                            <span className={isRecorded
+                                                ? 'text-purple-600'
+                                                : isGenerated ? 'text-cyan-600' : 'text-green-600'}>Source:</span>{' '}
                                             {formatMatchedSource(scene.matched_scene.source_video_id)}
                                         </p>
                                         <p>
-                                            <span className={isGenerated ? 'text-cyan-600' : 'text-green-600'}>Range:</span>{' '}
+                                            <span className={isRecorded
+                                                ? 'text-purple-600'
+                                                : isGenerated ? 'text-cyan-600' : 'text-green-600'}>Range:</span>{' '}
                                             {scene.matched_scene.start_time.toFixed(1)}s - {scene.matched_scene.end_time.toFixed(1)}s
                                         </p>
                                         {scene.matched_scene.description && (
                                             <p>
-                                                <span className={isGenerated ? 'text-cyan-600' : 'text-green-600'}>Description:</span>{' '}
+                                                <span className={isRecorded
+                                                    ? 'text-purple-600'
+                                                    : isGenerated ? 'text-cyan-600' : 'text-green-600'}>Description:</span>{' '}
                                                 {scene.matched_scene.description}
                                             </p>
                                         )}

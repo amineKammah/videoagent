@@ -75,6 +75,10 @@ def _generated_scene_blob_key(company_id: Optional[str], session_id: str, filena
     return f"companies/{_company_scope(company_id)}/generated/scenes/{session_id}/{filename}"
 
 
+def _recording_blob_key(company_id: Optional[str], session_id: str, filename: str) -> str:
+    return f"companies/{_company_scope(company_id)}/recordings/{session_id}/{filename}"
+
+
 def _build_storyboard_voice_over_paths(
     scenes: list[_StoryboardScene],
     session_id: str,
@@ -134,6 +138,11 @@ def _render_storyboard_scenes(
                 + ", ".join(missing_sources)
             ),
         )
+    # Mute voiceover for user recordings during the rendering process
+    for scene in scenes:
+        if scene.matched_scene and scene.matched_scene.source_video_id.startswith("recording:"):
+            scene.use_voice_over = False
+
     library = VideoLibrary(config, company_id=company_id)
     library.scan_library()
     storage_client = get_storage_client(config)
@@ -150,35 +159,42 @@ def _render_storyboard_scenes(
         video_id = matched_scene.source_video_id
         
         # Handle generated videos (format: "generated:<session_id>:<filename>")
-        if video_id.startswith("generated:"):
+        # and recordings (format: "recording:<session_id>:<filename>")
+        if video_id.startswith("generated:") or video_id.startswith("recording:"):
+            prefix = "generated" if video_id.startswith("generated:") else "recording"
             parts = video_id.split(":", 2)
             if len(parts) == 3:
-                _, gen_session_id, filename = parts
-                generated_path = base_dir / gen_session_id / "generated_videos" / filename
-                if generated_path.exists():
-                    video_paths[video_id] = generated_path
+                _, ref_session_id, filename = parts
+                if prefix == "generated":
+                    local_path = base_dir / ref_session_id / "generated_videos" / filename
+                    gcs_key_fn = _generated_scene_blob_key
+                else:
+                    local_path = base_dir / ref_session_id / "recordings" / filename
+                    gcs_key_fn = _recording_blob_key
+                if local_path.exists():
+                    video_paths[video_id] = local_path
                     continue
                 if company_id:
-                    gcs_key = _generated_scene_blob_key(company_id, gen_session_id, filename)
+                    gcs_key = gcs_key_fn(company_id, ref_session_id, filename)
                     if storage_client.exists(gcs_key):
-                        cached_generated = render_sources_dir / f"{gen_session_id}_{filename}"
+                        cached_path = render_sources_dir / f"{ref_session_id}_{filename}"
                         try:
-                            storage_client.download_to_filename(gcs_key, cached_generated)
-                            video_paths[video_id] = cached_generated
+                            storage_client.download_to_filename(gcs_key, cached_path)
+                            video_paths[video_id] = cached_path
                             continue
                         except Exception as exc:
                             return RenderResult(
                                 success=False,
-                                error_message=f"Failed to download generated video {video_id} from GCS: {exc}",
+                                error_message=f"Failed to download {prefix} video {video_id} from GCS: {exc}",
                             )
                 return RenderResult(
                     success=False,
-                    error_message=f"Generated video not found: {video_id}",
+                    error_message=f"{prefix.title()} video not found: {video_id}",
                 )
             else:
                 return RenderResult(
                     success=False,
-                    error_message=f"Invalid generated video_id format: {video_id}",
+                    error_message=f"Invalid {prefix} video_id format: {video_id}",
                 )
         
         # Handle regular library videos

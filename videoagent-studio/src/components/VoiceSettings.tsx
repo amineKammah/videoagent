@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { api } from '@/lib/api';
 import { VoiceOption } from '@/lib/types';
+import VoiceCloneWizard from './VoiceCloneWizard';
 
 interface VoiceSettingsProps {
     userId?: string;
@@ -18,6 +19,7 @@ export function VoiceSettings({ userId, currentVoice, onVoiceChange, direction =
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const [isOpen, setIsOpen] = useState(false);
+    const [isCloneModalOpen, setIsCloneModalOpen] = useState(false);
     const audioRef = useRef<HTMLAudioElement | null>(null);
     const containerRef = useRef<HTMLDivElement>(null);
 
@@ -111,6 +113,31 @@ export function VoiceSettings({ userId, currentVoice, onVoiceChange, direction =
         }
     };
 
+    const handleDeleteVoice = async (e: React.MouseEvent, voice: VoiceOption) => {
+        e.stopPropagation();
+        if (!voice.db_id) return;
+
+        try {
+            if (playingVoice === voice.id) {
+                audioRef.current?.pause();
+                setPlayingVoice(null);
+            }
+            await api.deleteClonedVoice(voice.db_id);
+            setVoices(voices.filter(v => v.id !== voice.id));
+            if (selectedVoice === voice.id) {
+                // If the deleted voice was selected, revert to default
+                const defaultVoice = voices.find(v => v.id !== voice.id)?.id || '';
+                handleSelect(defaultVoice);
+            }
+        } catch (err) {
+            console.error('Failed to delete voice:', err);
+        }
+    };
+
+    const handleVoiceCloned = () => {
+        loadVoices();
+    };
+
     const selectedVoiceData = voices.find(v => v.id === selectedVoice);
 
     if (loading) {
@@ -172,7 +199,92 @@ export function VoiceSettings({ userId, currentVoice, onVoiceChange, direction =
                         </span>
                     </div>
                     <div className="p-1">
-                        {voices.map((voice) => (
+                        <button
+                            onClick={() => {
+                                setIsOpen(false);
+                                setIsCloneModalOpen(true);
+                            }}
+                            className="flex items-center gap-2 w-full px-2 py-2 mb-1 text-sm font-medium text-teal-600 hover:bg-teal-50 rounded-md transition-colors"
+                        >
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+                            </svg>
+                            Clone a Voice
+                        </button>
+
+                        {voices.some(v => v.category === 'cloned') && (
+                            <>
+                                <div className="px-2 py-1 mt-2 mb-1 text-xs font-semibold text-slate-400 uppercase tracking-wider">
+                                    Your Voices
+                                </div>
+                                {voices.filter(v => v.category === 'cloned').map((voice) => (
+                                    <div
+                                        key={voice.id}
+                                        className={`flex items-center gap-2 px-2 py-1.5 rounded-md cursor-pointer transition-colors group ${selectedVoice === voice.id
+                                            ? 'bg-teal-50 text-teal-700'
+                                            : 'hover:bg-slate-50 text-slate-600'
+                                            }`}
+                                        onClick={() => handleSelect(voice.id)}
+                                    >
+                                        {/* Play button */}
+                                        <button
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                playPreview(voice);
+                                            }}
+                                            className={`p-1.5 rounded-full hover:bg-slate-200 transition-colors ${playingVoice === voice.id ? 'text-teal-600 bg-teal-50' : 'text-slate-400'
+                                                }`}
+                                            title="Preview voice"
+                                        >
+                                            {playingVoice === voice.id ? (
+                                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-3.5 h-3.5">
+                                                    <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 5.25v13.5m-7.5-13.5v13.5" />
+                                                </svg>
+                                            ) : (
+                                                <svg xmlns="http://www.w3.org/2000/svg" fill="currentColor" viewBox="0 0 24 24" className="w-3.5 h-3.5">
+                                                    <path d="M8 5.14v14l11-7-11-7z" />
+                                                </svg>
+                                            )}
+                                        </button>
+
+                                        {/* Voice info */}
+                                        <div className="flex-1 min-w-0">
+                                            <div className="text-sm font-medium truncate flex items-center gap-2">
+                                                {voice.name}
+                                                <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-indigo-100 text-indigo-800">
+                                                    Cloned
+                                                </span>
+                                            </div>
+                                        </div>
+
+                                        {/* Delete button (only for cloned voices with db_id) */}
+                                        {voice.db_id && (
+                                            <button
+                                                onClick={(e) => handleDeleteVoice(e, voice)}
+                                                className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-md transition-colors opacity-0 group-hover:opacity-100 focus:opacity-100"
+                                                title="Delete voice"
+                                            >
+                                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-4 h-4">
+                                                    <path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
+                                                </svg>
+                                            </button>
+                                        )}
+
+                                        {/* Selected indicator */}
+                                        {selectedVoice === voice.id && (
+                                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4 text-teal-600">
+                                                <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
+                                            </svg>
+                                        )}
+                                    </div>
+                                ))}
+                            </>
+                        )}
+
+                        <div className="px-2 py-1 mt-2 mb-1 text-xs font-semibold text-slate-400 uppercase tracking-wider">
+                            Premade Voices
+                        </div>
+                        {voices.filter(v => v.category !== 'cloned').map((voice) => (
                             <div
                                 key={voice.id}
                                 className={`flex items-center gap-2 px-2 py-1.5 rounded-md cursor-pointer transition-colors ${selectedVoice === voice.id
@@ -219,6 +331,13 @@ export function VoiceSettings({ userId, currentVoice, onVoiceChange, direction =
                     </div>
                 </div>
             )}
+
+            {/* Voice Clone Wizard Modal */}
+            <VoiceCloneWizard
+                isOpen={isCloneModalOpen}
+                onClose={() => setIsCloneModalOpen(false)}
+                onSuccess={handleVoiceCloned}
+            />
         </div>
     );
 }

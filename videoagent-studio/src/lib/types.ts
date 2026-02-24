@@ -64,9 +64,21 @@ export interface User {
 
 export interface VoiceOption {
     id: string;
+    db_id?: string; // Internal DB ID for cloned voices
     name: string;
-    gender: 'Male' | 'Female';
+    gender?: 'Male' | 'Female' | 'Unknown';
     sample_url: string;
+    category?: 'premade' | 'cloned';
+}
+
+export interface ClonedVoice {
+    id: string;
+    elevenlabs_voice_id: string;
+    name: string;
+    description?: string;
+    preview_url?: string;
+    is_company_default: boolean;
+    created_at: string;
 }
 
 export interface Session {
@@ -204,6 +216,18 @@ export interface Customer {
     company_size: string;
     created_at: string;
     [key: string]: unknown;
+}
+
+// ============================================================================
+// Recording Types
+// ============================================================================
+
+export interface UploadRecordingResponse {
+    video_id: string;
+    duration: number;
+    resolution: [number, number];
+    fps: number;
+    url: string;
 }
 
 // ============================================================================

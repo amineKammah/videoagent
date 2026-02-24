@@ -237,6 +237,29 @@ class Pronunciation(Base):
     session = relationship("Session")
 
 
+class ClonedVoice(Base):
+    """Voice clones managed by ElevenLabs Instant Voice Clone API."""
+    __tablename__ = "cloned_voices"
+    
+    id = Column(String, primary_key=True)
+    company_id = Column(String, ForeignKey("companies.id"), nullable=False)
+    created_by_user_id = Column(String, ForeignKey("users.id"), nullable=False)
+    
+    elevenlabs_voice_id = Column(String, nullable=False)
+    name = Column(String, nullable=False)
+    description = Column(String, nullable=True)
+    preview_url = Column(String, nullable=True)
+    
+    is_company_default = Column(Boolean, default=False)
+    
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    
+    # Relationships
+    company = relationship("Company")
+    created_by = relationship("User")
+
+
 class Feedback(Base):
     """Thumbs up/down feedback on storyboard or individual scenes."""
     __tablename__ = "feedback"

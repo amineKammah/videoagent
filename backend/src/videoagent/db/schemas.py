@@ -181,6 +181,33 @@ class PronunciationGenerationResponse(BaseModel):
 
 
 # ============================================================================
+# Cloned Voice Schemas
+# ============================================================================
+
+class ClonedVoiceCreate(BaseModel):
+    """Request to create a new cloned voice."""
+    name: str
+    description: Optional[str] = None
+
+
+class ClonedVoiceResponse(BaseModel):
+    """Cloned Voice response schema."""
+    id: str
+    company_id: str
+    created_by_user_id: str
+    elevenlabs_voice_id: str
+    name: str
+    description: Optional[str] = None
+    preview_url: Optional[str] = None
+    is_company_default: bool
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+# ============================================================================
 # Feedback Schemas
 # ============================================================================
 

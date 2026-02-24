@@ -25,3 +25,6 @@ assets/*
 !assets/test_customers.csv
 
 .DS_Store
+
+
+temp.log

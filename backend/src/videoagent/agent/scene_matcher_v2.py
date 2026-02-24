@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -63,6 +64,10 @@ class SceneMatcherV2:
         self.shortlist_model = "gemini-3-flash-preview"
         self.deep_model = "gemini-3-flash-preview"
         self._thinking_budget = 1_000
+        self._shortlist_prompt_cache_ttl_seconds = self._parse_prompt_cache_ttl_seconds(
+            os.environ.get("SHORTLIST_PROMPT_CACHE_TTL_SECONDS"),
+            default=600,
+        )
 
     @staticmethod
     def _parse_thinking_budget(value: str) -> Optional[int]:
@@ -77,6 +82,21 @@ class SceneMatcherV2:
             return -1
         if parsed < -1:
             return -1
+        return parsed
+
+    @staticmethod
+    def _parse_prompt_cache_ttl_seconds(value: Optional[str], *, default: int) -> int:
+        raw = str(value or "").strip().lower()
+        if raw in {"", "default"}:
+            return default
+        if raw in {"none", "off", "false", "disabled", "disable", "0"}:
+            return 0
+        try:
+            parsed = int(raw)
+        except ValueError:
+            return default
+        if parsed < 0:
+            return default
         return parsed
 
     @staticmethod
@@ -108,14 +128,11 @@ class SceneMatcherV2:
     def _build_response(
         *,
         results: list[dict[str, Any]],
-        notes_by_scene_id: dict[str, list[str]],
         warnings_by_scene_id: dict[str, list[str]],
         errors: list[dict[str, Any]],
         shortlist_review_clips_by_scene_id: Optional[dict[str, list[dict[str, Any]]]] = None,
     ) -> str:
         payload: dict[str, Any] = {"results": results}
-        if notes_by_scene_id:
-            payload["notes"] = notes_by_scene_id
         if warnings_by_scene_id:
             payload["warnings"] = warnings_by_scene_id
         if errors:
@@ -225,7 +242,6 @@ class SceneMatcherV2:
             self._print_issue("index_warning", warning)
 
         response_results_by_index: dict[int, dict[str, Any]] = {}
-        response_notes: dict[str, list[str]] = {}
         response_warnings: dict[str, list[str]] = {}
         response_errors: list[dict[str, Any]] = []
         response_shortlist_clips: dict[str, list[dict[str, Any]]] = {}
@@ -329,8 +345,6 @@ class SceneMatcherV2:
                     "scene_id": scene_id,
                     "candidates": scene_result["candidates"],
                 }
-                if scene_result["notes"]:
-                    response_notes[scene_id] = scene_result["notes"]
                 if scene_result["warnings"]:
                     response_warnings[scene_id] = scene_result["warnings"]
                 if scene_result["errors"]:
@@ -352,7 +366,6 @@ class SceneMatcherV2:
 
         return self._build_response(
             results=ordered_results,
-            notes_by_scene_id=response_notes,
             warnings_by_scene_id=response_warnings,
             errors=response_errors,
             shortlist_review_clips_by_scene_id=response_shortlist_clips,
@@ -590,38 +603,115 @@ class SceneMatcherV2:
         client = GeminiClient(self.config)
         client.use_vertexai = True
 
-        prompt = self._build_shortlist_prompt(
+        target_block = self._render_target_scene_block(
             scene=scene,
             notes=notes,
             target_duration=target_duration,
+        )
+        shared_prompt_prefix = self._build_shortlist_prompt_shared_prefix(
             index_payload=index_payload,
         )
+        prompt = f"{shared_prompt_prefix}\n\n{target_block}\n"
 
-        config: dict[str, Any] = {
-            "response_mime_type": "application/json",
-            "response_json_schema": ShortlistResponse.model_json_schema(),
-        }
+        config = types.GenerateContentConfig(
+            response_mime_type="application/json",
+            response_json_schema=ShortlistResponse.model_json_schema(),
+        )
         if self._thinking_budget is not None:
-            config["thinking_config"] = types.ThinkingConfig(thinking_budget=self._thinking_budget)
+            config.thinking_config = types.ThinkingConfig(thinking_budget=self._thinking_budget)
 
+        request_text = prompt
+        used_prompt_cache = False
+        if self._shortlist_prompt_cache_ttl_seconds > 0:
+            cache_key = hashlib.sha256(
+                f"{self.shortlist_model}\n{shared_prompt_prefix}".encode("utf-8")
+            ).hexdigest()
+            cache_display_name = f"scene_matcher_v2_shortlist_{cache_key[:12]}"
+            try:
+                cached_content_name = client.get_or_create_text_cached_content(
+                    model=self.shortlist_model,
+                    cache_key=cache_key,
+                    text=shared_prompt_prefix,
+                    ttl_seconds=self._shortlist_prompt_cache_ttl_seconds,
+                    display_name=cache_display_name,
+                )
+            except Exception as exc:
+                self._print_issue(
+                    "shortlist_prompt_cache",
+                    (
+                        f"scene_id={scene.scene_id}: explicit cache unavailable, "
+                        f"falling back to full prompt. error={exc}"
+                    ),
+                )
+            else:
+                if cached_content_name:
+                    config.cached_content = cached_content_name
+                    request_text = target_block
+                    used_prompt_cache = True
+
+        response = None
         try:
             response = await client.generate_content_async(
                 model=self.shortlist_model,
                 contents=types.Content(
                     role="user",
-                    parts=[types.Part(text=prompt)],
+                    parts=[types.Part(text=request_text)],
                 ),
                 config=config,
             )
         except Exception as exc:
+            if used_prompt_cache:
+                self._print_issue(
+                    "shortlist_prompt_cache",
+                    (
+                        f"scene_id={scene.scene_id}: cached-content request failed; "
+                        f"retrying without cache. error={exc}"
+                    ),
+                )
+                fallback_config = types.GenerateContentConfig(
+                    response_mime_type="application/json",
+                    response_json_schema=ShortlistResponse.model_json_schema(),
+                )
+                if self._thinking_budget is not None:
+                    fallback_config.thinking_config = types.ThinkingConfig(
+                        thinking_budget=self._thinking_budget
+                    )
+                try:
+                    response = await client.generate_content_async(
+                        model=self.shortlist_model,
+                        contents=types.Content(
+                            role="user",
+                            parts=[types.Part(text=prompt)],
+                        ),
+                        config=fallback_config,
+                    )
+                    used_prompt_cache = False
+                except Exception as fallback_exc:
+                    exc = fallback_exc
+            if response is None:
+                self._print_issue(
+                    "shortlist_llm_call",
+                    (
+                        f"Shortlist LLM call failed for scene_id={scene.scene_id}, "
+                        f"model={self.shortlist_model}: {exc}"
+                    ),
+                )
+                return {"error": f"Shortlist LLM call failed: {exc}"}
+
+        if used_prompt_cache:
+            cached_tokens = self._extract_cached_token_count(response)
+            cached_token_text = (
+                str(cached_tokens)
+                if cached_tokens is not None
+                else "unknown"
+            )
             self._print_issue(
-                "shortlist_llm_call",
+                "shortlist_prompt_cache",
                 (
-                    f"Shortlist LLM call failed for scene_id={scene.scene_id}, "
-                    f"model={self.shortlist_model}: {exc}"
+                    f"scene_id={scene.scene_id}: explicit cache used; "
+                    f"cached_content_token_count={cached_token_text}"
                 ),
             )
-            return {"error": f"Shortlist LLM call failed: {exc}"}
 
         if not response.text:
             self._print_issue(
@@ -896,23 +986,56 @@ class SceneMatcherV2:
             else:
                 lines.append("  - (none)")
 
-            lines.append("- excluded_scenes:")
+            lines.append("- excluded_summary:")
             if excluded_scenes:
+                reason_counts: dict[str, int] = {}
+                excluded_total_seconds = 0.0
                 for scene in excluded_scenes:
                     if not isinstance(scene, dict):
                         continue
-                    scene_id = cls._clean_prompt_text(scene.get("scene_id"), max_chars=80) or "unknown_scene"
+                    start = scene.get("start_time", 0.0)
+                    end = scene.get("end_time", 0.0)
+                    try:
+                        start_f = float(start)
+                        end_f = float(end)
+                        if end_f > start_f:
+                            excluded_total_seconds += end_f - start_f
+                    except (TypeError, ValueError):
+                        pass
+
                     reasons_value = scene.get("reasons")
-                    reasons: list[str] = []
-                    if isinstance(reasons_value, list):
-                        for item in reasons_value:
-                            reason = cls._clean_prompt_text(item, max_chars=40)
-                            if reason:
-                                reasons.append(reason)
-                    reasons_text = ", ".join(reasons) if reasons else "unspecified"
-                    lines.append(f"  - `{scene_id}` | reasons: {reasons_text}")
+                    if not isinstance(reasons_value, list):
+                        reason_counts["unspecified"] = reason_counts.get("unspecified", 0) + 1
+                        continue
+                    cleaned_reasons: list[str] = []
+                    for item in reasons_value:
+                        reason = cls._clean_prompt_text(item, max_chars=40)
+                        if reason:
+                            cleaned_reasons.append(reason)
+                    if not cleaned_reasons:
+                        cleaned_reasons = ["unspecified"]
+                    for reason in set(cleaned_reasons):
+                        reason_counts[reason] = reason_counts.get(reason, 0) + 1
+
+                if reason_counts:
+                    sorted_reason_counts = sorted(
+                        reason_counts.items(),
+                        key=lambda pair: (-pair[1], pair[0]),
+                    )
+                    reasons_text = ", ".join(
+                        f"{reason}:{count}"
+                        for reason, count in sorted_reason_counts
+                    )
+                else:
+                    reasons_text = "none"
+                lines.append(
+                    "  - "
+                    f"count={len(excluded_scenes)} "
+                    f"| reasons={{{reasons_text}}} "
+                    f"| excluded_time_seconds={excluded_total_seconds:.3f}"
+                )
             else:
-                lines.append("  - (none)")
+                lines.append("  - count=0 | reasons={none} | excluded_time_seconds=0.000")
             lines.append("")
 
         return "\n".join(lines).rstrip() + "\n"
@@ -930,8 +1053,19 @@ class SceneMatcherV2:
             notes=notes,
             target_duration=target_duration,
         )
+        return (
+            SceneMatcherV2._build_shortlist_prompt_shared_prefix(index_payload=index_payload)
+            + "\n\n"
+            + target_block
+            + "\n"
+        )
+
+    @staticmethod
+    def _build_shortlist_prompt_shared_prefix(*, index_payload: dict[str, Any]) -> str:
         video_context_block = SceneMatcherV2._render_video_context_block(index_payload)
         return f"""You are an expert Video Editor shortlisting videos for a voice-over scene.
+
+{video_context_block}
 
 ### TASK OVERVIEW
 You are helping a two-stage matching pipeline:
@@ -956,7 +1090,10 @@ For each eligible scene card, only curated high-signal fields are provided:
 - semantic fields: `narrative_purpose`, `feature_showcased`, `pain_point_depicted`, `emotional_tone`
 - top `searchable_keywords`
 
-Excluded scenes are listed only as `scene_id + reasons`.
+Excluded scenes are provided as compact per-video summaries:
+- excluded scene count
+- reason histogram
+- total excluded duration
 
 ### STRICT VISUAL RULES (CRITICAL)
 Prioritize clips that satisfy all of the following:
@@ -974,7 +1111,7 @@ Prioritize clips that satisfy all of the following:
 - The matched candidate needs to highlight ALL the main talking points of the script.
 
 
-### Output
+### OUTPUT
 - Pick at most 3 high-potential review clips.
 - Each clip must be within one video and <= 60 seconds.
 - Each clip must be STRICTLY longer than the target scene duration.
@@ -1001,7 +1138,30 @@ Prioritize clips that satisfy all of the following:
 - clip span <= 120 seconds and clip span >= 30 seconds
 - use only `eligible_scenes`
 - do not use `excluded_scenes` content
-
-{target_block}
-{video_context_block}
 """
+
+    @staticmethod
+    def _extract_cached_token_count(response: Any) -> Optional[int]:
+        usage = getattr(response, "usage_metadata", None)
+        if usage is None:
+            return None
+
+        values: list[Any] = []
+        for key in ("cached_content_token_count", "cachedContentTokenCount"):
+            values.append(getattr(usage, key, None))
+        if isinstance(usage, dict):
+            for key in ("cached_content_token_count", "cachedContentTokenCount"):
+                values.append(usage.get(key))
+        if hasattr(usage, "model_dump"):
+            try:
+                dump = usage.model_dump(mode="json")
+            except Exception:
+                dump = None
+            if isinstance(dump, dict):
+                for key in ("cached_content_token_count", "cachedContentTokenCount"):
+                    values.append(dump.get(key))
+
+        for value in values:
+            if isinstance(value, (int, float)):
+                return int(value)
+        return None

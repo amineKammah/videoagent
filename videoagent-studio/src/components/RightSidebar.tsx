@@ -112,7 +112,7 @@ export function RightSidebar() {
                                 <div className="bg-slate-50 p-1 rounded-xl">
                                     <VoiceSettings
                                         userId={user?.id}
-                                        currentVoice={user?.settings?.tts_voice}
+                                        currentVoice={user?.settings?.tts_voice as string | undefined}
                                         direction="down"
                                         onVoiceChange={(voiceId) => {
                                             const currentUser = useSessionStore.getState().user;

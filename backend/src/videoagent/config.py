@@ -32,6 +32,8 @@ class Config:
 
     # TTS settings
     tts_voice: str = "Kore"  # Kore, Charon, Fenrir, Aoede, Puck, etc.
+    vo_longer_strategy: str = "extend_frame"
+    vo_shorter_strategy: str = "pad_silence"
 
     # GCP settings for Transcoder API
     gcp_project_id: Optional[str] = None

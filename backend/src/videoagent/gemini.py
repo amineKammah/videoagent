@@ -4,6 +4,7 @@ Gemini Client - Shared client for Gemini API.
 Provides a centralized client for both video analysis and TTS.
 """
 import asyncio
+import datetime
 import hashlib
 import sqlite3
 import tempfile
@@ -87,6 +88,23 @@ class GeminiClient:
                 "CREATE INDEX IF NOT EXISTS idx_gemini_file_cache_path "
                 "ON gemini_file_cache (file_path)"
             )
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS gemini_prompt_cache (
+                    cache_key TEXT NOT NULL,
+                    model TEXT NOT NULL,
+                    cached_content_name TEXT NOT NULL,
+                    expires_at REAL,
+                    created_at REAL NOT NULL,
+                    last_used_at REAL NOT NULL,
+                    PRIMARY KEY (cache_key, model)
+                )
+                """
+            )
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_gemini_prompt_cache_expires_at "
+                "ON gemini_prompt_cache (expires_at)"
+            )
 
     def _compute_file_hash(self, file_path: Path) -> str:
         hasher = hashlib.sha256()
@@ -165,6 +183,200 @@ class GeminiClient:
                 """,
                 (time.time(), resolved, file_hash),
             )
+
+    def _load_cached_prompt_name(self, cache_key: str, model: str) -> Optional[str]:
+        now = time.time()
+        with sqlite3.connect(self._cache_db_path) as conn:
+            row = conn.execute(
+                """
+                SELECT cached_content_name, expires_at
+                FROM gemini_prompt_cache
+                WHERE cache_key = ? AND model = ?
+                """,
+                (cache_key, model),
+            ).fetchone()
+        if not row:
+            return None
+        cached_content_name, cached_expires_at = row
+        if cached_expires_at is not None and float(cached_expires_at) <= now:
+            self._delete_cached_prompt_entry(cache_key, model)
+            return None
+
+        try:
+            remote = self._run_with_retry(
+                lambda: self._get_content_client().caches.get(name=cached_content_name),
+                operation_name="get_cached_content",
+            )
+        except Exception:
+            self._delete_cached_prompt_entry(cache_key, model)
+            return None
+
+        remote_expires_at = self._coerce_unix_timestamp(getattr(remote, "expire_time", None))
+        effective_expires_at = remote_expires_at if remote_expires_at is not None else cached_expires_at
+        if effective_expires_at is not None and float(effective_expires_at) <= now:
+            self._delete_cached_prompt_entry(cache_key, model)
+            return None
+
+        self._touch_cached_prompt_entry(cache_key, model)
+        if remote_expires_at is not None and remote_expires_at != cached_expires_at:
+            self._update_cached_prompt_expiry(cache_key, model, remote_expires_at)
+        return cached_content_name
+
+    def _store_cached_prompt_entry(
+        self,
+        cache_key: str,
+        model: str,
+        cached_content_name: str,
+        expires_at: Optional[float],
+    ) -> None:
+        now = time.time()
+        with sqlite3.connect(self._cache_db_path) as conn:
+            conn.execute(
+                """
+                INSERT INTO gemini_prompt_cache (
+                    cache_key, model, cached_content_name, expires_at, created_at, last_used_at
+                ) VALUES (?, ?, ?, ?, ?, ?)
+                ON CONFLICT(cache_key, model) DO UPDATE SET
+                    cached_content_name=excluded.cached_content_name,
+                    expires_at=excluded.expires_at,
+                    last_used_at=excluded.last_used_at
+                """,
+                (
+                    cache_key,
+                    model,
+                    cached_content_name,
+                    expires_at,
+                    now,
+                    now,
+                ),
+            )
+
+    def _touch_cached_prompt_entry(self, cache_key: str, model: str) -> None:
+        with sqlite3.connect(self._cache_db_path) as conn:
+            conn.execute(
+                """
+                UPDATE gemini_prompt_cache
+                SET last_used_at = ?
+                WHERE cache_key = ? AND model = ?
+                """,
+                (time.time(), cache_key, model),
+            )
+
+    def _update_cached_prompt_expiry(
+        self,
+        cache_key: str,
+        model: str,
+        expires_at: Optional[float],
+    ) -> None:
+        with sqlite3.connect(self._cache_db_path) as conn:
+            conn.execute(
+                """
+                UPDATE gemini_prompt_cache
+                SET expires_at = ?
+                WHERE cache_key = ? AND model = ?
+                """,
+                (expires_at, cache_key, model),
+            )
+
+    def _delete_cached_prompt_entry(self, cache_key: str, model: str) -> None:
+        with sqlite3.connect(self._cache_db_path) as conn:
+            conn.execute(
+                """
+                DELETE FROM gemini_prompt_cache
+                WHERE cache_key = ? AND model = ?
+                """,
+                (cache_key, model),
+            )
+
+    @staticmethod
+    def _coerce_unix_timestamp(value: object) -> Optional[float]:
+        if value is None:
+            return None
+        if isinstance(value, (int, float)):
+            return float(value)
+        if isinstance(value, datetime.datetime):
+            dt = value
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=datetime.timezone.utc)
+            return dt.timestamp()
+        if isinstance(value, str):
+            normalized = value.strip()
+            if not normalized:
+                return None
+            if normalized.endswith("Z"):
+                normalized = normalized[:-1] + "+00:00"
+            try:
+                return datetime.datetime.fromisoformat(normalized).timestamp()
+            except ValueError:
+                return None
+        return None
+
+    def get_or_create_cached_content(
+        self,
+        *,
+        model: str,
+        cache_key: str,
+        contents: Any,
+        ttl_seconds: int,
+        display_name: Optional[str] = None,
+        system_instruction: Any = None,
+    ) -> Optional[str]:
+        if ttl_seconds <= 0:
+            return None
+
+        cached_name = self._load_cached_prompt_name(cache_key, model)
+        if cached_name:
+            return cached_name
+
+        from google.genai import types
+
+        create_started_at = time.monotonic()
+        created = self._run_with_retry(
+            lambda: self._get_content_client().caches.create(
+                model=model,
+                config=types.CreateCachedContentConfig(
+                    display_name=display_name,
+                    ttl=f"{int(ttl_seconds)}s",
+                    contents=contents,
+                    system_instruction=system_instruction,
+                ),
+            ),
+            operation_name="create_cached_content",
+        )
+        created_name = getattr(created, "name", None)
+        if not created_name:
+            raise RuntimeError("Cached content creation returned no cache name.")
+        create_elapsed_seconds = time.monotonic() - create_started_at
+        print(
+            "[GeminiClient][prompt_cache] created "
+            f"name={created_name} model={model} ttl_seconds={int(ttl_seconds)} "
+            f"create_seconds={create_elapsed_seconds:.3f}"
+        )
+        expires_at = self._coerce_unix_timestamp(getattr(created, "expire_time", None))
+        if expires_at is None:
+            expires_at = time.time() + int(ttl_seconds)
+        self._store_cached_prompt_entry(cache_key, model, created_name, expires_at)
+        return created_name
+
+    def get_or_create_text_cached_content(
+        self,
+        *,
+        model: str,
+        cache_key: str,
+        text: str,
+        ttl_seconds: int,
+        display_name: Optional[str] = None,
+    ) -> Optional[str]:
+        normalized = str(text or "").strip()
+        if not normalized:
+            return None
+        return self.get_or_create_cached_content(
+            model=model,
+            cache_key=cache_key,
+            contents=[{"text": normalized}],
+            ttl_seconds=ttl_seconds,
+            display_name=display_name,
+        )
 
     def _get_content_client(self):
         if self._content_client is None:

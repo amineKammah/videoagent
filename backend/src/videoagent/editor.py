@@ -522,7 +522,7 @@ class VideoEditor:
         video_duration = self._get_media_duration(video_path)
 
         vo_duration = voice_over.duration or 0
-        strategy = timing_strategy or self.config.vo_longer_strategy
+        strategy = timing_strategy or getattr(self.config, "vo_longer_strategy", "extend_frame")
 
         if video_duration and vo_duration > video_duration:
             # Voice over is longer than video
@@ -535,7 +535,7 @@ class VideoEditor:
 
         elif video_duration and vo_duration < video_duration:
             # Voice over is shorter (usually okay, audio just ends earlier)
-            short_strategy = self.config.vo_shorter_strategy
+            short_strategy = getattr(self.config, "vo_shorter_strategy", "pad_silence")
             if short_strategy == "pad_silence":
                 pass  # Default behavior
             # Other strategies could be implemented

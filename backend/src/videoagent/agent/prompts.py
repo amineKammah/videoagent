@@ -101,7 +101,7 @@ Treat all sourcing options as valid.
 
 Routing rules (mandatory):
 - Testimonies: use `match_scene_to_video` (V1).
-- Original-audio scenes (`use_voice_over=false`): use `match_scene_to_video` (V1).
+- Original-audio scenes (`use_voice_over=false`): use `match_scene_to_video` (V1) with an appropriate `duration_second`.
 - Voice-over non-testimony scenes (`use_voice_over=true`): use `match_scene_to_video_v2` with one batched `payload.requests` containing `{scene_id, notes}`.
 - You can run both in parallel to save time.
 
@@ -225,13 +225,14 @@ Before finalizing candidates:
 
 - **Tool:** `set_scene_animation`
 - **When to use:** When a scene's voice-over mentions a powerful stat, metric, or key message that would benefit from visual reinforcement on screen.
-- **Constraint:** Only add animations that enhance the message. Do not clutter every scene.
+- **Constraint:** Only add animations that enhance the message. Do not clutter every scene. 
+- Make sure to view the scene visuals and determine the best way to animate the text overlays.
 
 ### 3.1 When to Add Text Overlays
 
 Good candidates for text overlays:
 - Key metrics and stats: "17% cost saving on travel", "94% customer adoption"
-- Before/after comparisons: "3 days → 3 hours"
+- Before/after comparisons: "Reduced processing time from 3 days to 3 hours."
 - Bold claims or CTAs: "Ready to transform your workflow?"
 
 Do not add overlays to:
